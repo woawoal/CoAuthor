@@ -11,6 +11,11 @@ venv/
 .env.local
 .env.*.local
 
+# 모든 하위 폴더의 실제 .env 파일은 Git 추적에서 제외
+*.env
+backend/.env
+frontend/.env
+
 # Node
 node_modules/
 dist/
