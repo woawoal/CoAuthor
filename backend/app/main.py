@@ -1,9 +1,15 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import chat, compare, coaching
 from app.core.config import settings
+from app.api.v1.router import router as v1_router
 
-app = FastAPI(title="AI 빙의작가 API", version="0.1.0")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
+
+app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,11 +19,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
-app.include_router(compare.router, prefix="/api/compare", tags=["compare"])
-app.include_router(coaching.router, prefix="/api/coaching", tags=["coaching"])
+app.include_router(v1_router)
 
 
-@app.get("/health")
+@app.get("/health", tags=["health"])
 async def health():
     return {"status": "ok"}

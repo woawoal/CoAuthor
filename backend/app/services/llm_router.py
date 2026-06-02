@@ -1,39 +1,33 @@
 """
-하이브리드 라우터:
-  - 단순 이어쓰기 → 자체 파인튜닝 모델
-  - 복잡한 피드백  → PERSO API
-  - PERSO 초과 시  → 대체 LLM (폴백)
+LLM 라우터 — AI 엔진 연동 예정
+현재는 스텁 구현으로, 추후 실제 LLM API로 교체
 """
-import asyncio
+import logging
 from typing import AsyncGenerator
-from app.core.personas import PERSONAS
-from app.schemas.chat import ChatRequest
+from app.models.character import Character
+
+logger = logging.getLogger(__name__)
 
 
 class LLMRouter:
-    async def stream(self, req: ChatRequest) -> AsyncGenerator[str, None]:
-        persona = PERSONAS.get(req.persona_id)
-        if not persona:
-            raise ValueError(f"Unknown persona: {req.persona_id}")
-        # TODO: PERSO API 스트리밍 연결
-        yield f"data: (페르소나 {persona.name} 스트리밍 예정)\n\n"
+    async def stream_character_response(
+        self,
+        character: Character,
+        dialogue_history: list[dict],
+        user_message: str,
+    ) -> AsyncGenerator[str, None]:
+        """캐릭터 시스템 프롬프트 기반 응답 스트리밍"""
+        # TODO: AI 엔진 연결 후 구현
+        logger.info("LLM 스트리밍 요청 - 캐릭터: %s", character.name)
+        yield f"data: [{character.name}] (AI 응답 스트리밍 예정)\n\n"
+        yield "data: [DONE]\n\n"
 
-    async def generate_all_personas(self, text: str) -> dict[str, str]:
-        tasks = {
-            pid: self._generate_single(pid, text)
-            for pid in PERSONAS
-        }
-        results = await asyncio.gather(*tasks.values())
-        return dict(zip(tasks.keys(), results))
-
-    async def _generate_single(self, persona_id: str, text: str) -> str:
-        # TODO: 실제 API 호출로 교체
-        persona = PERSONAS[persona_id]
-        return f"[{persona.name}] {text} (생성 예정)"
-
-    async def coach(self, persona_id: str, user_text: str) -> str:
-        # TODO: 코칭 전용 프롬프트 구성 후 API 호출
-        persona = PERSONAS.get(persona_id)
-        if not persona:
-            raise ValueError(f"Unknown persona: {persona_id}")
-        return f"[{persona.name} 코칭] (피드백 생성 예정)"
+    async def generate_novel(
+        self,
+        world_description: str,
+        dialogue_history: list[dict],
+    ) -> str:
+        """대화 로그를 소설 초안으로 변환"""
+        # TODO: AI 엔진 연결 후 구현
+        logger.info("소설 생성 요청 - 대화 %d개", len(dialogue_history))
+        return "(소설 생성 예정)"
