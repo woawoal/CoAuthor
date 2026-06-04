@@ -36,6 +36,9 @@ data/processed/
 *.db
 *.sqlite3
 
+# Personal docs (local only)
+frontend/pge_doc/
+
 # IDE
 .vscode/
 .idea/
