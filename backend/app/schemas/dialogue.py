@@ -5,17 +5,15 @@ from app.models.dialogue import SpeakerType
 
 
 class DialogueStreamRequest(BaseModel):
-    content: str            # 사용자 발화
-    character_id: uuid.UUID  # 응답할 AI 캐릭터 ID
+    content: str
+    character_id: uuid.UUID
 
 
 class DialogueResponse(BaseModel):
-    id: uuid.UUID
-    session_id: uuid.UUID
+    id: str
+    session_id: str
     speaker_type: SpeakerType
-    character_id: uuid.UUID | None
+    character_id: str | None
     content: str
     turn_order: int
     created_at: datetime
-
-    model_config = {"from_attributes": True}

@@ -3,9 +3,9 @@ import uuid
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from app.database import get_db, get_mongo_db
 from app.models.session import Session, SessionStatus
-from app.models.dialogue import Dialogue
 from app.models.novel import Novel, NovelStatus
 from app.schemas.novel import NovelUpdate, NovelResponse
 
@@ -23,7 +23,11 @@ async def get_novel(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{session_id}/novel/generate", response_model=NovelResponse, status_code=201)
-async def generate_novel(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def generate_novel(
+    session_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    mongo: AsyncIOMotorDatabase = Depends(get_mongo_db),
+):
     """세션의 대화 로그를 소설 초안으로 변환 (LLM 연결 전 플레이스홀더)"""
     session_result = await db.execute(select(Session).where(Session.id == session_id))
     session = session_result.scalar_one_or_none()
@@ -36,14 +40,17 @@ async def generate_novel(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="이미 소설 초안이 존재합니다.")
 
-    dialogues_result = await db.execute(
-        select(Dialogue).where(Dialogue.session_id == session_id).order_by(Dialogue.turn_order)
+    # MongoDB에서 대화 로그 조회
+    cursor = mongo["dialogues"].find(
+        {"session_id": str(session_id)},
+        {"_id": 0, "content": 1, "speaker_type": 1, "character_id": 1},
+        sort=[("turn_order", 1)],
     )
-    dialogues = dialogues_result.scalars().all()
+    dialogues = await cursor.to_list(length=None)
 
     # TODO: LLM으로 소설 변환 구현
     placeholder_content = "\n\n".join(
-        f"{'(주인공)' if d.character_id is None else '(조연)'}: {d.content}"
+        f"{'(주인공)' if not d.get('character_id') else '(조연)'}: {d['content']}"
         for d in dialogues
     )
 
