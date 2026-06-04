@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git switch *)",
+      "Bash(git checkout *)",
+      "Bash(git push *)",
+      "Bash(git remote *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git rm *)",
+      "Bash(gh pr *)",
+      "PowerShell(cd \"d:\\\\jyj\\\\P2\\\\NodeVelture\"; foreach \\($branch in @\\(\"feature/kdy\",\"feature/pge\",\"feature/syd\",\"feature/ygy\"\\)\\) { $diff = git diff origin/dev...origin/$branch --name-only 2>$null; if \\($diff\\) { Write-Host \"=== $branch ===\"; Write-Host $diff } })"
+    ]
+  }
+}

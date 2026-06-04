@@ -8,7 +8,7 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    persona_id: Literal["baegil", "charoi", "haseorim", "kimdaha"]
+    persona_id: Literal["baekya", "charoun", "hanyeoreum", "kimdohyeon"]
     text: str
     history: list[Message] = []
     mode: Literal["together", "coaching"] = "together"
