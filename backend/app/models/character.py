@@ -19,14 +19,12 @@ class Character(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     world_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("worlds.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(100), nullable=False)  # 기기별 랜덤 식별자, FK 없음
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[CharacterRole] = mapped_column(SAEnum(CharacterRole), nullable=False)
     personality: Mapped[str] = mapped_column(Text, default="")
-    background: Mapped[str] = mapped_column(Text, default="")
-    appearance: Mapped[str] = mapped_column(Text, default="")
-    is_ai_controlled: Mapped[bool] = mapped_column(Boolean, default=True)  # 조연은 AI 제어
-    system_prompt: Mapped[str] = mapped_column(Text, default="")           # AI용 시스템 프롬프트
+    prompt: Mapped[str] = mapped_column(Text, default="")
+    is_ai_controlled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 
     world: Mapped["World"] = relationship(back_populates="characters")
-    dialogues: Mapped[list["Dialogue"]] = relationship(back_populates="character")
