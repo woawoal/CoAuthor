@@ -51,7 +51,7 @@ async def stream_response(
             )
             full_prompt = f"{system_prompt}\n\n사용자 입력: {content}"
 
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(full_prompt, stream=True)
 
             seq = 1
