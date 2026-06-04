@@ -43,3 +43,12 @@ data/processed/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs and local files
+*.log
+dist-ssr/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
