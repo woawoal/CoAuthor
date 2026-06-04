@@ -8,3 +8,11 @@ export const ExitIcon = ({ size = 24, color = "#FFFFFF", className = "" }) => (
         <path d="M10 12H21M21 12L17 8M21 12L17 16" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 );
+
+// 작성/편집 아이콘
+export const WriteIcon = ({ size = 24, color = "#ffffff", className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className={className}>
+        <path d="M13.5 7L17 10.5M4 20L5.5 15.5L16.5 4.5C17.3284 3.67157 18.6716 3.67157 19.5 4.5C20.3284 5.32843 20.3284 6.67157 19.5 7.5L8.5 18.5L4 20Z" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M15 20H20" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+);

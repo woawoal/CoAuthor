@@ -12,6 +12,7 @@ import { ExitIcon } from '../../components/icons';
 
 function Main() {
     const navigate = useNavigate();
+
     const authors = [
         {
             id: 1,
@@ -42,6 +43,12 @@ function Main() {
             image: author4Img
         }
     ];
+
+    // 작가 카드 클릭 시 실행될 핸들러 함수
+    const handleAuthorSelect = (authorId) => {
+        navigate('/worldview', { state: { authorId } });
+    };
+
     return (
         <div className="app-container">
             <div className="app-wrapper">
@@ -49,7 +56,7 @@ function Main() {
                 <header className="header">
                     <img
                         src={logoImg}
-                        alt="Soseorieo Logo"
+                        alt="NodeVelture Logo"
                         className="header-image"
                     />
                     <h1 className="logo">NodeVelture</h1>
@@ -67,7 +74,8 @@ function Main() {
                         {authors.map((author, index) => (
                             <div
                                 key={author.id}
-                                className={`card`}
+                                className="card"
+                                onClick={() => handleAuthorSelect(author.id)}
                             >
                                 {/* 작가 아바타 이미지 */}
                                 <div className="avatar-wrapper">

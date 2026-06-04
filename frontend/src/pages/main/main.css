@@ -81,7 +81,6 @@
 /* 카드 개별 스타일 */
 .card {
     width: 100%;
-    max-width: 280px;
     padding: 16px 12px;
     box-sizing: border-box;
     border: 1px solid rgba(255, 255, 255, 0.05);
