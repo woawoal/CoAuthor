@@ -27,19 +27,12 @@ function Worldview() {
     const createNewCharacter = () => ({
         id: Date.now() + Math.random(), // 임시 고유 키
         name: '',
-        role: 'supporting', // 기본값 조연
+        role: 'supporting', // 기본값 조연        
         personality: '',
-        background: '',
-        appearance: '',
-        is_ai_controlled: true, // 조연은 기본 true 기조 반영
         system_prompt: ''
     });
 
     const [characters, setCharacters] = useState([createNewCharacter()]);
-
-    // 3. 소설 집필용 추가 메타 상태
-    const [story, setStory] = useState('');
-    const [etcNotes, setEtcNotes] = useState('');
 
     if (!authorId) {
         return (
@@ -99,12 +92,7 @@ function Worldview() {
                 rules
             },
             // characters 테이블 레코드 배열 (임시 id는 전송 시 제외하거나 UUID 변환용으로 사용)
-            characters: characters.map(({ id, ...charData }) => charData),
-            meta: {
-                authorId: selectedAuthor.id,
-                story,
-                etcNotes
-            }
+            characters: characters.map(({ id, ...charData }) => charData)
         };
 
         console.log("DB 전송 최종 Payload:", payload);
@@ -156,9 +144,9 @@ function Worldview() {
                             <input
                                 type="text"
                                 className="form-input"
-                                placeholder="예: 사이버펑크"
+                                placeholder="예: 호러 / 미스터리"
                                 value={genre}
-                                onChange={(e) => setGenre(e.target.value)}
+                                readOnly
                             />
                         </div>
                     </div>
@@ -232,8 +220,8 @@ function Worldview() {
                                             />
                                         </div>
 
-                                        <div className="form-group flex-5">
-                                            <label className="char-sub-label">역할 및 AI 제어</label>
+                                        <div className="form-group flex-3">
+                                            <label className="char-sub-label">역할</label>
                                             <div className="char-role-ai-inline">
                                                 <select
                                                     className="form-select"
@@ -242,19 +230,7 @@ function Worldview() {
                                                 >
                                                     <option value="protagonist">주인공 (protagonist)</option>
                                                     <option value="supporting">조연 (supporting)</option>
-                                                    <option value="villain">악역 (villain)</option>
-                                                    <option value="narrator">서술자 (narrator)</option>
                                                 </select>
-
-                                                <label className="char-checkbox-label">
-                                                    <input
-                                                        type="checkbox"
-                                                        className="form-checkbox"
-                                                        checked={char.is_ai_controlled}
-                                                        onChange={(e) => handleCharacterChange(char.id, 'is_ai_controlled', e.target.checked)}
-                                                    />
-                                                    <span>AI 제어</span>
-                                                </label>
                                             </div>
                                         </div>
                                     </div>
@@ -270,25 +246,6 @@ function Worldview() {
                                                 onChange={(e) => handleCharacterChange(char.id, 'personality', e.target.value)}
                                             />
                                         </div>
-                                        <div className="form-group flex-1">
-                                            <label className="char-sub-label">외모 (Appearance)</label>
-                                            <textarea
-                                                className="form-textarea height-xs"
-                                                placeholder="예: 검은색 롱코트, 흉터"
-                                                value={char.appearance}
-                                                onChange={(e) => handleCharacterChange(char.id, 'appearance', e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="form-group">
-                                        <label className="char-sub-label">배경 스토리 (Background)</label>
-                                        <textarea
-                                            className="form-textarea height-xs"
-                                            placeholder="캐릭터의 과거사나 현재 처한 상황"
-                                            value={char.background}
-                                            onChange={(e) => handleCharacterChange(char.id, 'background', e.target.value)}
-                                        />
                                     </div>
 
                                     <div className="form-group">
@@ -303,28 +260,6 @@ function Worldview() {
                                 </div>
                             ))}
                         </div>
-                    </div>
-
-                    {/* [META] 줄거리 입력창 */}
-                    <div className="form-group">
-                        <label className="form-label">주요 줄거리 (시놉시스)</label>
-                        <textarea
-                            className="form-textarea"
-                            placeholder="이야기가 시작되는 계기와 대략적인 기승전결 플롯을 적어주세요."
-                            value={story}
-                            onChange={(e) => setStory(e.target.value)}
-                        />
-                    </div>
-
-                    {/* [META] AI 추가 요청 */}
-                    <div className="form-group">
-                        <label className="form-label">AI 작가에게 추가로 요청할 사항</label>
-                        <textarea
-                            className="form-textarea height-sm"
-                            placeholder="원하는 서술 시점, 대사 톤 등을 자유롭게 입력하세요."
-                            value={etcNotes}
-                            onChange={(e) => setEtcNotes(e.target.value)}
-                        />
                     </div>
 
                     <div className="action-buttons">
