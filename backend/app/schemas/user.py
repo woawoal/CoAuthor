@@ -5,14 +5,14 @@ from pydantic import BaseModel, EmailStr
 
 class UserCreate(BaseModel):
     username: str
-    email: EmailStr
-    password: str
+    email: EmailStr | None = None
+    password: str | None = None
 
 
 class UserResponse(BaseModel):
     id: uuid.UUID
     username: str
-    email: str
+    email: str | None
     is_active: bool
     created_at: datetime
 

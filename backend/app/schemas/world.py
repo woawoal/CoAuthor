@@ -8,7 +8,7 @@ class WorldCreate(BaseModel):
     description: str = ""
     genre: str = ""
     setting: str = ""
-    rules: str = ""
+    rules: str | None = None
 
 
 class WorldUpdate(BaseModel):
@@ -26,7 +26,7 @@ class WorldResponse(BaseModel):
     description: str
     genre: str
     setting: str
-    rules: str
+    rules: str | None
     created_at: datetime
     updated_at: datetime
 
