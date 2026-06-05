@@ -43,10 +43,10 @@
 
 | 영역 | 기술 선택 | 이유 |
 |------|-----------|------|
-| Frontend | React + TypeScript | 컴포넌트 재사용, 스트리밍 처리 용이 |
+| Frontend | React + JavaScript | 컴포넌트 재사용, 스트리밍 처리 용이 |
 | Backend | FastAPI (Python) | 비동기 스트리밍, AI 라이브러리 연동 최적 |
-| DB | SQLite → PostgreSQL | 대화 기록, 세션 저장 |
-| Cache | Memory dict → Redis | API 호출 절감 |
+| DB | PostgreSQL | 대화 기록, 세션 저장 |
+| Cache | Redis | API 호출 절감 |
 | 모델 실행 | Hugging Face Transformers | 파인튜닝, 평가 파이프라인 |
 | 데이터 | 공유 마당, Project Gutenberg | 저작권 만료 오픈소스 소설 텍스트 |
 | 배포 | Render / Railway 무료 티어 | 3주 내 실제 배포 목표 |
@@ -61,7 +61,7 @@
      │
      ▼
 ┌────────────────────┐
-│  캐시 레이어 (Redis) │  ← 동일 입력 해시 → TTL 캐싱
+│ 캐시 레이어 (Redis) │  ← 동일 입력 해시 → TTL 캐싱
 └────────────────────┘
      │ miss
      ▼
@@ -78,12 +78,11 @@ LLM-as-Judge → 페르소나 일관성 자동 평가
 
 ### 응답 엔진 레이어
 
-| 레이어 | 역할 | 기술 | 비용 비율 |
+| 레이어 | 역할 | 기술 | 비고 |
 |--------|------|------|---------|
-| PERSO API (1순위) | 메인 페르소나 응답 생성 | PERSO LLM API | 생산·발표 70% |
-| 파인튜닝 모델 (자체) | 페르소나별 문체 특화 응답 | 모방학습 기반 경량 모델 | 개발·실험 주력 |
-| 대체 LLM (폴백) | PERSO 할당량 초과 시 | GPT-4o-mini / Claude Haiku | 비상용 30% |
-| LLM-as-Judge | 페르소나 일관성 자동 평가 | 별도 평가 전용 모델 | 평가 파이프라인 |
+| 기본 응답 생성 | 사용자 입력 기반 1차 답변 생성 | Gemini 2.5 Flash | 메인 생성 모델 |
+| 스타일 변환 (자체) | 페르소나별 장르 문체 특화 (소설화) | 모방학습 기반 경량 파인튜닝 모델 | 2차 문체화 파이프라인 |
+| 코칭 모드 (평가) | 사용자 글 및 결과물 심층 피드백 | LLM-as-Judge | 코칭 API 전용 |
 
 ---
 
@@ -92,8 +91,8 @@ LLM-as-Judge → 페르소나 일관성 자동 평가
 | 역할 | 이름 |
 |------|------|
 | PM / 기획 | 지윤정 (유건혁) |
-| AI 엔지니어 (1) | - (페르소나 프롬프트 설계, PERSO API 연동, 평가 지표 구현) |
-| AI 엔지니어 (2) | - (파인튜닝 실험, 모방학습 모델 설계, LLM-as-Judge) |
+| AI 엔지니어 (1) - (페르소나 프롬프트 설계, PERSO API 연동, 평가 지표 구현) | 김동완 |
+| AI 엔지니어 (2) - (파인튜닝 실험, 모방학습 모델 설계, LLM-as-Judge) | 신유득 (박가은) |
 | 백엔드 | 윤가연 (김동완, 신유득, 지윤정) |
 | 프론트엔드 | 박가은, 유건혁 (윤가연) |
 
@@ -127,25 +126,28 @@ LLM-as-Judge → 페르소나 일관성 자동 평가
 | 주차 | 기간 | 핵심 목표 | 산출물 |
 |------|------|-----------|--------|
 | 1주차 | 6/2 ~ 6/8 | 기획 확정 + 환경 구축 + 페르소나 설계 | 페르소나 카드 4종, 시스템 프롬프트 초안, 개발 환경 |
-| 2주차 | 6/9 ~ 6/15 | 코어 기능 구현 + 자체 모델 실험 | 함께 모드, 코칭 모드, 파인튜닝 실험 1회차 |
+| 2주차 | 6/9 ~ 6/15 | 코어 기능 구현 + 자체 모델 실험 | 참여 모드, 파인튜닝 실험 1회차 |
 | 3주차 | 6/16 ~ 6/19 | 통합 + 평가 + 발표 준비 | 장르 비교 데모, 평가 리포트, 시연 영상, 발표자료 |
 
 ---
 
 ## 로컬 실행 방법
 
-### 사전 요구사항
-- Python 3.10+
-- Node.js 18+
+### 사전 준비
+
+- Python 3.11
+- Node.js 24+
 - (선택) Redis
 
 ### 백엔드
 
 ```bash
+conda create -n nodevelture python=3.11 -y
+conda activate nodevelture
 cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env
+# cp .env.example .env  # macOS / Linux
 uvicorn app.main:app --reload
 ```
 
@@ -161,6 +163,7 @@ npm run dev
 
 ```bash
 cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 # .env에 PERSO_API_KEY, DATABASE_URL 등 입력
 ```
 
@@ -171,7 +174,7 @@ cp backend/.env.example backend/.env
 ```
 CoAuthor/
 ├── backend/          # FastAPI 서버
-├── frontend/         # React + TypeScript 클라이언트
+├── frontend/         # React + JavaScript 클라이언트
 ├── model/            # 파인튜닝 및 평가 파이프라인
 ├── data/             # 학습 데이터 수집·전처리
 ├── docs/             # 기획서, 페르소나 카드, API 명세
