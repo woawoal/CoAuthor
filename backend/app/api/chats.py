@@ -7,13 +7,14 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from app.core.config import settings
 from app.core.personas import get_author_prompt
-from app.database import get_mongo_db
-from app.models.dialogue import DialogueDocument, SpeakerType
-from app.services.rag_service import save_with_embedding
+from app.database import get_db
+from app.models.dialogue import Dialogue, SpeakerType
+from app.models.session import Session
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -144,7 +145,7 @@ class MessageRequest(BaseModel):
 async def send_message(
     chat_id: str,
     body: MessageRequest,
-    mongo: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    db: AsyncSession = Depends(get_db),
 ):
     await init_context_if_empty(
         chat_id,
@@ -155,18 +156,30 @@ async def send_message(
 
     turn = await append_history(chat_id, "user", body.content)
 
-    # MongoDB에 원본 로그 저장 (임베딩 포함)
-    turn_count = await mongo["dialogues"].count_documents({"session_id": chat_id})
-    user_doc = DialogueDocument(
-        session_id=chat_id,
-        speaker_type=SpeakerType.USER,
-        content=body.content,
-        turn_order=turn_count,
-    )
-    await save_with_embedding(user_doc, mongo)
+    # PostgreSQL에 대화 저장 (chat_id가 유효한 session UUID인 경우)
+    message_id = f"msg_{uuid.uuid4().hex[:8]}"
+    try:
+        session_uuid = uuid.UUID(chat_id)
+        session_result = await db.execute(select(Session).where(Session.id == session_uuid))
+        if session_result.scalar_one_or_none():
+            count_result = await db.execute(
+                select(func.count()).select_from(Dialogue).where(Dialogue.session_id == session_uuid)
+            )
+            turn_count = count_result.scalar()
+            dialogue = Dialogue(
+                session_id=session_uuid,
+                speaker_type=SpeakerType.USER,
+                content=body.content,
+                turn_order=turn_count,
+            )
+            db.add(dialogue)
+            await db.flush()
+            message_id = str(dialogue.id)
+    except (ValueError, Exception):
+        pass  # chat_id가 UUID가 아니거나 세션이 없으면 Redis만 사용
 
     logger.info("메시지 수신 - chat_id=%s turn=%d", chat_id, turn)
-    return {"messageId": user_doc.id, "status": "queued", "turn": turn}
+    return {"messageId": message_id, "status": "queued", "turn": turn}
 
 
 @router.get("/{chat_id}/stream")
@@ -176,7 +189,7 @@ async def stream_response(
     character_id: str = "baekya",
     world_context: str = "",
     mode: str = "author",
-    mongo: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    db: AsyncSession = Depends(get_db),
 ):
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     context = await get_context(chat_id)
@@ -208,16 +221,26 @@ async def stream_response(
 
             turn = await append_history(chat_id, "ai", full_response)
 
-            # MongoDB에 AI 응답 저장 (임베딩 포함)
-            turn_count = await mongo["dialogues"].count_documents({"session_id": chat_id})
-            ai_doc = DialogueDocument(
-                session_id=chat_id,
-                speaker_type=SpeakerType.CHARACTER,
-                content=full_response,
-                turn_order=turn_count,
-            )
-            await save_with_embedding(ai_doc, mongo)
-            logger.info("AI 응답 저장 완료 - chat_id=%s, turn=%d", chat_id, turn_count)
+            # PostgreSQL에 AI 응답 저장 (chat_id가 유효한 session UUID인 경우)
+            try:
+                session_uuid = uuid.UUID(chat_id)
+                session_result = await db.execute(select(Session).where(Session.id == session_uuid))
+                if session_result.scalar_one_or_none():
+                    count_result = await db.execute(
+                        select(func.count()).select_from(Dialogue).where(Dialogue.session_id == session_uuid)
+                    )
+                    turn_count = count_result.scalar()
+                    ai_dialogue = Dialogue(
+                        session_id=session_uuid,
+                        speaker_type=SpeakerType.CHARACTER,
+                        content=full_response,
+                        turn_order=turn_count,
+                    )
+                    db.add(ai_dialogue)
+                    await db.flush()
+                    logger.info("AI 응답 저장 완료 - chat_id=%s, turn=%d", chat_id, turn_count)
+            except (ValueError, Exception):
+                pass
 
             if turn % DB_SYNC_INTERVAL == 0:
                 await sync_to_db(chat_id)

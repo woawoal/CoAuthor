@@ -2,11 +2,9 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
 from app.api.v1.router import router as v1_router
 from app.api.chats import router as chats_router
-import app.database as db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -15,17 +13,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    db.mongo_client = AsyncIOMotorClient(settings.MONGODB_URL)
-    logger.info("MongoDB 연결 완료: %s", settings.MONGODB_URL)
-    yield
-    db.mongo_client.close()
-    logger.info("MongoDB 연결 종료")
-
-
-app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION, lifespan=lifespan)
+app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
