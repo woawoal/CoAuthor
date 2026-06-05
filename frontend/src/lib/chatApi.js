@@ -1,5 +1,4 @@
-// FastAPI로 교체 시 NEXT_PUBLIC_API_BASE_URL 환경변수만 변경
-const API_BASE_URL = "/api";
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}api`;
 
 export async function sendMessage(chatId, payload) {
   return fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
@@ -9,8 +8,9 @@ export async function sendMessage(chatId, payload) {
   });
 }
 
-export function connectChatStream(chatId, onToken, onDone) {
-  const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream`);
+export function connectChatStream(chatId, { content, character_id, mode = "author" }, onToken, onDone) {
+  const params = new URLSearchParams({ content, character_id, mode });
+  const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream?${params}`);
 
   es.addEventListener("token", (event) => {
     const data = JSON.parse(event.data);

@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { sendMessage, connectChatStream } from '../../lib/chatApi';
 import './ui.css';
 
-const CHAT_ID = 'room_001';
+const AUTHOR_MAP = {
+  1: { characterId: 'baekya',      displayName: '백야' },
+  2: { characterId: 'charoun',     displayName: '차로운' },
+  3: { characterId: 'hanyeoreum', displayName: '한여름' },
+  4: { characterId: 'kimdohyeon', displayName: '김도현' },
+};
 
 const MOCK_MEMOS = [
   { id: 1, type: 'auto', text: '복선 — 깜빡이는 가로등은 불안정한 현실을 암시' },
@@ -19,11 +25,16 @@ function formatText(text) {
 function Bubble({ msg }) {
   const isUser = msg.role === 'user';
   const displayText = isUser ? msg.text : formatText(msg.text);
+  const isLoading = !isUser && msg.text === '';
   return (
     <div className={`bubble-row ${isUser ? 'bubble-row--user' : 'bubble-row--char'}`}>
       {!isUser && <span className="badge">{msg.name}</span>}
       <div className={`bubble ${isUser ? 'bubble--user' : 'bubble--char'}`}>
-        {displayText}
+        {isLoading ? (
+          <div className="typing-dots">
+            <span /><span /><span />
+          </div>
+        ) : displayText}
       </div>
       {isUser && <span className="badge badge--user">{msg.name}</span>}
     </div>
@@ -31,6 +42,11 @@ function Bubble({ msg }) {
 }
 
 export default function Chat() {
+  const location = useLocation();
+  const { worldId, authorId } = location.state ?? {};
+  const chatId = worldId ?? 'room_001';
+  const persona = AUTHOR_MAP[authorId] ?? { characterId: 'baekya', displayName: '백야' };
+
   const [messages, setMessages] = useState([]);
   const [memos, setMemos] = useState(MOCK_MEMOS);
   const [input, setInput] = useState('');
@@ -51,14 +67,15 @@ export default function Chat() {
 
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: '나', text: userText }]);
 
-    await sendMessage(CHAT_ID, { content: userText, character_id: 'baegil' });
+    await sendMessage(chatId, { content: userText, character_id: persona.characterId });
 
     const streamMsgId = `stream_${Date.now()}`;
-    setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: '백일', text: '' }]);
+    setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: persona.displayName, text: '' }]);
     setStreaming(true);
 
     esRef.current = connectChatStream(
-      CHAT_ID,
+      chatId,
+      { content: userText, character_id: persona.characterId, mode: 'author' },
       (data) => {
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId ? { ...m, text: m.text + data.text } : m)
@@ -79,7 +96,7 @@ export default function Chat() {
       {/* 채팅 영역 */}
       <div className="chat-main">
         <div className="chat-header">
-          <span className="chat-header__persona">백일</span>
+          <span className="chat-header__persona">{persona.displayName}</span>
           <span className="chat-header__genre">스릴러/미스터리</span>
         </div>
 

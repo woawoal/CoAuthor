@@ -1,11 +1,13 @@
 import json
 import uuid
 import logging
+
 import google.generativeai as genai
 import redis.asyncio as aioredis
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
 from app.core.config import settings
 from app.core.personas import get_author_prompt
 
@@ -39,7 +41,6 @@ def key_turn(chat_id: str) -> str:
 
 # ── Redis 조회 헬퍼 ────────────────────────────────────────
 async def get_context(chat_id: str) -> dict:
-    """Redis에서 프롬프트 재료 전체 조회"""
     history_raw = await redis_client.lrange(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
     history = [json.loads(item) for item in history_raw]
 
@@ -61,7 +62,6 @@ async def init_context_if_empty(
     characters: str,
     summary: str,
 ):
-    """Redis에 값이 없을 때만 초기값 세팅 (세션 첫 진입 시)"""
     if not await redis_client.exists(key_state(chat_id)) and state:
         await redis_client.set(key_state(chat_id), state)
 
@@ -74,7 +74,6 @@ async def init_context_if_empty(
 
 # ── Redis 갱신 헬퍼 ────────────────────────────────────────
 async def append_history(chat_id: str, role: str, content: str) -> int:
-    """최근 대화 추가 후 현재 턴 반환"""
     entry = json.dumps({"role": role, "content": content}, ensure_ascii=False)
     await redis_client.lpush(key_history(chat_id), entry)
     await redis_client.ltrim(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
@@ -82,12 +81,10 @@ async def append_history(chat_id: str, role: str, content: str) -> int:
 
 
 async def update_state(chat_id: str, new_state: str):
-    """현재 상태 갱신"""
     await redis_client.set(key_state(chat_id), new_state)
 
 
 async def sync_to_db(chat_id: str):
-    """5턴마다 Redis → DB 동기화 (사건 요약, 호감도 등)"""
     # TODO: 가연님 DB 연결 후 구현
     logger.info("DB 동기화 실행 - chat_id=%s", chat_id)
 
@@ -135,7 +132,6 @@ class MessageRequest(BaseModel):
     character_id: str = "baekya"
     world_context: str = ""
     mode: str = "author"
-    # 세션 첫 진입 시 초기값 (이후엔 Redis에서 자동 조회)
     initial_state: str = ""
     initial_characters: str = ""
     initial_summary: str = ""
@@ -143,7 +139,6 @@ class MessageRequest(BaseModel):
 
 @router.post("/{chat_id}/messages", status_code=201)
 async def send_message(chat_id: str, body: MessageRequest):
-    """사용자 메시지 수신 및 Redis 저장"""
     await init_context_if_empty(
         chat_id,
         body.initial_state,
@@ -167,10 +162,7 @@ async def stream_response(
     world_context: str = "",
     mode: str = "author",
 ):
-    """Redis 맥락 조회 → 프롬프트 조립 → Gemini → Redis 갱신 → 응답"""
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
-
-    # Redis에서 프롬프트 재료 조회
     context = await get_context(chat_id)
 
     async def generate():
@@ -198,12 +190,10 @@ async def stream_response(
                     yield f"event: token\ndata: {payload}\n\n"
                     seq += 1
 
-            # Redis 갱신
             turn = await append_history(chat_id, "ai", full_response)
 
             # TODO: DB에 원본 로그 저장 (가연님 파트)
 
-            # 5턴마다 DB 동기화
             if turn % DB_SYNC_INTERVAL == 0:
                 await sync_to_db(chat_id)
 
@@ -228,6 +218,5 @@ async def stream_response(
 
 @router.patch("/{chat_id}/state")
 async def update_chat_state(chat_id: str, new_state: str):
-    """현재 상태 수동 갱신 (프론트에서 호출)"""
     await update_state(chat_id, new_state)
     return {"status": "updated"}

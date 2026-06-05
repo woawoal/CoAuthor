@@ -9,6 +9,7 @@ import author4Img from '../../assets/author/author4.png';
 import '../../index.css';
 import './worldview.css';
 import { WriteIcon, ExitIcon } from '../../components/icons';
+import { createWorldview } from '../../lib/worldviewApi';
 
 function Worldview() {
     const location = useLocation();
@@ -76,27 +77,25 @@ function Worldview() {
     };
 
     // 저장 처리
-    const handleSave = () => {
+    const [saving, setSaving] = useState(false);
+
+    const handleSave = async () => {
         if (!title.trim()) {
             alert("세계관 제목을 입력해 주세요!");
             return;
         }
-
-        // DB에 그대로 들어갈 최종 데이터 포맷 구조화
-        const payload = {
-            world: {
-                title,
-                description,
-                genre,
-                setting,
-                rules
-            },
-            // characters 테이블 레코드 배열 (임시 id는 전송 시 제외하거나 UUID 변환용으로 사용)
-            characters: characters.map(({ id, ...charData }) => charData)
-        };
-
-        console.log("DB 전송 최종 Payload:", payload);
-        alert(`[${title}] 세계관 및 ${characters.length}명의 등장인물 설정이 완료되었습니다!`);
+        setSaving(true);
+        try {
+            const worldId = await createWorldview({
+                world: { title, description, genre, setting, rules },
+                characters: characters.map(({ id, ...charData }) => charData),
+            });
+            navigate('/chat', { state: { worldId, authorId } });
+        } catch (err) {
+            alert(`저장 실패: ${err.message}`);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleCancel = () => {
@@ -263,8 +262,8 @@ function Worldview() {
                     </div>
 
                     <div className="action-buttons">
-                        <button type="button" className="btn-save" onClick={handleSave}>
-                            <WriteIcon /> 세계관 생성
+                        <button type="button" className="btn-save" onClick={handleSave} disabled={saving}>
+                            <WriteIcon /> {saving ? '저장 중...' : '세계관 생성'}
                         </button>
                         <button type="button" className="btn-cancel" onClick={handleCancel}>
                             <ExitIcon /> 취소하기
