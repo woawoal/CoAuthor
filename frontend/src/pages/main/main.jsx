@@ -1,12 +1,15 @@
 /* src/pages/main/main.jsx */
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import logoImg from '../../assets/logo.png';
 import author1Img from '../../assets/author/author1.png';
 import author1Video from '../../assets/author/author1.mp4';
 import author2Img from '../../assets/author/author2.png';
+import author2Video from '../../assets/author/author2.mp4';
 import author3Img from '../../assets/author/author3.png';
+import author3Video from '../../assets/author/author3.mp4';
 import author4Img from '../../assets/author/author4.png';
+import author4Video from '../../assets/author/author4.mp4';
 import '../../index.css';
 import './main.css';
 import { ExitIcon } from '../../components/icons';
@@ -14,8 +17,9 @@ import { ExitIcon } from '../../components/icons';
 // 비디오가 마운트될 때 명시적으로 play()를 호출해주는 커스텀 컴포넌트
 function HoverVideo({ src }) {
     const videoRef = useRef(null);
+    const timeoutRef = useRef(null);
 
-    React.useEffect(() => {
+    useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
 
@@ -26,7 +30,28 @@ function HoverVideo({ src }) {
             video.muted = true;
             video.play().catch(e => console.log("음소거 재생도 실패:", e));
         });
+
+        // 컴포넌트가 언마운트(마우스를 치웠을 때)되면 실행 중인 타이머를 취소
+        return () => {
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
     }, []);
+
+    // 영상이 끝났을 때 실행될 핸들러
+    const handleVideoEnded = () => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        // 1000ms(1초) 딜레이 후 다시 재생하도록 예약하고, ID를 timeoutRef에 저장
+        timeoutRef.current = setTimeout(() => {
+            if (video) {
+                video.currentTime = 0;
+                video.play().catch(e => console.log("재시작 실패:", e));
+            }
+        }, 1000);
+    };
 
     return (
         <video
@@ -34,9 +59,9 @@ function HoverVideo({ src }) {
             src={src}
             className="card-avatar-video"
             autoPlay
-            loop
             playsInline
             preload="auto"
+            onEnded={handleVideoEnded}
             onError={(e) => {
                 console.log("video error", e);
             }}
@@ -66,7 +91,7 @@ function Main() {
             genre: "본격 추리",
             quote: '"독자는 항상 작가보다 영리하다고 가정해라"',
             image: author2Img,
-            video: null
+            video: author2Video
         },
         {
             id: 3,
@@ -74,7 +99,7 @@ function Main() {
             genre: "로맨스",
             quote: '"심장이 두근거려야 페이지를 넘긴다"',
             image: author3Img,
-            video: null
+            video: author3Video
         },
         {
             id: 4,
@@ -82,7 +107,7 @@ function Main() {
             genre: "일상 / 에세이",
             quote: '"특별한 하루보다 평범한 순간이 더 문학적이다"',
             image: author4Img,
-            video: null
+            video: author4Video
         }
     ];
 
