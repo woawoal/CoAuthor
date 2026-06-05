@@ -2,6 +2,35 @@
 
 ---
 
+## 2026-06-05
+
+### 오늘 한 일
+- dev 브랜치 최신화 (PostgreSQL 통합, llm_router, personas 업데이트 반영)
+- `worlds.py` / `characters.py` MongoDB → PostgreSQL(SQLAlchemy) 재작성
+  - dev에서 팀원 PostgreSQL 통합 완료 후 최종 dev 버전으로 교체
+- CORS 설정 수정 (`config.py`)
+  - 기본값 `["*"]` 으로 변경 — 팀원 간 다른 localhost 포트 충돌 해결
+- 채팅 API 경로 구조 정리
+  - `backend/app/api/chats.py` → `backend/app/api/v1/endpoints/chats.py` 이동
+  - `main.py` 직접 등록 → `v1/router.py` 통합 등록으로 변경
+  - 엔드포인트 경로: `/api/chats/...` → `/api/v1/chats/...`
+- `chatApi.js` API URL 통일
+  - `/api` (Vite 프록시 상대경로) → `${import.meta.env.VITE_API_BASE_URL}api/v1` (worldviewApi.js와 동일)
+- MongoDB 관련 설정 제거 (dev 머지로 `config.py`에서 MongoDB 항목 삭제됨)
+
+### 이슈 / 막힌 점
+- **CORS 차단**: 팀원 ngrok 서버가 `localhost:5175` 출처를 막음 → `ALLOWED_ORIGINS=["*"]` 로 해결 (push 완료, 팀원 pull 대기 중)
+- **채팅 응답 없음**: Gemini API 키 형식 오류 의심 (`AQ.Ab8...` → `AIzaSy...` 형식이어야 함), 팀원 서버의 Redis 미실행 상태 → Upstash 클라우드 Redis 사용 권장
+- **저장 실패**: PostgreSQL 코드 push 완료했으나 팀원 서버 미반영 상태로 당일 테스트 미완료
+- MongoDB → PostgreSQL 전환 과정에서 `worlds.py`/`characters.py` 중간에 두 차례 재작성
+
+### 내일 할 일
+- 팀원 서버 pull + 재시작 후 worldview 저장 / 채팅 응답 통합 테스트
+- Gemini API 키 유효성 확인 (팀원과 공유)
+- Redis 미실행 문제 → Upstash 적용 여부 결정
+
+---
+
 ## 2026-06-04
 
 ### 오늘 한 일
