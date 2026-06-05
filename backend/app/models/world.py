@@ -14,7 +14,7 @@ class World(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     genre: Mapped[str] = mapped_column(String(50), default="")
     setting: Mapped[str] = mapped_column(Text, default="")   # 시대/공간 배경
-    rules: Mapped[str] = mapped_column(Text, default="")     # 세계관 규칙
+    rules: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
