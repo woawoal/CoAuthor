@@ -4,12 +4,16 @@ import logging
 
 import google.generativeai as genai
 import redis.asyncio as aioredis
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
 from app.core.personas import get_author_prompt
+from app.database import get_mongo_db
+from app.models.dialogue import DialogueDocument, SpeakerType
+from app.services.rag_service import save_with_embedding
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -85,7 +89,6 @@ async def update_state(chat_id: str, new_state: str):
 
 
 async def sync_to_db(chat_id: str):
-    # TODO: 가연님 DB 연결 후 구현
     logger.info("DB 동기화 실행 - chat_id=%s", chat_id)
 
 
@@ -138,7 +141,11 @@ class MessageRequest(BaseModel):
 
 
 @router.post("/{chat_id}/messages", status_code=201)
-async def send_message(chat_id: str, body: MessageRequest):
+async def send_message(
+    chat_id: str,
+    body: MessageRequest,
+    mongo: AsyncIOMotorDatabase = Depends(get_mongo_db),
+):
     await init_context_if_empty(
         chat_id,
         body.initial_state,
@@ -146,12 +153,20 @@ async def send_message(chat_id: str, body: MessageRequest):
         body.initial_summary,
     )
 
-    message_id = f"msg_{uuid.uuid4().hex[:8]}"
     turn = await append_history(chat_id, "user", body.content)
 
-    # TODO: DB에 원본 로그 저장 (가연님 파트)
+    # MongoDB에 원본 로그 저장 (임베딩 포함)
+    turn_count = await mongo["dialogues"].count_documents({"session_id": chat_id})
+    user_doc = DialogueDocument(
+        session_id=chat_id,
+        speaker_type=SpeakerType.USER,
+        content=body.content,
+        turn_order=turn_count,
+    )
+    await save_with_embedding(user_doc, mongo)
+
     logger.info("메시지 수신 - chat_id=%s turn=%d", chat_id, turn)
-    return {"messageId": message_id, "status": "queued", "turn": turn}
+    return {"messageId": user_doc.id, "status": "queued", "turn": turn}
 
 
 @router.get("/{chat_id}/stream")
@@ -161,11 +176,13 @@ async def stream_response(
     character_id: str = "baekya",
     world_context: str = "",
     mode: str = "author",
+    mongo: AsyncIOMotorDatabase = Depends(get_mongo_db),
 ):
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     context = await get_context(chat_id)
 
     async def generate():
+        full_response = ""
         try:
             full_prompt = build_prompt(
                 persona_id=character_id,
@@ -178,7 +195,6 @@ async def stream_response(
             model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(full_prompt, stream=True)
 
-            full_response = ""
             seq = 1
             for chunk in response:
                 if chunk.text:
@@ -192,7 +208,16 @@ async def stream_response(
 
             turn = await append_history(chat_id, "ai", full_response)
 
-            # TODO: DB에 원본 로그 저장 (가연님 파트)
+            # MongoDB에 AI 응답 저장 (임베딩 포함)
+            turn_count = await mongo["dialogues"].count_documents({"session_id": chat_id})
+            ai_doc = DialogueDocument(
+                session_id=chat_id,
+                speaker_type=SpeakerType.CHARACTER,
+                content=full_response,
+                turn_order=turn_count,
+            )
+            await save_with_embedding(ai_doc, mongo)
+            logger.info("AI 응답 저장 완료 - chat_id=%s, turn=%d", chat_id, turn_count)
 
             if turn % DB_SYNC_INTERVAL == 0:
                 await sync_to_db(chat_id)
