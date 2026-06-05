@@ -112,8 +112,66 @@ PostgreSQL에 6개 테이블 생성 (users, worlds, characters, sessions, novels
 
 ### 남은 작업
 
-- [ ] `chats.py` DB 연결 (메시지 MongoDB 저장, 대화 히스토리 프롬프트 주입)
+- [x] `chats.py` DB 연결 (메시지 MongoDB 저장, 대화 히스토리 프롬프트 주입)
 - [ ] Alembic migration 재생성 (모델 수정사항 반영)
+- [ ] Redis 캐싱 구현 (최근 N개 대화, 캐릭터 정보, 호감도)
+- [ ] ContextManager 구현 (10턴 초과 시 요약)
+- [ ] 토큰 한도 관리
+- [ ] NovelConverter (대화 → 소설 변환)
+- [ ] Guardrail (연령대별 콘텐츠 필터)
+- [ ] DB 시드 데이터 (페르소나 4개 기본 캐릭터)
+
+---
+
+## 2026-06-05
+
+### 작업 내용
+
+#### 1. chats.py DB 연결 (팀장님 TODO 파트 구현)
+
+`api/chats.py`의 `send_message`, `stream_response` 두 함수에 MongoDB 연결 추가.
+
+**`send_message` 변경사항**
+- 기존: 랜덤 ID만 반환, 저장 없음
+- 변경: MongoDB turn 수 조회 → `DialogueDocument` 생성 → `save_with_embedding()`으로 임베딩 포함 저장 → 저장된 ID 반환
+
+**`stream_response` 변경사항**
+- 기존: 히스토리 없이 매번 새로 Gemini 호출
+- 변경:
+  1. MongoDB에서 최근 10개 대화 조회
+  2. 대화 히스토리 텍스트 조합
+  3. 시스템 프롬프트 + 히스토리 + 사용자 입력 합쳐서 Gemini 호출
+  4. 스트리밍하면서 응답 텍스트 수집
+  5. 완료 후 AI 응답 MongoDB에 저장 (임베딩 포함)
+
+---
+
+#### 2. 동작 확인 (로컬 테스트)
+
+- `POST /api/chats/test-ygy/messages` → 201 응답, MongoDB `dialogues` 컬렉션에 `speaker_type: 'user'` + 임베딩 저장 확인
+- `GET /api/chats/test-ygy/stream` → 백야 페르소나로 SSE 스트리밍 응답 확인, MongoDB에 `speaker_type: 'character'` + 임베딩 저장 확인
+
+---
+
+### 데이터 흐름 (현재 구조)
+
+```
+사용자 메시지 전송 (POST /api/chats/{chat_id}/messages)
+  → MongoDB에 사용자 발화 저장 (텍스트 + 임베딩 벡터)
+
+AI 응답 요청 (GET /api/chats/{chat_id}/stream)
+  → MongoDB에서 최근 10개 대화 히스토리 조회
+  → 페르소나 시스템 프롬프트 + 히스토리 조합
+  → Gemini 2.5 Flash 호출
+  → SSE 스트리밍으로 프론트에 전달
+  → 완료 후 AI 응답 MongoDB에 저장 (텍스트 + 임베딩 벡터)
+```
+
+---
+
+### 남은 작업
+
+- [ ] Alembic migration 재생성 (Character/User/World 모델 수정사항 반영)
 - [ ] Redis 캐싱 구현 (최근 N개 대화, 캐릭터 정보, 호감도)
 - [ ] ContextManager 구현 (10턴 초과 시 요약)
 - [ ] 토큰 한도 관리
