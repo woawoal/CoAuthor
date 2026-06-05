@@ -9,7 +9,8 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Main />} />
-        {/* <Route path="/write" element={<Write />} /> */}
+
+{/* <Route path="/write" element={<Write />} /> */}
         <Route path="/worldview" element={<Worldview />} />
       </Routes>
     </Router>
