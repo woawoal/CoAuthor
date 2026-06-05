@@ -1,15 +1,11 @@
 /* src/pages/worldview/worldview.jsx */
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import logoImg from '../../assets/logo.png';
-import author1Img from '../../assets/author/author1.png';
-import author2Img from '../../assets/author/author2.png';
-import author3Img from '../../assets/author/author3.png';
-import author4Img from '../../assets/author/author4.png';
 import '../../index.css';
 import './worldview.css';
 import { WriteIcon, ExitIcon } from '../../components/icons';
 import { createWorldview } from '../../lib/worldviewApi';
+import { getAuthors } from '../../lib/authorsApi';
 
 function Worldview() {
     const location = useLocation();
@@ -34,6 +30,43 @@ function Worldview() {
     });
 
     const [characters, setCharacters] = useState([createNewCharacter()]);
+    const [serverAuthors, setServerAuthors] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        const fetchAuthorsData = async () => {
+            try {
+                const data = await getAuthors();
+                setServerAuthors(data);
+            } catch (error) {
+                console.error("Error fetching authors:", error);
+                alert("작가 정보를 불러오지 못했습니다.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchAuthorsData();
+    }, []);
+
+    const selectedAuthor = serverAuthors.find((author) => String(author.id) === String(authorId));
+
+    useEffect(() => {
+        if (selectedAuthor && !genre) {
+            setGenre(selectedAuthor.genre);
+        }
+    }, [selectedAuthor, genre]);
+
+    if (isLoading) {
+        return (
+            <div className="app-container">
+                <div className="app-wrapper flex-center">
+                    <p style={{ color: 'white' }}>작가 목록을 불러오는 중입니다...</p>
+                </div>
+            </div>
+        );
+    }
 
     if (!authorId) {
         return (
@@ -43,21 +76,6 @@ function Worldview() {
             </div>
         );
     }
-
-    const authors = [
-        { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: '"공포는 보여주는 게 아니라 안 보여주는 것이다"', image: author1Img },
-        { id: 2, name: "차로운", genre: "본격 추리", quote: '"독자는 항상 작가보다 영리하다고 가정해라"', image: author2Img },
-        { id: 3, name: "한여름", genre: "로맨스", quote: '"심장이 두근거려야 페이지를 넘긴다"', image: author3Img },
-        { id: 4, name: "김도현", genre: "일상 / 에세이", quote: '"특별한 하루보다 평범한 순간이 더 문학적이다"', image: author4Img }
-    ];
-
-    const selectedAuthor = authors.find((author) => author.id === authorId);
-
-    useEffect(() => {
-        if (selectedAuthor && !genre) {
-            setGenre(selectedAuthor.genre);
-        }
-    }, [selectedAuthor]);
 
     // 등장인물 핸들러
     const handleAddCharacter = () => {
@@ -75,9 +93,6 @@ function Worldview() {
             char.id === id ? { ...char, [field]: value } : char
         ));
     };
-
-    // 저장 처리
-    const [saving, setSaving] = useState(false);
 
     const handleSave = async () => {
         if (!title.trim()) {
@@ -108,7 +123,7 @@ function Worldview() {
         <div className="app-container">
             <div className="app-wrapper">
                 <header className="header">
-                    <img src={logoImg} alt="NodeVelture Logo" className="header-image" />
+                    <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />
                     <h1 className="logo" onClick={() => navigate('/')} style={{ cursor: 'pointer' }}>
                         NodeVelture
                     </h1>

@@ -1,18 +1,10 @@
 /* src/pages/main/main.jsx */
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import logoImg from '../../assets/logo.png';
-import author1Img from '../../assets/author/author1.png';
-import author1Video from '../../assets/author/author1.mp4';
-import author2Img from '../../assets/author/author2.png';
-import author2Video from '../../assets/author/author2.mp4';
-import author3Img from '../../assets/author/author3.png';
-import author3Video from '../../assets/author/author3.mp4';
-import author4Img from '../../assets/author/author4.png';
-import author4Video from '../../assets/author/author4.mp4';
 import '../../index.css';
 import './main.css';
 import { ExitIcon } from '../../components/icons';
+import { getAuthors } from '../../lib/authorsApi';
 
 // 비디오가 마운트될 때 명시적으로 play()를 호출해주는 커스텀 컴포넌트
 function HoverVideo({ src }) {
@@ -26,7 +18,7 @@ function HoverVideo({ src }) {
         video.muted = false;
 
         video.play().catch(err => {
-            console.log("소리 켠 상태로 자동 재생 실패 (브라우저 정책):", err);
+            // console.log("소리 켠 상태로 자동 재생 실패 (브라우저 정책):", err);
             video.muted = true;
             video.play().catch(e => console.log("음소거 재생도 실패:", e));
         });
@@ -63,10 +55,10 @@ function HoverVideo({ src }) {
             preload="auto"
             onEnded={handleVideoEnded}
             onError={(e) => {
-                console.log("video error", e);
+                // console.log("video error", e);
             }}
             onCanPlay={() => {
-                console.log("can play");
+                // console.log("can play");
             }}
         />
     );
@@ -76,56 +68,47 @@ function Main() {
     const navigate = useNavigate();
     const [hoveredAuthorId, setHoveredAuthorId] = useState(null);
 
-    const authors = [
-        {
-            id: 1,
-            name: "백야 (白夜)",
-            genre: "호러 / 미스터리",
-            quote: '"공포는 보여주는 게 아니라 안 보여주는 것이다"',
-            image: author1Img,
-            video: author1Video
-        },
-        {
-            id: 2,
-            name: "차로운",
-            genre: "본격 추리",
-            quote: '"독자는 항상 작가보다 영리하다고 가정해라"',
-            image: author2Img,
-            video: author2Video
-        },
-        {
-            id: 3,
-            name: "한여름",
-            genre: "로맨스",
-            quote: '"심장이 두근거려야 페이지를 넘긴다"',
-            image: author3Img,
-            video: author3Video
-        },
-        {
-            id: 4,
-            name: "김도현",
-            genre: "일상 / 에세이",
-            quote: '"특별한 하루보다 평범한 순간이 더 문학적이다"',
-            image: author4Img,
-            video: author4Video
-        }
-    ];
+    const [authors, setAuthors] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchAuthorsData = async () => {
+            try {
+                const data = await getAuthors();
+                setAuthors(data.authors || data);
+                console.log("작가 목록 로딩 성공:", data);
+            } catch (error) {
+                console.error("작가 목록 로딩 실패:", error);
+                alert("작가 목록을 불러오지 못했습니다.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchAuthorsData();
+    }, []);
 
     // 작가 카드 클릭 시 실행될 핸들러 함수
     const handleAuthorSelect = (authorId) => {
         navigate('/worldview', { state: { authorId } });
     };
 
+    if (isLoading) {
+        return (
+            <div className="app-container">
+                <div className="app-wrapper flex-center">
+                    <p style={{ color: 'white' }}>작가 목록을 불러오는 중입니다...</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="app-container">
             <div className="app-wrapper">
                 {/* 상단 헤더 */}
                 <header className="header">
-                    <img
-                        src={logoImg}
-                        alt="NodeVelture Logo"
-                        className="header-image"
-                    />
+                    <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />
                     <h1 className="logo">NodeVelture</h1>
                 </header>
 

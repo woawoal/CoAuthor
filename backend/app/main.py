@@ -6,6 +6,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.core.config import settings
 from app.api.v1.router import router as v1_router
 from app.api.chats import router as chats_router
+from app.api.authors import router as authors_router
 import app.database as db
 
 logging.basicConfig(
@@ -37,6 +38,7 @@ app.add_middleware(
 
 app.include_router(v1_router)
 app.include_router(chats_router, prefix="/api/chats", tags=["chats"])
+app.include_router(authors_router, prefix="/api/v1/authors", tags=["authors"])
 
 
 @app.get("/health", tags=["health"])
