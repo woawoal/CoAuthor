@@ -29,3 +29,4 @@ class Session(Base):
     protagonist: Mapped["Character"] = relationship(foreign_keys=[protagonist_id])
     novel: Mapped["Novel | None"] = relationship(back_populates="session", uselist=False)
     api_logs: Mapped[list["ApiLog"]] = relationship(back_populates="session")
+    dialogues: Mapped[list["Dialogue"]] = relationship(back_populates="session", cascade="all, delete-orphan")
