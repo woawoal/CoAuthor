@@ -4,13 +4,11 @@ import logging
 from typing import AsyncGenerator
 
 import google.generativeai as genai
-from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.config import settings
 from app.core.personas import PERSONA_PROMPTS, get_author_prompt
 from app.models.character import Character
 from app.services.cache import CacheService
-from app.services.rag_service import search_similar
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +81,7 @@ async def _stream_gemini(
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
-            return  # 성공하면 종료
+            return
         except Exception as e:
             logger.warning("[stream_gemini:%s] 실패: %s", model_id, e)
             if model_id == FALLBACK_MODEL:
@@ -98,26 +96,14 @@ class LLMRouter:
         character: Character,
         dialogue_history: list[dict],
         user_message: str,
-        session_id: str,
-        mongo: AsyncIOMotorDatabase,
     ) -> AsyncGenerator[str, None]:
         """
         dialogues.py 에서 호출.
-        character.prompt 를 시스템 프롬프트로 사용,
-        RAG 컨텍스트 자동 주입 후 Gemini 스트리밍.
+        character.prompt 를 시스템 프롬프트로 사용, Gemini 스트리밍.
         """
-        rag_context = await search_similar(user_message, session_id, mongo)
-
         system_prompt = character.prompt or ""
-        if rag_context:
-            ctx = "\n".join(
-                f"[{c['speaker_type']}] {c['content']}" for c in rag_context
-            )
-            system_prompt += f"\n\n[관련 과거 대화]\n{ctx}"
 
-        logger.info(
-            "[stream_character] 캐릭터=%s RAG=%d개", character.name, len(rag_context)
-        )
+        logger.info("[stream_character] 캐릭터=%s", character.name)
 
         contents = _to_gemini_contents(dialogue_history[-10:], user_message)
 
@@ -202,7 +188,7 @@ class LLMRouter:
         await cache_svc.set("coach", cache_key, result)
         return result
 
-    # 장르 비교 모드 
+    # 장르 비교 모드
 
     async def generate_all_personas(self, text: str) -> dict[str, str]:
 

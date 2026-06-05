@@ -10,10 +10,12 @@ class DialogueStreamRequest(BaseModel):
 
 
 class DialogueResponse(BaseModel):
-    id: str
-    session_id: str
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    session_id: uuid.UUID
     speaker_type: SpeakerType
-    character_id: str | None
+    character_id: uuid.UUID | None
     content: str
     turn_order: int
     created_at: datetime
