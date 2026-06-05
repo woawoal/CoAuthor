@@ -81,6 +81,8 @@
 /* 카드 개별 스타일 */
 .card {
     width: 100%;
+    max-width: 350px;
+    height: fit-content;
     padding: 16px 12px;
     box-sizing: border-box;
     border: 1px solid rgba(255, 255, 255, 0.05);
@@ -91,13 +93,14 @@
     cursor: pointer;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
     background-color: #121214;
-    transition: transform 0.2s ease;
+    transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, max-width 0.3s ease;
 }
 
 .card:hover {
     transform: translateY(-2px);
     border-color: #6A1B9A;
     background-color: #16121E;
+    max-width: 100%;
 }
 
 .avatar-wrapper {
