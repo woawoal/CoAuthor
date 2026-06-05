@@ -171,7 +171,96 @@ AI 응답 요청 (GET /api/chats/{chat_id}/stream)
 
 ### 남은 작업
 
-- [ ] Alembic migration 재생성 (Character/User/World 모델 수정사항 반영)
+- [x] Alembic migration 재생성 (Character/User/World 모델 수정사항 반영)
+- [ ] Redis 캐싱 구현 (최근 N개 대화, 캐릭터 정보, 호감도)
+- [ ] ContextManager 구현 (10턴 초과 시 요약)
+- [ ] 토큰 한도 관리
+- [ ] NovelConverter (대화 → 소설 변환)
+- [ ] Guardrail (연령대별 콘텐츠 필터)
+- [ ] DB 시드 데이터 (페르소나 4개 기본 캐릭터)
+
+---
+
+## 2026-06-05 (2)
+
+### 작업 내용
+
+#### 1. MongoDB 완전 제거 → PostgreSQL 단일 DB 전환
+
+팀 결정으로 MongoDB를 걷어내고 PostgreSQL 단일 구조로 일원화.
+RAG 벡터 임베딩도 현재 스코프에서 불필요하다는 판단으로 함께 제거.
+
+**제거한 것들**
+- `motor`, `sentence-transformers` 패키지 제거
+- `services/rag_service.py` 삭제 (임베딩 저장/검색 서비스)
+- `database.py`의 MongoDB 클라이언트 코드 제거
+- `main.py`의 motor import 제거
+- `docker-compose.yml`의 mongo_data 볼륨 제거
+- `.env` / `.env.example`의 MONGODB_URL, MONGODB_DB_NAME 제거
+
+**PostgreSQL로 전환한 엔드포인트**
+- `endpoints/worlds.py` — Motor 쿼리 → SQLAlchemy
+- `endpoints/characters.py` — Motor 쿼리 → SQLAlchemy
+- `endpoints/dialogues.py` — Motor 쿼리 → SQLAlchemy
+- `endpoints/novels.py` — MongoDB 대화 조회 → SQLAlchemy
+- `api/chats.py` — MongoDB 의존성 제거, PostgreSQL 저장 연동
+
+**모델/스키마 복원**
+- `models/dialogue.py` — Pydantic DocumentModel → SQLAlchemy ORM 복원 (embedding 필드 없이)
+- `models/session.py` — dialogues relationship 복원
+- `models/__init__.py` — Dialogue import 복원
+- `schemas/dialogue.py` — str → UUID 타입 복원, from_attributes 복원
+
+---
+
+#### 2. git merge 충돌 해결
+
+dev 최신화 없이 push했다가 `git stash` → `git pull origin dev` → `git stash pop` 과정에서 `chats.py` 충돌 발생.
+
+충돌 내용: 팀장님이 Redis 캐시 구조 추가, 가연님이 MongoDB 저장 코드 추가 — 두 버전이 겹침.
+해결: Redis 캐시 구조(팀장님) + PostgreSQL 저장(가연님) 두 가지 모두 살려서 병합.
+
+---
+
+#### 3. Alembic migration 추가
+
+```
+migrations/versions/81fac960a2a7_add_dialogues_table.py
+```
+
+dialogues 테이블 PostgreSQL에 신규 추가. `alembic upgrade head`로 적용 완료.
+
+---
+
+#### 4. PostgreSQL 저장 동작 확인
+
+Swagger UI → `POST /api/v1/worlds/` 테스트 후 psql에서 직접 확인:
+```sql
+SELECT id, title, genre FROM worlds;
+-- 1 row 반환 확인
+```
+
+---
+
+### 데이터 흐름 (현재 구조)
+
+```
+사용자 메시지 전송 (POST /api/chats/{chat_id}/messages)
+  → Redis에 히스토리 저장 (실시간 캐시)
+  → PostgreSQL dialogues 테이블에 영구 저장 (chat_id가 유효한 session UUID인 경우)
+
+AI 응답 요청 (GET /api/chats/{chat_id}/stream)
+  → Redis에서 최근 대화 히스토리 조회
+  → 페르소나 시스템 프롬프트 + 히스토리 조합
+  → Gemini 2.5 Flash 호출
+  → SSE 스트리밍으로 프론트에 전달
+  → 완료 후 AI 응답 PostgreSQL에 저장
+```
+
+---
+
+### 남은 작업
+
 - [ ] Redis 캐싱 구현 (최근 N개 대화, 캐릭터 정보, 호감도)
 - [ ] ContextManager 구현 (10턴 초과 시 요약)
 - [ ] 토큰 한도 관리
