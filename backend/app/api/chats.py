@@ -2,6 +2,7 @@ import json
 import uuid
 import logging
 import google.generativeai as genai
+import redis.asyncio as aioredis
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,21 +14,149 @@ logger = logging.getLogger(__name__)
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
+redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
+RECENT_DIALOGUE_LIMIT = 20  # Redis 최근 대화 유지 수
+DB_SYNC_INTERVAL = 5        # N턴마다 DB 동기화
+
+
+# ── Redis 키 규칙 ──────────────────────────────────────────
+def key_history(chat_id: str) -> str:
+    return f"session:{chat_id}:history"
+
+def key_state(chat_id: str) -> str:
+    return f"session:{chat_id}:state"
+
+def key_characters(chat_id: str) -> str:
+    return f"session:{chat_id}:characters"
+
+def key_summary(chat_id: str) -> str:
+    return f"session:{chat_id}:summary"
+
+def key_turn(chat_id: str) -> str:
+    return f"session:{chat_id}:turn"
+
+
+# ── Redis 조회 헬퍼 ────────────────────────────────────────
+async def get_context(chat_id: str) -> dict:
+    """Redis에서 프롬프트 재료 전체 조회"""
+    history_raw = await redis_client.lrange(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
+    history = [json.loads(item) for item in history_raw]
+
+    state      = await redis_client.get(key_state(chat_id)) or ""
+    characters = await redis_client.get(key_characters(chat_id)) or ""
+    summary    = await redis_client.get(key_summary(chat_id)) or ""
+
+    return {
+        "history":    history,
+        "state":      state,
+        "characters": characters,
+        "summary":    summary,
+    }
+
+
+async def init_context_if_empty(
+    chat_id: str,
+    state: str,
+    characters: str,
+    summary: str,
+):
+    """Redis에 값이 없을 때만 초기값 세팅 (세션 첫 진입 시)"""
+    if not await redis_client.exists(key_state(chat_id)) and state:
+        await redis_client.set(key_state(chat_id), state)
+
+    if not await redis_client.exists(key_characters(chat_id)) and characters:
+        await redis_client.set(key_characters(chat_id), characters)
+
+    if not await redis_client.exists(key_summary(chat_id)) and summary:
+        await redis_client.set(key_summary(chat_id), summary)
+
+
+# ── Redis 갱신 헬퍼 ────────────────────────────────────────
+async def append_history(chat_id: str, role: str, content: str) -> int:
+    """최근 대화 추가 후 현재 턴 반환"""
+    entry = json.dumps({"role": role, "content": content}, ensure_ascii=False)
+    await redis_client.lpush(key_history(chat_id), entry)
+    await redis_client.ltrim(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
+    return int(await redis_client.incr(key_turn(chat_id)))
+
+
+async def update_state(chat_id: str, new_state: str):
+    """현재 상태 갱신"""
+    await redis_client.set(key_state(chat_id), new_state)
+
+
+async def sync_to_db(chat_id: str):
+    """5턴마다 Redis → DB 동기화 (사건 요약, 호감도 등)"""
+    # TODO: 가연님 DB 연결 후 구현
+    logger.info("DB 동기화 실행 - chat_id=%s", chat_id)
+
+
+# ── 프롬프트 조립 ─────────────────────────────────────────
+def build_prompt(
+    persona_id: str,
+    world_context: str,
+    mode: str,
+    context: dict,
+    user_input: str,
+) -> str:
+    system = get_author_prompt(
+        persona_id=persona_id,
+        world_context=world_context,
+        mode=mode,
+    )
+
+    parts = [system]
+
+    if context["characters"]:
+        parts.append(f"[주요 등장인물]\n{context['characters']}")
+
+    if context["summary"]:
+        parts.append(f"[사건 요약]\n{context['summary']}")
+
+    if context["state"]:
+        parts.append(f"[현재 상태]\n{context['state']}")
+
+    if context["history"]:
+        history_text = "\n".join(
+            f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+            for h in reversed(context["history"])
+        )
+        parts.append(f"[최근 대화]\n{history_text}")
+
+    parts.append(f"사용자 입력: {user_input}")
+
+    return "\n\n".join(parts)
+
+
+# ── API ───────────────────────────────────────────────────
 class MessageRequest(BaseModel):
     content: str
-    character_id: str  # 페르소나 ID (baekya, charoun, hanyeoreum, kimdohyeon)
-    world_context: str = ""  # 세계관 정보 (선택)
-    mode: str = "author"     # author(작가모드) / character(등장인물모드)
+    character_id: str = "baekya"
+    world_context: str = ""
+    mode: str = "author"
+    # 세션 첫 진입 시 초기값 (이후엔 Redis에서 자동 조회)
+    initial_state: str = ""
+    initial_characters: str = ""
+    initial_summary: str = ""
 
 
 @router.post("/{chat_id}/messages", status_code=201)
 async def send_message(chat_id: str, body: MessageRequest):
-    """사용자 메시지 저장"""
-    # TODO: DB 연결 후 메시지 저장 구현 (가연님 파트)
+    """사용자 메시지 수신 및 Redis 저장"""
+    await init_context_if_empty(
+        chat_id,
+        body.initial_state,
+        body.initial_characters,
+        body.initial_summary,
+    )
+
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
-    logger.info("메시지 수신 - chat_id=%s, persona=%s", chat_id, body.character_id)
-    return {"messageId": message_id, "status": "queued"}
+    turn = await append_history(chat_id, "user", body.content)
+
+    # TODO: DB에 원본 로그 저장 (가연님 파트)
+    logger.info("메시지 수신 - chat_id=%s turn=%d", chat_id, turn)
+    return {"messageId": message_id, "status": "queued", "turn": turn}
 
 
 @router.get("/{chat_id}/stream")
@@ -38,31 +167,45 @@ async def stream_response(
     world_context: str = "",
     mode: str = "author",
 ):
-    """Gemini API 스트리밍 응답"""
+    """Redis 맥락 조회 → 프롬프트 조립 → Gemini → Redis 갱신 → 응답"""
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
+
+    # Redis에서 프롬프트 재료 조회
+    context = await get_context(chat_id)
 
     async def generate():
         try:
-            # 페르소나 시스템 프롬프트 조합
-            system_prompt = get_author_prompt(
+            full_prompt = build_prompt(
                 persona_id=character_id,
                 world_context=world_context,
                 mode=mode,
+                context=context,
+                user_input=content,
             )
-            full_prompt = f"{system_prompt}\n\n사용자 입력: {content}"
 
             model = genai.GenerativeModel("gemini-2.5-flash")
             response = model.generate_content(full_prompt, stream=True)
 
+            full_response = ""
             seq = 1
             for chunk in response:
                 if chunk.text:
+                    full_response += chunk.text
                     payload = json.dumps(
                         {"messageId": message_id, "seq": seq, "text": chunk.text},
                         ensure_ascii=False,
                     )
                     yield f"event: token\ndata: {payload}\n\n"
                     seq += 1
+
+            # Redis 갱신
+            turn = await append_history(chat_id, "ai", full_response)
+
+            # TODO: DB에 원본 로그 저장 (가연님 파트)
+
+            # 5턴마다 DB 동기화
+            if turn % DB_SYNC_INTERVAL == 0:
+                await sync_to_db(chat_id)
 
         except Exception as e:
             logger.error("Gemini API 오류: %s", e)
@@ -81,3 +224,10 @@ async def stream_response(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.patch("/{chat_id}/state")
+async def update_chat_state(chat_id: str, new_state: str):
+    """현재 상태 수동 갱신 (프론트에서 호출)"""
+    await update_state(chat_id, new_state)
+    return {"status": "updated"}
