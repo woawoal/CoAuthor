@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
 
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    ALLOWED_ORIGINS: List[str] = ["*"]
 
     # 보안
     SECRET_KEY: str = "change-me-in-production"
