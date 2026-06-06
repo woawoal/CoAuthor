@@ -12,3 +12,16 @@ export async function getAuthors() {
 
   return response.json();
 }
+
+export async function getQuestions(authorId) {
+  const response = await fetch(`${API_BASE_URL}/authors/${authorId}/questions`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new Error("질문 목록을 불러오는데 실패했습니다.");
+  }
+
+  return response.json();
+}
