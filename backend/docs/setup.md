@@ -65,7 +65,7 @@ pip install -r requirements.txt
 
 ### 4. 환경변수 설정
 ```powershell
-cp .env.example .env
+copy .env.example .env
 ```
 
 `.env` 파일을 열어 값을 채웁니다:
