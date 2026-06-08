@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { sendMessage, connectChatStream } from '../../lib/chatApi';
+import { getWorld, getCharacters } from '../../lib/worldviewApi';
 import './ui.css';
 
 const AUTHOR_MAP = {
@@ -53,8 +54,20 @@ export default function Chat() {
   const [memoInput, setMemoInput] = useState('');
   const [panelOpen, setPanelOpen] = useState(true);
   const [streaming, setStreaming] = useState(false);
+  const [world, setWorld] = useState(null);
+  const [dbCharacters, setDbCharacters] = useState([]);
   const bottomRef = useRef(null);
   const esRef = useRef(null);
+
+  useEffect(() => {
+    if (!worldId) return;
+    Promise.all([getWorld(worldId), getCharacters(worldId)])
+      .then(([w, chars]) => {
+        setWorld(w);
+        setDbCharacters(chars);
+      })
+      .catch(console.error);
+  }, [worldId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -96,8 +109,8 @@ export default function Chat() {
       {/* 채팅 영역 */}
       <div className="chat-main">
         <div className="chat-header">
-          <span className="chat-header__persona">{persona.displayName}</span>
-          <span className="chat-header__genre">스릴러/미스터리</span>
+          <span className="chat-header__persona">{world?.title ?? persona.displayName}</span>
+          <span className="chat-header__genre">{world?.genre ?? ''}</span>
         </div>
 
         <div className="chat-messages">
@@ -153,7 +166,14 @@ export default function Chat() {
 
             <div className="char-list">
               <p className="char-list__title">등장인물</p>
-              <div className="char-item">● 백일 (작가 AI)</div>
+              {dbCharacters.length > 0
+                ? dbCharacters.map(c => (
+                    <div key={c.id} className="char-item">
+                      ● {c.name} <span className="char-role">({c.role === 'protagonist' ? '주인공' : '조연'})</span>
+                    </div>
+                  ))
+                : <div className="char-item">● 백일 (작가 AI)</div>
+              }
             </div>
           </aside>
         </div>
