@@ -8,9 +8,9 @@ import { getAuthors } from '../../lib/authorsApi';
 
 const FALLBACK_AUTHORS = [
     { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: "공포는 보여주는 게 아니라 안 보여주는 것이다", image: "/assets/author1/author1.png", video: "/assets/author1/author1.mp4" },
-    { id: 2, name: "차로운",      genre: "본격 추리",       quote: "독자는 항상 작가보다 영리하다고 가정해라",       image: "/assets/author2/author2.png", video: "/assets/author2/author2.mp4" },
-    { id: 3, name: "한여름",      genre: "로맨스",          quote: "심장이 두근거려야 페이지를 넘긴다",              image: "/assets/author3/author3.png", video: "/assets/author3/author3.mp4" },
-    { id: 4, name: "김도현",      genre: "일상 / 에세이",   quote: "특별한 하루보다 평범한 순간이 더 문학적이다",    image: "/assets/author4/author4.png", video: "/assets/author4/author4.mp4" },
+    { id: 2, name: "차로운", genre: "본격 추리", quote: "독자는 항상 작가보다 영리하다고 가정해라", image: "/assets/author2/author2.png", video: "/assets/author2/author2.mp4" },
+    { id: 3, name: "한여름", genre: "로맨스", quote: "심장이 두근거려야 페이지를 넘긴다", image: "/assets/author3/author3.png", video: "/assets/author3/author3.mp4" },
+    { id: 4, name: "김도현", genre: "일상 / 에세이", quote: "특별한 하루보다 평범한 순간이 더 문학적이다", image: "/assets/author4/author4.png", video: "/assets/author4/author4.mp4" },
 ];
 
 function HoverVideo({ src }) {
@@ -57,8 +57,8 @@ function HoverVideo({ src }) {
             playsInline
             preload="auto"
             onEnded={handleVideoEnded}
-            onError={() => {}}
-            onCanPlay={() => {}}
+            onError={() => { }}
+            onCanPlay={() => { }}
         />
     );
 }
@@ -86,7 +86,15 @@ function Main() {
         fetchAuthorsData();
     }, []);
 
+    // 작가 카드 마우스 호버 시 실행되는 함수
+    const handleAuthorHover = (authorId) => {
+        const themeKey = `author${authorId}`;
+        localStorage.setItem('selectedTheme', themeKey);
+        document.documentElement.setAttribute('data-author', themeKey);
+    };
+
     const handleAuthorSelect = (authorId) => {
+        handleAuthorHover(authorId);
         navigate('/intro', { state: { authorId } });
     };
 
@@ -117,39 +125,31 @@ function Main() {
 
                 {/* 작가 */}
                 <section className="author-section">
-                    <div className={`grid ${hoveredAuthorId ? 'is-hovering' : ''}`}>
-                        {authors.map((author) => {
-                            const isHovered = hoveredAuthorId === author.id;
-                            const hasVideo = !!author.video;
-
-                            return (
-                                <div
-                                    key={author.id}
-                                    className={`card ${isHovered ? 'is-expanded' : ''}`}
-                                    onClick={() => handleAuthorSelect(author.id)}
-                                    onMouseEnter={() => setHoveredAuthorId(author.id)}
-                                    onMouseLeave={() => setHoveredAuthorId(null)}
-                                >
-                                    <div className="avatar-wrapper">
-                                        {isHovered && hasVideo ? (
-                                            <HoverVideo src={author.video} />
-                                        ) : (
-                                            <img
-                                                src={author.image}
-                                                alt={author.name}
-                                                className="card-avatar-image"
-                                            />
-                                        )}
-                                    </div>
-
-                                    <div className="card-content">
-                                        <h4 className="card-title">{author.name}</h4>
-                                        <span className="card-genre">{author.genre}</span>
-                                        <p className="card-quote">{author.quote}</p>
-                                    </div>
+                    <div className="grid">
+                        {authors.map((author) => (
+                            <div
+                                key={author.id}
+                                className="card"
+                                onClick={() => handleAuthorSelect(author.id)}
+                                onMouseEnter={() => handleAuthorHover(author.id)}
+                            >
+                                {/* 작가 아바타 */}
+                                <div className="avatar-wrapper">
+                                    <img
+                                        src={author.image}
+                                        alt={author.name}
+                                        className="card-avatar-image"
+                                    />
                                 </div>
-                            );
-                        })}
+
+                                {/* 본문 텍스트 정보 */}
+                                <div className="card-content">
+                                    <span className="card-title">{author.name}</span>
+                                    <span className="card-genre">{author.genre}</span>
+                                    <p className="card-quote">{author.quote}</p>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </section>
 
