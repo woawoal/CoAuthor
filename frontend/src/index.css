@@ -1,0 +1,38 @@
+/* src/index.css */
+:root {
+  /* NodeVelture 브랜드 메인 컬러 */
+  --theme-color: #6A1B9A;
+  --theme-color-light: #D1C4E9;
+
+  /* 기본 배경 및 텍스트 색상 변수화 */
+  --bg-card: #121214;
+  --bg-card-active: #16121E;
+  --text-muted: #8E8E93;
+}
+
+/* 전체 브라우저 기본 마진 초기화 및 부드러운 다크 그라데이션 적용 */
+body,
+html,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #121214 0%, #1A1A24 100%);
+  overflow-x: hidden;
+}
+
+.app-container {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.app-wrapper {
+  max-width: 100%;
+  width: 100%;
+  min-height: 100vh;
+  padding: 40px 24px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}

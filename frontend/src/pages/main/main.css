@@ -1,0 +1,254 @@
+/* src/pages/main/main.css */
+/* 상단 헤더 */
+.header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(30, 30, 38, 0.8);
+    gap: 16px;
+    border-radius: 24px;
+    box-sizing: border-box;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-color: #6A1B9A;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+.header-image {
+    width: 64px;
+    height: 64px;
+    border-radius: 20px;
+    object-fit: cover;
+}
+
+.logo {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-align: center;
+    color: #ffffff;
+}
+
+/* 타이틀 영역 */
+.title-area {
+    width: 100%;
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.main-heading {
+    font-size: 24px;
+    color: #ffffff;
+    font-weight: 700;
+    margin: 10px 0 6px 0;
+}
+
+.main-heading .highlight {
+    color: #D1C4E9;
+}
+
+.desc-text {
+    font-size: 13px;
+    color: #8E8E93;
+    margin: 0;
+}
+
+/* 작가 카드 섹션 & 그리드 */
+.top-section {
+    width: 100%;
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    overflow-x: hidden;
+    overflow-y: auto;
+    margin-bottom: 40px;
+    padding: 10px 0;
+}
+
+.author-section {
+    margin-bottom: 10px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+    justify-items: center;
+}
+
+/* 카드 개별 스타일 */
+.card {
+    width: 100%;
+    max-width: 400px;
+    height: fit-content;
+    padding: 16px 12px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    background-color: #121214;
+    transition: transform 0.2s ease, border-color 0.2s ease, background-color 0.2s ease, max-width 0.3s ease;
+}
+
+.grid.is-hovering .card {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.grid.is-hovering .card.is-expanded {
+    opacity: 1;
+    pointer-events: auto;
+
+    position: fixed;
+    z-index: 9999;
+
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+
+    width: min(90vw, calc(95vh * 1280 / 720));
+    aspect-ratio: 1280 / 720;
+    height: auto;
+
+    max-width: none;
+    padding: 0;
+    border: none;
+    background-color: transparent;
+}
+
+.card.is-expanded .avatar-wrapper {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1280 / 720;
+    margin-bottom: 0;
+    border-radius: 20px;
+}
+
+.card.is-expanded .card-content {
+    display: none;
+}
+
+.card.is-expanded .card-avatar-image,
+.card.is-expanded .card-avatar-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar-wrapper {
+    width: 100%;
+    border-radius: 12px;
+    overflow: hidden;
+    background-color: #2C2C2E;
+    margin-bottom: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    aspect-ratio: 3 / 4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.35s ease;
+}
+
+@media (orientation: portrait) {
+    .avatar-wrapper {
+        aspect-ratio: 1 / 1;
+    }
+}
+
+.card-avatar-image,
+.card-avatar-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+}
+
+.card-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    color: #ffffff;
+}
+
+.card-genre {
+    font-size: 11px;
+    color: #8E8E93;
+    margin-bottom: 6px;
+}
+
+.card-quote {
+    margin: 0;
+    font-size: 11px;
+    color: #AEA9B6;
+    line-height: 1.4;
+    font-style: italic;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* 하단 네비게이션 */
+.bottom-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: auto;
+    margin-bottom: 10px;
+}
+
+/* 하단 스타일 */
+.speech-text {
+    padding: 18px;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    background-color: transparent;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: auto;
+    letter-spacing: 0.5px;
+    transition: background-color 0.2s ease;
+}
+
+.chatlist-btn {
+    width: 100%;
+    padding: 14px;
+    background: none;
+    border: 1px solid rgba(106, 27, 154, 0.5);
+    border-radius: 16px;
+    color: #D1C4E9;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.chatlist-btn:hover {
+    background-color: rgba(106, 27, 154, 0.2);
+    border-color: #6A1B9A;
+}
