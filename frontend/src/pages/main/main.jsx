@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../../index.css';
 import './main.css';
-import { ExitIcon, PlayIcon, CloseIcon } from '../../components/icons';
+import { ExitIcon } from '../../components/icons';
 import { getAuthors } from '../../lib/authorsApi';
 
 function Main() {
