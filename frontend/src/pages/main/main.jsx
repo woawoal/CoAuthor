@@ -28,8 +28,16 @@ function Main() {
         fetchAuthorsData();
     }, []);
 
+    // 작가 카드 마우스 호버 시 실행되는 함수
+    const handleAuthorHover = (authorId) => {
+        const themeKey = `author${authorId}`;
+        localStorage.setItem('selectedTheme', themeKey);
+        document.documentElement.setAttribute('data-author', themeKey);
+    };
+
     // 작가 카드 클릭 시 실행될 핸들러 함수
     const handleAuthorSelect = (authorId) => {
+        handleAuthorHover(authorId);
         navigate('/intro', { state: { authorId } });
     };
 
@@ -66,6 +74,7 @@ function Main() {
                                 key={author.id}
                                 className="card"
                                 onClick={() => handleAuthorSelect(author.id)}
+                                onMouseEnter={() => handleAuthorHover(author.id)}
                             >
                                 {/* 작가 아바타 */}
                                 <div className="avatar-wrapper">
