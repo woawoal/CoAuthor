@@ -1,17 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git restore *)",
-      "WebSearch",
-      "Bash(grep -nA6 \"add_middleware\" backend/app/main.py)",
-      "Bash(docker info *)",
-      "Bash(docker ps *)",
-      "Bash(docker-compose up *)",
-      "Bash(git check-ignore *)",
-      "Bash(cd /d/jyj/P2/NodeVelture/backend *)",
-      "Read(//d/jyj/P2/docs/**)",
-      "Bash(git worktree *)",
-      "Bash(rm -rf .git/worktrees/nv-mergetest)"
+      "Bash(git restore *)"
     ]
   }
 }
