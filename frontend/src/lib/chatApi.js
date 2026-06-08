@@ -1,4 +1,4 @@
-const API_BASE_URL = `/api/v1`;
+import { API_BASE_URL } from './apiBase';
 
 export async function sendMessage(chatId, payload) {
   return fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {

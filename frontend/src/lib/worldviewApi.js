@@ -1,4 +1,4 @@
-const API_BASE_URL = `/api/v1`;
+import { API_BASE_URL } from './apiBase';
 
 // 테스트용 더미 user_id (인증 구현 전까지 고정)
 // PostgreSQL users 테이블에 이 UUID 행이 존재해야 World FK 통과

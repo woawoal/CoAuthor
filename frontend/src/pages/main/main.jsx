@@ -6,6 +6,13 @@ import './main.css';
 import { ExitIcon } from '../../components/icons';
 import { getAuthors } from '../../lib/authorsApi';
 
+const FALLBACK_AUTHORS = [
+    { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: "공포는 보여주는 게 아니라 안 보여주는 것이다", image: "/assets/author1/author1.png", video: "/assets/author1/author1.mp4" },
+    { id: 2, name: "차로운",      genre: "본격 추리",       quote: "독자는 항상 작가보다 영리하다고 가정해라",       image: "/assets/author2/author2.png", video: "/assets/author2/author2.mp4" },
+    { id: 3, name: "한여름",      genre: "로맨스",          quote: "심장이 두근거려야 페이지를 넘긴다",              image: "/assets/author3/author3.png", video: "/assets/author3/author3.mp4" },
+    { id: 4, name: "김도현",      genre: "일상 / 에세이",   quote: "특별한 하루보다 평범한 순간이 더 문학적이다",    image: "/assets/author4/author4.png", video: "/assets/author4/author4.mp4" },
+];
+
 // 비디오가 마운트될 때 명시적으로 play()를 호출해주는 커스텀 컴포넌트
 function HoverVideo({ src }) {
     const videoRef = useRef(null);
@@ -78,8 +85,8 @@ function Main() {
                 setAuthors(data.authors || data);
                 console.log("작가 목록 로딩 성공:", data);
             } catch (error) {
-                console.error("작가 목록 로딩 실패:", error);
-                alert("작가 목록을 불러오지 못했습니다.");
+                console.warn("작가 목록 API 실패, 기본 데이터 사용:", error);
+                setAuthors(FALLBACK_AUTHORS);
             } finally {
                 setIsLoading(false);
             }
