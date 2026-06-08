@@ -275,7 +275,8 @@ class LLMRouter:
         if not dialogue_history:
             return ""
 
-        system_prompt = build_novel_system(world_description)
+        # persona 미상(세션에 작가 정보 없음) → 작가 중립 폴백. world_description은 world_context 자리로.
+        system_prompt = build_novel_system("", world_description)
 
         block = "\n".join(
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"

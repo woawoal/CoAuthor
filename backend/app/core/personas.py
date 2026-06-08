@@ -337,15 +337,24 @@ def get_author_prompt(
 # 1-3. build_novel_system() — 소설 초안 작성
 # ────────────────────────────────────────────────────────────────
 
-def build_novel_system(persona_id: str, world_context: str = "") -> str:
+def build_novel_system(persona_id: str = "", world_context: str = "") -> str:
     """
     소설 초안 작성 프롬프트.
     작가 성격이 문체에 강하게 반영됨.
     대사("") / 속마음('') / 서술 구분 + 세계관 추가 제안 포함.
+    persona_id가 비었거나 미등록이면 작가 중립 프롬프트로 폴백한다.
+    (세션에 작가 persona가 저장되지 않는 현재 구조 대응 — P1)
     """
     author = _AUTHOR_PERSONALITY.get(persona_id)
     if not author:
-        raise ValueError(f"알 수 없는 페르소나: {persona_id}")
+        return (
+            "당신은 대화 로그를 소설 초안으로 변환하는 편집자입니다.\n\n"
+            f"[세계관]\n{world_context or '별도 세계관 설정 없음'}\n\n"
+            '큰따옴표("")는 대사로, 작은따옴표(\'\')는 속마음으로 유지하고, '
+            "그 외 서술은 따옴표 없이 소설 문체로 옮깁니다. "
+            "대화의 흐름과 내용을 유지하면서 지문·묘사·감정선을 자연스럽게 더해 "
+            "한 장면으로 완성하세요."
+        )
 
     return f"""\
 당신은 {author['name']}({author['genre']}) 작가입니다.
