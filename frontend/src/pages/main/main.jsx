@@ -18,9 +18,9 @@ function HoverVideo({ src }) {
         video.muted = false;
 
         video.play().catch(err => {
-            // console.log("소리 켠 상태로 자동 재생 실패 (브라우저 정책):", err);
+            if (err.name === 'AbortError') return;
             video.muted = true;
-            video.play().catch(e => console.log("음소거 재생도 실패:", e));
+            video.play().catch(e => { if (e.name !== 'AbortError') console.log("음소거 재생도 실패:", e); });
         });
 
         // 컴포넌트가 언마운트(마우스를 치웠을 때)되면 실행 중인 타이머를 취소
@@ -161,8 +161,13 @@ function Main() {
                 </section>
 
                 {/* 하단 네비게이션 버튼 영역 */}
-                <div className="speech-text">
-                    <span>작가를 선택하세요</span>
+                <div className="bottom-nav">
+                    <div className="speech-text">
+                        <span>작가를 선택하세요</span>
+                    </div>
+                    <button className="chatlist-btn" onClick={() => navigate('/chatlist')}>
+                        내 소설 목록 →
+                    </button>
                 </div>
             </div>
         </div>

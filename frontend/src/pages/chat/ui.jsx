@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
-import { sendMessage, connectChatStream } from '../../lib/chatApi';
-import { getWorld, getCharacters } from '../../lib/worldviewApi';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { sendMessage, connectChatStream, completeSession, generateNovel } from '../../lib/chatApi';
+import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import './ui.css';
 
 const AUTHOR_MAP = {
@@ -44,8 +44,9 @@ function Bubble({ msg }) {
 
 export default function Chat() {
   const location = useLocation();
-  const { worldId, authorId } = location.state ?? {};
-  const chatId = worldId ?? 'room_001';
+  const navigate = useNavigate();
+  const { worldId, chatId: chatIdFromState, authorId } = location.state ?? {};
+  const chatId = chatIdFromState ?? worldId ?? 'room_001';
   const persona = AUTHOR_MAP[authorId] ?? { characterId: 'baekya', displayName: '백야' };
 
   const [messages, setMessages] = useState([]);
@@ -56,18 +57,23 @@ export default function Chat() {
   const [streaming, setStreaming] = useState(false);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
+  const [ending, setEnding] = useState(false);
+  const [worldOpen, setWorldOpen] = useState(true);
   const bottomRef = useRef(null);
   const esRef = useRef(null);
 
   useEffect(() => {
-    if (!worldId) return;
-    Promise.all([getWorld(worldId), getCharacters(worldId)])
+    if (!chatId || chatId === 'room_001') return;
+    getSession(chatId)
+      .then(session =>
+        Promise.all([getWorld(session.world_id), getCharacters(session.world_id)])
+      )
       .then(([w, chars]) => {
         setWorld(w);
         setDbCharacters(chars);
       })
       .catch(console.error);
-  }, [worldId]);
+  }, [chatId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -98,6 +104,21 @@ export default function Chat() {
     );
   }
 
+  async function handleEnd() {
+    if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
+    if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
+    setEnding(true);
+    try {
+      await completeSession(chatId);
+      await generateNovel(chatId);
+      navigate('/chatlist');
+    } catch (err) {
+      alert(`저장 실패: ${err.message}`);
+    } finally {
+      setEnding(false);
+    }
+  }
+
   function handleAddMemo() {
     if (!memoInput.trim()) return;
     setMemos(prev => [...prev, { id: Date.now(), type: 'manual', text: memoInput }]);
@@ -109,8 +130,13 @@ export default function Chat() {
       {/* 채팅 영역 */}
       <div className="chat-main">
         <div className="chat-header">
-          <span className="chat-header__persona">{world?.title ?? persona.displayName}</span>
-          <span className="chat-header__genre">{world?.genre ?? ''}</span>
+          <div className="chat-header__info">
+            <span className="chat-header__persona">{world?.title ?? persona.displayName}</span>
+            <span className="chat-header__genre">{world?.genre ?? ''}</span>
+          </div>
+          <button className="chat-end-btn" onClick={handleEnd} disabled={ending}>
+            {ending ? '저장 중...' : '채팅 종료'}
+          </button>
         </div>
 
         <div className="chat-messages">
@@ -164,6 +190,36 @@ export default function Chat() {
               <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
             </div>
 
+            {world && (
+              <div className="world-summary">
+                <button
+                  className="world-summary__toggle"
+                  onClick={() => setWorldOpen(prev => !prev)}
+                >
+                  세계관 요약 {worldOpen ? '▲' : '▼'}
+                </button>
+                {worldOpen && (
+                  <div className="world-summary__body">
+                    {world.description && (
+                      <p className="world-summary__desc">{world.description}</p>
+                    )}
+                    {world.setting && (
+                      <div className="world-summary__field">
+                        <span className="world-summary__label">배경</span>
+                        <p className="world-summary__text">{world.setting}</p>
+                      </div>
+                    )}
+                    {world.rules && (
+                      <div className="world-summary__field">
+                        <span className="world-summary__label">규칙</span>
+                        <p className="world-summary__text">{world.rules}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="char-list">
               <p className="char-list__title">등장인물</p>
               {dbCharacters.length > 0
@@ -172,7 +228,7 @@ export default function Chat() {
                       ● {c.name} <span className="char-role">({c.role === 'protagonist' ? '주인공' : '조연'})</span>
                     </div>
                   ))
-                : <div className="char-item">● 백일 (작가 AI)</div>
+                : <div className="char-item">● {persona.displayName} (작가 AI)</div>
               }
             </div>
           </aside>
