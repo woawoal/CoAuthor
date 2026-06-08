@@ -18,6 +18,12 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 PRIMARY_MODEL  = "gemini-2.5-flash"
 FALLBACK_MODEL = "gemini-1.5-flash"
 
+# Gemini 2025 기준 1M 토큰당 가격 (USD)
+_PRICE_PER_M = {
+    "gemini-2.5-flash": {"input": 0.15,  "output": 0.60},
+    "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+}
+
 _COACHING_SUFFIX = (
     "\n\n당신은 지금 코칭 모드입니다. "
     "사용자가 작성한 글을 읽고 당신의 장르 철학에 맞는 구체적인 피드백을 주세요. "
@@ -32,6 +38,16 @@ _NOVEL_SYSTEM = (
 )
 
 cache_svc = CacheService()
+
+
+# ── 토큰 비용 계산 ──────────────────────────────────────────────
+
+def calc_cost(model_id: str, prompt_tokens: int, completion_tokens: int) -> float:
+    price = _PRICE_PER_M.get(model_id, {"input": 0.15, "output": 0.60})
+    return round(
+        (prompt_tokens * price["input"] + completion_tokens * price["output"]) / 1_000_000,
+        8,
+    )
 
 
 # ── 내부 유틸 ──────────────────────────────────────────────────
@@ -70,8 +86,9 @@ async def _generate(system_prompt: str, contents: list[dict]) -> str:
 async def _stream_gemini(
     system_prompt: str,
     contents: list[dict],
+    usage_out: list | None = None,
 ) -> AsyncGenerator[str, None]:
-    """스트리밍 Gemini 호출. PRIMARY → FALLBACK 자동 전환. 텍스트 청크만 yield."""
+    """스트리밍 Gemini 호출. 완료 후 usage_out에 토큰 정보 기록."""
     for model_id in (PRIMARY_MODEL, FALLBACK_MODEL):
         try:
             model = _make_model(system_prompt, model_id)
@@ -81,11 +98,24 @@ async def _stream_gemini(
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
+
+            # 스트림 완료 후 토큰 사용량 수집
+            if usage_out is not None:
+                try:
+                    meta = response.usage_metadata
+                    usage_out.append({
+                        "model": model_id,
+                        "prompt_tokens": getattr(meta, "prompt_token_count", 0) or 0,
+                        "completion_tokens": getattr(meta, "candidates_token_count", 0) or 0,
+                    })
+                except Exception:
+                    usage_out.append({"model": model_id, "prompt_tokens": 0, "completion_tokens": 0})
             return
         except Exception as e:
             logger.warning("[stream_gemini:%s] 실패: %s", model_id, e)
             if model_id == FALLBACK_MODEL:
                 raise
+
 
 class LLMRouter:
 
@@ -99,16 +129,16 @@ class LLMRouter:
     ) -> AsyncGenerator[str, None]:
         """
         dialogues.py 에서 호출.
-        character.prompt 를 시스템 프롬프트로 사용, Gemini 스트리밍.
+        스트리밍 완료 후 event: log SSE로 토큰 사용량 전달.
         """
         system_prompt = character.prompt or ""
+        contents = _to_gemini_contents(dialogue_history[-10:], user_message)
+        usage_out: list = []
 
         logger.info("[stream_character] 캐릭터=%s", character.name)
 
-        contents = _to_gemini_contents(dialogue_history[-10:], user_message)
-
         try:
-            async for text_chunk in _stream_gemini(system_prompt, contents):
+            async for text_chunk in _stream_gemini(system_prompt, contents, usage_out=usage_out):
                 payload = json.dumps(
                     {"character": character.name, "text": text_chunk, "done": False},
                     ensure_ascii=False,
@@ -120,6 +150,17 @@ class LLMRouter:
             return
 
         yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
+
+        # 엔드포인트가 수신 후 ApiLog 저장용 (클라이언트에 전달 안 됨)
+        if usage_out:
+            u = usage_out[0]
+            log_payload = json.dumps({
+                "model": u["model"],
+                "prompt_tokens": u["prompt_tokens"],
+                "completion_tokens": u["completion_tokens"],
+                "cost": calc_cost(u["model"], u["prompt_tokens"], u["completion_tokens"]),
+            }, ensure_ascii=False)
+            yield f"event: log\ndata: {log_payload}\n\n"
 
     # 작가/등장인물 모드 스트리밍 (chats.py 연동)
 
@@ -152,9 +193,10 @@ class LLMRouter:
         )
         contents = _to_gemini_contents(history, text)
         full_chunks: list[str] = []
+        usage_out: list = []
 
         try:
-            async for text_chunk in _stream_gemini(system_prompt, contents):
+            async for text_chunk in _stream_gemini(system_prompt, contents, usage_out=usage_out):
                 full_chunks.append(text_chunk)
                 payload = json.dumps(
                     {"text": text_chunk, "done": False}, ensure_ascii=False
@@ -169,6 +211,16 @@ class LLMRouter:
 
         if full_chunks:
             await cache_svc.set("stream", cache_key, "".join(full_chunks))
+
+        if usage_out:
+            u = usage_out[0]
+            log_payload = json.dumps({
+                "model": u["model"],
+                "prompt_tokens": u["prompt_tokens"],
+                "completion_tokens": u["completion_tokens"],
+                "cost": calc_cost(u["model"], u["prompt_tokens"], u["completion_tokens"]),
+            }, ensure_ascii=False)
+            yield f"event: log\ndata: {log_payload}\n\n"
 
     # 코칭 모드
 
