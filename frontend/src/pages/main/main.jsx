@@ -144,19 +144,13 @@ function Main() {
 
                                 {/* 본문 텍스트 정보 */}
                                 <div className="card-content">
-                                    <div className="card-title">
-                                        {author.name}
-                                    </div>
-
-                                    <div className="card-content">
-                                        <h4 className="card-title">{author.name}</h4>
-                                        <span className="card-genre">{author.genre}</span>
-                                        <p className="card-quote">{author.quote}</p>
-                                    </div>
+                                    <span className="card-title">{author.name}</span>
+                                    <span className="card-genre">{author.genre}</span>
+                                    <p className="card-quote">{author.quote}</p>
                                 </div>
-                                );
-                        })}
                             </div>
+                        ))}
+                    </div>
                 </section>
 
                 {/* 하단 네비게이션 버튼 영역 */}
