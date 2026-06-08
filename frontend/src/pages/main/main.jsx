@@ -6,8 +6,66 @@ import './main.css';
 import { ExitIcon } from '../../components/icons';
 import { getAuthors } from '../../lib/authorsApi';
 
+const FALLBACK_AUTHORS = [
+    { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: "공포는 보여주는 게 아니라 안 보여주는 것이다", image: "/assets/author1/author1.png", video: "/assets/author1/author1.mp4" },
+    { id: 2, name: "차로운",      genre: "본격 추리",       quote: "독자는 항상 작가보다 영리하다고 가정해라",       image: "/assets/author2/author2.png", video: "/assets/author2/author2.mp4" },
+    { id: 3, name: "한여름",      genre: "로맨스",          quote: "심장이 두근거려야 페이지를 넘긴다",              image: "/assets/author3/author3.png", video: "/assets/author3/author3.mp4" },
+    { id: 4, name: "김도현",      genre: "일상 / 에세이",   quote: "특별한 하루보다 평범한 순간이 더 문학적이다",    image: "/assets/author4/author4.png", video: "/assets/author4/author4.mp4" },
+];
+
+function HoverVideo({ src }) {
+    const videoRef = useRef(null);
+    const timeoutRef = useRef(null);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        video.muted = false;
+
+        video.play().catch(err => {
+            if (err.name === 'AbortError') return;
+            video.muted = true;
+            video.play().catch(e => { if (e.name !== 'AbortError') console.log("음소거 재생도 실패:", e); });
+        });
+
+        return () => {
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+            }
+        };
+    }, []);
+
+    const handleVideoEnded = () => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        timeoutRef.current = setTimeout(() => {
+            if (video) {
+                video.currentTime = 0;
+                video.play().catch(e => console.log("재시작 실패:", e));
+            }
+        }, 1000);
+    };
+
+    return (
+        <video
+            ref={videoRef}
+            src={src}
+            className="card-avatar-video"
+            autoPlay
+            playsInline
+            preload="auto"
+            onEnded={handleVideoEnded}
+            onError={() => {}}
+            onCanPlay={() => {}}
+        />
+    );
+}
+
 function Main() {
     const navigate = useNavigate();
+    const [hoveredAuthorId, setHoveredAuthorId] = useState(null);
     const [authors, setAuthors] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -18,8 +76,8 @@ function Main() {
                 setAuthors(data.authors || data);
                 console.log("작가 목록 로딩 성공:", data);
             } catch (error) {
-                console.error("작가 목록 로딩 실패:", error);
-                alert("작가 목록을 불러오지 못했습니다.");
+                console.warn("작가 목록 API 실패, 기본 데이터 사용:", error);
+                setAuthors(FALLBACK_AUTHORS);
             } finally {
                 setIsLoading(false);
             }
@@ -28,7 +86,6 @@ function Main() {
         fetchAuthorsData();
     }, []);
 
-    // 작가 카드 클릭 시 실행될 핸들러 함수
     const handleAuthorSelect = (authorId) => {
         navigate('/intro', { state: { authorId } });
     };
@@ -60,32 +117,39 @@ function Main() {
 
                 {/* 작가 */}
                 <section className="author-section">
-                    <div className="grid">
-                        {authors.map((author) => (
-                            <div
-                                key={author.id}
-                                className="card"
-                                onClick={() => handleAuthorSelect(author.id)}
-                            >
-                                {/* 작가 아바타 */}
-                                <div className="avatar-wrapper">
-                                    <img
-                                        src={author.image}
-                                        alt={author.name}
-                                        className="card-avatar-image"
-                                    />
-                                </div>
+                    <div className={`grid ${hoveredAuthorId ? 'is-hovering' : ''}`}>
+                        {authors.map((author) => {
+                            const isHovered = hoveredAuthorId === author.id;
+                            const hasVideo = !!author.video;
 
-                                {/* 본문 텍스트 정보 */}
-                                <div className="card-content">
-                                    <div className="card-title">
-                                        {author.name}
+                            return (
+                                <div
+                                    key={author.id}
+                                    className={`card ${isHovered ? 'is-expanded' : ''}`}
+                                    onClick={() => handleAuthorSelect(author.id)}
+                                    onMouseEnter={() => setHoveredAuthorId(author.id)}
+                                    onMouseLeave={() => setHoveredAuthorId(null)}
+                                >
+                                    <div className="avatar-wrapper">
+                                        {isHovered && hasVideo ? (
+                                            <HoverVideo src={author.video} />
+                                        ) : (
+                                            <img
+                                                src={author.image}
+                                                alt={author.name}
+                                                className="card-avatar-image"
+                                            />
+                                        )}
                                     </div>
-                                    <span className="card-genre">{author.genre}</span>
-                                    <p className="card-quote">{author.quote}</p>
+
+                                    <div className="card-content">
+                                        <h4 className="card-title">{author.name}</h4>
+                                        <span className="card-genre">{author.genre}</span>
+                                        <p className="card-quote">{author.quote}</p>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </section>
 

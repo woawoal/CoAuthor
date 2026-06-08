@@ -31,6 +31,21 @@
   gap: 10px;
 }
 
+.chat-header__avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid #6A1B9A88;
+  flex-shrink: 0;
+}
+
+.chat-header__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .chat-header__persona {
   font-size: 16px;
   font-weight: 700;
@@ -76,12 +91,28 @@
 /* ── 말풍선 ── */
 .bubble-row {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 8px;
 }
 
 .bubble-row--user {
   flex-direction: row-reverse;
+  align-items: flex-end;
+}
+
+.bubble-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid #6A1B9A88;
+  flex-shrink: 0;
+}
+
+.bubble-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .badge {
@@ -89,11 +120,11 @@
   font-weight: 600;
   color: #D1C4E9;
   white-space: nowrap;
-  padding-bottom: 4px;
 }
 
 .badge--user {
   color: #8E8E93;
+  padding-bottom: 4px;
 }
 
 .bubble {
