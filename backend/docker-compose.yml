@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: nodevelture
       POSTGRES_DB: nodevelture
     ports:
-      - "5432:5432"
+      - "5433:5432"   # 호스트 5433 → 컨테이너 5432 (Windows 네이티브 PostgreSQL의 5432 충돌 회피)
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
