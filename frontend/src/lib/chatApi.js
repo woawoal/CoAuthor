@@ -1,4 +1,4 @@
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}api`;
+const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}api/v1`;
 
 export async function sendMessage(chatId, payload) {
   return fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {

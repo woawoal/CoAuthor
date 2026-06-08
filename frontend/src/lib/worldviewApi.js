@@ -44,3 +44,25 @@ export async function createWorldview({ world, characters }) {
 
   return worldId;
 }
+
+/**
+ * 세계관 단건 조회
+ * @param {string} worldId
+ * @returns {Promise<object>} WorldResponse
+ */
+export async function getWorld(worldId) {
+  const res = await fetch(`${API_BASE_URL}/worlds/${worldId}`);
+  if (!res.ok) throw new Error('세계관 조회 실패');
+  return res.json();
+}
+
+/**
+ * 세계관에 속한 캐릭터 목록 조회
+ * @param {string} worldId
+ * @returns {Promise<object[]>} CharacterResponse[]
+ */
+export async function getCharacters(worldId) {
+  const res = await fetch(`${API_BASE_URL}/worlds/${worldId}/characters/`);
+  if (!res.ok) throw new Error('캐릭터 조회 실패');
+  return res.json();
+}
