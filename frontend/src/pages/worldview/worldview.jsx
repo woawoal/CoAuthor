@@ -453,10 +453,6 @@ function Worldview() {
                 )}
 
                 <div className="worldview-content">
-                    <div className="worldview-step-indicator">
-                        {currentStep} / {questions.length}
-                    </div>
-
                     <div className="worldview-chat-layout">
                         <div className="author-side">
                             <div
@@ -479,6 +475,9 @@ function Worldview() {
                                     alt={selectedAuthor?.name || '작가'}
                                     className="worldview-author-image avatar breathing"
                                 />
+                            </div>
+                            <div className="worldview-step-indicator">
+                                {currentStep} / {questions.length}
                             </div>
                         </div>
 
