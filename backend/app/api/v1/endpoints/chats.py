@@ -12,9 +12,11 @@ from sqlalchemy import select, func
 
 from app.core.config import settings
 from app.core.personas import get_author_prompt
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
+from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
+from app.services.llm_router import calc_cost
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -221,24 +223,48 @@ async def stream_response(
 
             turn = await append_history(chat_id, "ai", full_response)
 
-            # PostgreSQL에 AI 응답 저장 (chat_id가 유효한 session UUID인 경우)
+            # 토큰 사용량 수집 및 ApiLog 저장
+            prompt_tokens = 0
+            completion_tokens = 0
+            try:
+                meta = response.usage_metadata
+                prompt_tokens = getattr(meta, "prompt_token_count", 0) or 0
+                completion_tokens = getattr(meta, "candidates_token_count", 0) or 0
+            except Exception:
+                pass
+
+            # PostgreSQL에 AI 응답 + ApiLog 저장 (chat_id가 유효한 session UUID인 경우)
             try:
                 session_uuid = uuid.UUID(chat_id)
-                session_result = await db.execute(select(Session).where(Session.id == session_uuid))
-                if session_result.scalar_one_or_none():
-                    count_result = await db.execute(
-                        select(func.count()).select_from(Dialogue).where(Dialogue.session_id == session_uuid)
-                    )
-                    turn_count = count_result.scalar()
-                    ai_dialogue = Dialogue(
-                        session_id=session_uuid,
-                        speaker_type=SpeakerType.CHARACTER,
-                        content=full_response,
-                        turn_order=turn_count,
-                    )
-                    db.add(ai_dialogue)
-                    await db.flush()
-                    logger.info("AI 응답 저장 완료 - chat_id=%s, turn=%d", chat_id, turn_count)
+                async with AsyncSessionLocal() as save_session:
+                    session_result = await save_session.execute(select(Session).where(Session.id == session_uuid))
+                    if session_result.scalar_one_or_none():
+                        count_result = await save_session.execute(
+                            select(func.count()).select_from(Dialogue).where(Dialogue.session_id == session_uuid)
+                        )
+                        turn_count = count_result.scalar()
+                        ai_dialogue = Dialogue(
+                            session_id=session_uuid,
+                            speaker_type=SpeakerType.CHARACTER,
+                            content=full_response,
+                            turn_order=turn_count,
+                        )
+                        save_session.add(ai_dialogue)
+
+                        api_log = ApiLog(
+                            session_id=session_uuid,
+                            endpoint=f"GET /chats/{chat_id}/stream",
+                            model_used="gemini-2.5-flash",
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            total_cost=calc_cost("gemini-2.5-flash", prompt_tokens, completion_tokens),
+                        )
+                        save_session.add(api_log)
+                        await save_session.commit()
+                        logger.info(
+                            "AI 응답 저장 완료 - chat_id=%s prompt=%d completion=%d",
+                            chat_id, prompt_tokens, completion_tokens,
+                        )
             except (ValueError, Exception):
                 pass
 
