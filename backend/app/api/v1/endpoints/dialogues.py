@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 from fastapi import APIRouter, HTTPException, Depends
@@ -5,10 +6,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
 from app.models.session import Session, SessionStatus
 from app.models.character import Character
 from app.models.dialogue import Dialogue, SpeakerType
+from app.models.api_log import ApiLog
 from app.schemas.dialogue import DialogueStreamRequest, DialogueResponse
 from app.services.llm_router import LLMRouter
 
@@ -87,32 +89,63 @@ async def stream_dialogue(
 
     async def generate():
         ai_chunks: list[str] = []
+        log_usage: dict | None = None
 
         async for sse_line in llm_router.stream_character_response(
             character=character,
             dialogue_history=history,
             user_message=body.content,
         ):
-            if sse_line.startswith("data:"):
-                import json as _json
+            # event: log 는 클라이언트에 전달하지 않고 나중에 ApiLog 저장에 사용
+            if sse_line.startswith("event: log\n"):
                 try:
-                    payload = _json.loads(sse_line[5:].strip())
+                    data_line = sse_line.strip().split("\n")[1]
+                    log_usage = json.loads(data_line.replace("data: ", "", 1))
+                except Exception as e:
+                    logger.warning("[api_log] 파싱 실패: %s", e)
+                continue
+
+            if sse_line.startswith("data:"):
+                try:
+                    payload = json.loads(sse_line[5:].strip())
                     if payload.get("text"):
                         ai_chunks.append(payload["text"])
                 except Exception:
                     pass
             yield sse_line
 
-        if ai_chunks:
-            ai_dialogue = Dialogue(
-                session_id=session_id,
-                speaker_type=SpeakerType.CHARACTER,
-                character_id=body.character_id,
-                content="".join(ai_chunks),
-                turn_order=turn_count + 1,
-            )
-            db.add(ai_dialogue)
-            await db.flush()
-            logger.info("[dialogues] AI 응답 저장 완료 — session=%s turn=%d", session_id, turn_count + 1)
+        # 스트리밍 완료 후 독립 세션으로 DB 저장 (StreamingResponse 내부에서는 Depends 세션 commit이 보장 안 됨)
+        if ai_chunks or log_usage:
+            try:
+                async with AsyncSessionLocal() as save_session:
+                    if ai_chunks:
+                        ai_dialogue = Dialogue(
+                            session_id=session_id,
+                            speaker_type=SpeakerType.CHARACTER,
+                            character_id=body.character_id,
+                            content="".join(ai_chunks),
+                            turn_order=turn_count + 1,
+                        )
+                        save_session.add(ai_dialogue)
+                        logger.info("[dialogues] AI 응답 저장 완료 — session=%s turn=%d", session_id, turn_count + 1)
+
+                    if log_usage:
+                        api_log = ApiLog(
+                            session_id=session_id,
+                            endpoint=f"POST /sessions/{session_id}/dialogues/stream",
+                            model_used=log_usage["model"],
+                            prompt_tokens=log_usage["prompt_tokens"],
+                            completion_tokens=log_usage["completion_tokens"],
+                            total_cost=log_usage["cost"],
+                        )
+                        save_session.add(api_log)
+                        logger.info(
+                            "[api_log] 저장 — model=%s prompt=%d completion=%d cost=%.8f",
+                            log_usage["model"], log_usage["prompt_tokens"], log_usage["completion_tokens"], log_usage["cost"],
+                        )
+
+                    await save_session.commit()
+            except Exception as e:
+                logger.error("[dialogues/api_log] 저장 실패: %s", e)
 
     return StreamingResponse(generate(), media_type="text/event-stream")
