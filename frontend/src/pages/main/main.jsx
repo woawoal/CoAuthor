@@ -13,7 +13,6 @@ const FALLBACK_AUTHORS = [
     { id: 4, name: "김도현",      genre: "일상 / 에세이",   quote: "특별한 하루보다 평범한 순간이 더 문학적이다",    image: "/assets/author4/author4.png", video: "/assets/author4/author4.mp4" },
 ];
 
-// 비디오가 마운트될 때 명시적으로 play()를 호출해주는 커스텀 컴포넌트
 function HoverVideo({ src }) {
     const videoRef = useRef(null);
     const timeoutRef = useRef(null);
@@ -30,7 +29,6 @@ function HoverVideo({ src }) {
             video.play().catch(e => { if (e.name !== 'AbortError') console.log("음소거 재생도 실패:", e); });
         });
 
-        // 컴포넌트가 언마운트(마우스를 치웠을 때)되면 실행 중인 타이머를 취소
         return () => {
             if (timeoutRef.current) {
                 clearTimeout(timeoutRef.current);
@@ -38,12 +36,10 @@ function HoverVideo({ src }) {
         };
     }, []);
 
-    // 영상이 끝났을 때 실행될 핸들러
     const handleVideoEnded = () => {
         const video = videoRef.current;
         if (!video) return;
 
-        // 1000ms(1초) 딜레이 후 다시 재생하도록 예약하고, ID를 timeoutRef에 저장
         timeoutRef.current = setTimeout(() => {
             if (video) {
                 video.currentTime = 0;
@@ -61,12 +57,8 @@ function HoverVideo({ src }) {
             playsInline
             preload="auto"
             onEnded={handleVideoEnded}
-            onError={(e) => {
-                // console.log("video error", e);
-            }}
-            onCanPlay={() => {
-                // console.log("can play");
-            }}
+            onError={() => {}}
+            onCanPlay={() => {}}
         />
     );
 }
@@ -74,7 +66,6 @@ function HoverVideo({ src }) {
 function Main() {
     const navigate = useNavigate();
     const [hoveredAuthorId, setHoveredAuthorId] = useState(null);
-
     const [authors, setAuthors] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -95,9 +86,8 @@ function Main() {
         fetchAuthorsData();
     }, []);
 
-    // 작가 카드 클릭 시 실행될 핸들러 함수
     const handleAuthorSelect = (authorId) => {
-        navigate('/worldview', { state: { authorId } });
+        navigate('/intro', { state: { authorId } });
     };
 
     if (isLoading) {
@@ -140,12 +130,9 @@ function Main() {
                                     onMouseEnter={() => setHoveredAuthorId(author.id)}
                                     onMouseLeave={() => setHoveredAuthorId(null)}
                                 >
-                                    {/* 작가 아바타 */}
                                     <div className="avatar-wrapper">
                                         {isHovered && hasVideo ? (
-                                            <>
-                                                <HoverVideo src={author.video} />
-                                            </>
+                                            <HoverVideo src={author.video} />
                                         ) : (
                                             <img
                                                 src={author.image}
@@ -155,7 +142,6 @@ function Main() {
                                         )}
                                     </div>
 
-                                    {/* 본문 텍스트 정보 */}
                                     <div className="card-content">
                                         <h4 className="card-title">{author.name}</h4>
                                         <span className="card-genre">{author.genre}</span>
