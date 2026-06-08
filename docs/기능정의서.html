@@ -157,7 +157,7 @@
       <tbody>
         <tr><td class="id">F-CH-01</td><td class="name">메시지 전송</td><td>사용자 입력 수신 + Redis/DB 저장</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">POST /chats/{id}/messages</td></tr>
         <tr><td class="id">F-CH-02</td><td class="name">SSE 스트리밍 응답</td><td>AI 응답 실시간 토큰 스트리밍</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">GET /chats/{id}/stream</td></tr>
-        <tr><td class="id">F-CH-03</td><td class="name">AI 응답 자동 구분</td><td>입력 보고 <b>등장인물 대사</b> 또는 <b>작가 나레이션(지문)</b>으로 응답 (모드 토글 없음)</td><td><span class="pri p0">P0</span></td><td><span class="badge b-prog">진행중</span></td><td class="rel">personas (단일 프롬프트 통합)</td></tr>
+        <tr><td class="id">F-CH-03</td><td class="name">AI 응답 자동 구분</td><td>사용자는 <b>주인공으로만 입력</b>(MVP 고정) → AI가 <b>등장인물 대사</b> 또는 <b>작가 나레이션(지문)</b>으로 자동 구분해 응답 (모드 토글 없음, 사용자 역할 확장은 추후)</td><td><span class="pri p0">P0</span></td><td><span class="badge b-prog">진행중</span></td><td class="rel">personas (단일 프롬프트 통합)</td></tr>
         <tr><td class="id">F-CH-04</td><td class="name">AI 오프닝 상황 부여</td><td>채팅 진입 시 세계관 기반 첫 상황 제시</td><td><span class="pri p0">P0</span></td><td><span class="badge b-plan">예정</span></td><td class="rel">시나리오 3단계</td></tr>
         <tr><td class="id">F-CH-05</td><td class="name">프롬프트 컨텍스트 조립</td><td>세계관+캐릭터+사건요약+최근대화</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">build_prompt</td></tr>
         <tr><td class="id">F-CH-06</td><td class="name">Redis 최근 대화 캐시</td><td>최근 N턴·상태·요약 유지</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">chats.py</td></tr>
