@@ -20,3 +20,12 @@ class SessionResponse(BaseModel):
     ended_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class SessionListItem(BaseModel):
+    id: uuid.UUID
+    world_id: uuid.UUID
+    world_title: str
+    status: SessionStatus
+    started_at: datetime
+    ended_at: datetime | None
