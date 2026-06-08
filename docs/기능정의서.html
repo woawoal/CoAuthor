@@ -97,7 +97,7 @@
   <div class="flow">
     <div class="step"><b>1단계</b> 작가 선택 → 세계관 설정</div>
     <span class="arrow">→</span>
-    <div class="step"><b>2단계</b> 대화형 창작 (사용자=주인공 / AI=조연)</div>
+    <div class="step"><b>2단계</b> 대화형 창작 (주인공 대사 → AI가 대사/나레이션 자동 구분, 메모로 설정 주입)</div>
     <span class="arrow">→</span>
     <div class="step"><b>3단계</b> 소설 변환</div>
   </div>
@@ -157,15 +157,15 @@
       <tbody>
         <tr><td class="id">F-CH-01</td><td class="name">메시지 전송</td><td>사용자 입력 수신 + Redis/DB 저장</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">POST /chats/{id}/messages</td></tr>
         <tr><td class="id">F-CH-02</td><td class="name">SSE 스트리밍 응답</td><td>AI 응답 실시간 토큰 스트리밍</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">GET /chats/{id}/stream</td></tr>
-        <tr><td class="id">F-CH-03</td><td class="name">작가모드</td><td>이벤트 입력 → AI가 소설 문단 생성</td><td><span class="pri p0">P0</span></td><td><span class="badge b-prog">진행중</span></td><td class="rel">personas mode=author</td></tr>
-        <tr><td class="id">F-CH-04</td><td class="name">등장인물모드</td><td>사용자(주인공) ↔ 캐릭터(AI) 대화</td><td><span class="pri p0">P0</span></td><td><span class="badge b-prog">진행중</span></td><td class="rel">personas mode=character</td></tr>
+        <tr><td class="id">F-CH-03</td><td class="name">AI 응답 자동 구분</td><td>입력 보고 <b>등장인물 대사</b> 또는 <b>작가 나레이션(지문)</b>으로 응답 (모드 토글 없음)</td><td><span class="pri p0">P0</span></td><td><span class="badge b-prog">진행중</span></td><td class="rel">personas (단일 프롬프트 통합)</td></tr>
+        <tr><td class="id">F-CH-04</td><td class="name">AI 오프닝 상황 부여</td><td>채팅 진입 시 세계관 기반 첫 상황 제시</td><td><span class="pri p0">P0</span></td><td><span class="badge b-plan">예정</span></td><td class="rel">시나리오 3단계</td></tr>
         <tr><td class="id">F-CH-05</td><td class="name">프롬프트 컨텍스트 조립</td><td>세계관+캐릭터+사건요약+최근대화</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">build_prompt</td></tr>
         <tr><td class="id">F-CH-06</td><td class="name">Redis 최근 대화 캐시</td><td>최근 N턴·상태·요약 유지</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">chats.py</td></tr>
         <tr><td class="id">F-CH-07</td><td class="name">대화 DB 영구 저장</td><td>Dialogue 테이블 적재</td><td><span class="pri p0">P0</span></td><td><span class="badge b-done">완료</span></td><td class="rel">chats.py</td></tr>
         <tr><td class="id">F-CH-08</td><td class="name">엔진 폴백/캐싱</td><td>Gemini PRIMARY→FALLBACK, 응답 캐시</td><td><span class="pri p1">P1</span></td><td><span class="badge b-prog">본류 연결 필요</span></td><td class="rel">llm_router</td></tr>
         <tr><td class="id">F-CH-09</td><td class="name">조연 다중 동시 반응</td><td>여러 조연이 각자 페르소나로 동시 반응</td><td><span class="pri p1">P1</span></td><td><span class="badge b-plan">예정</span></td><td class="rel">차별점</td></tr>
-        <tr><td class="id">F-CH-10</td><td class="name"><span class="fire">🔥 캐릭터별 RAG 정보 분리</span></td><td>캐릭터마다 자기만 아는 정보로 발화</td><td><span class="pri p1">P1</span></td><td><span class="badge b-plan">예정</span></td><td class="rel">강사님 1순위 차별점 (pgvector)</td></tr>
-        <tr><td class="id">F-CH-11</td><td class="name">작가 메모 패널</td><td>채팅 사이드 메모 패널</td><td><span class="pri p2">P2</span></td><td><span class="badge b-done">완료</span></td><td class="rel">chat UI</td></tr>
+        <tr><td class="id">F-CH-10</td><td class="name"><span class="fire">🔥 세계관 일관성 RAG (장기 기억)</span></td><td>이전 설정·메모·사건을 검색·주입해 일관성 유지 (제미나이 설정붕괴 보완)</td><td><span class="pri p1">P1</span></td><td><span class="badge b-plan">예정</span></td><td class="rel">차별점 (RAG-lite→pgvector)</td></tr>
+        <tr><td class="id">F-CH-11</td><td class="name">메모로 설정 즉시 주입 (작가 기능)</td><td>메모 입력 시 추가 상황/설정을 즉시 AI에 주입, 이후 유지</td><td><span class="pri p1">P1</span></td><td><span class="badge b-prog">연결 필요</span></td><td class="rel">chat UI(패널 존재)</td></tr>
         <tr><td class="id">F-CH-12</td><td class="name">이벤트성 안내</td><td>오타·세계관 붕괴 시 휴먼식 안내</td><td><span class="pri p2">P2</span></td><td><span class="badge b-plan">예정</span></td><td class="rel">강사님 제안</td></tr>
       </tbody>
     </table>
@@ -243,8 +243,10 @@
 
     <h3>P0 잔여 작업 (이 흐름을 막는 것)</h3>
     <ul>
-      <li>F-CH-03/04 — 작가모드 / 등장인물모드 분기 완성</li>
+      <li>F-CH-03 — AI 응답 자동 구분 (대사/나레이션 단일 프롬프트)</li>
+      <li>F-CH-04 — AI 오프닝 상황 부여</li>
       <li>F-CH-08 연결 — chats.py ↔ LLMRouter 통합 (SSE 포맷 통일)</li>
+      <li>F-CH-11 — 메모 설정 즉시 주입 연결</li>
       <li>F-NV-02 — 소설 변환 실연결 (플레이스홀더 → generate_novel)</li>
       <li>F-NV-04 — 소설 결과 화면</li>
       <li>F-WD-04 — 나머지 작가 3인 세계관 페이지</li>
@@ -253,7 +255,7 @@
 
     <h3>P1 발표 강화 (차별점)</h3>
     <ul>
-      <li><span class="fire">🔥 F-CH-10 — 캐릭터별 RAG 정보 분리 (최우선 차별점)</span></li>
+      <li><span class="fire">🔥 F-CH-10 — 세계관 일관성 RAG / 장기 기억 (최우선 차별점, RAG-lite 우선)</span></li>
       <li>F-CH-09 — 조연 다중 동시 반응</li>
       <li>F-EV-01/03 — 평가 리포트 (페르소나 일관성 / 캐릭터 구분도)</li>
     </ul>
