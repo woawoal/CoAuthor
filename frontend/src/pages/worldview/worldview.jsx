@@ -5,7 +5,7 @@ import '../../index.css';
 import './worldview.css';
 import { WriteIcon, ExitIcon, ChevronRight } from '../../components/icons';
 import { createWorldview } from '../../lib/worldviewApi';
-import { getAuthors, getQuestions } from '../../lib/authorsApi';
+import { getAuthor, getQuestions } from '../../lib/authorsApi';
 
 function Worldview() {
     const location = useLocation();
@@ -33,19 +33,18 @@ function Worldview() {
     });
 
     const [characters, setCharacters] = useState([createNewCharacter()]);
-    const [serverAuthors, setServerAuthors] = useState([]);
+    const [selectedAuthor, setSelectedAuthor] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const currentDialogue = questions.find((question) => question.step === currentStep);
-    const selectedAuthor = serverAuthors.find((author) => String(author.id) === String(authorId));
     const [look, setLook] = useState({ x: 0, y: 0 });
     const stateRef = React.useRef(null);
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const authorsData = await getAuthors();
-                setServerAuthors(authorsData);
+                const authorData = await getAuthor(authorId);
+                setSelectedAuthor(authorData);
 
                 const questionsData = await getQuestions(authorId);
 
@@ -53,7 +52,7 @@ function Worldview() {
                     questionsData.dialogues || questionsData || []
                 );
             } catch (error) {
-                console.error("Error fetching authors:", error);
+                console.error("Error fetching data:", error);
                 alert("작가 정보를 불러오지 못했습니다.");
             } finally {
                 setIsLoading(false);
