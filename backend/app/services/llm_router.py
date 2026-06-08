@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 PRIMARY_MODEL  = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-1.5-flash"
+FALLBACK_MODEL = "gemini-2.0-flash"  # 1.5-flash 단종(404) → 2.0-flash. primary와 별도 quota 버킷
 
 # Gemini 2025 기준 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
     "gemini-2.5-flash": {"input": 0.15,  "output": 0.60},
-    "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+    "gemini-2.0-flash": {"input": 0.10,  "output": 0.40},
 }
 
 _COACHING_SUFFIX = (
