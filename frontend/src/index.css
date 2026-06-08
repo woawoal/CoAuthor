@@ -1,13 +1,50 @@
 /* src/index.css */
 :root {
-  /* NodeVelture 브랜드 메인 컬러 */
-  --theme-color: #6A1B9A;
-  --theme-color-light: #D1C4E9;
+  --theme-color: #8B6FAD;
+  --theme-color-sub: #C9B6E4;
+  --header-bg: rgba(24, 20, 32, 0.82);
+  --bg-main: linear-gradient(180deg, #0E0B14 0%, #191225 100%);
+  --text-main: #F7F3FF;
+  --text-muted: #A9A0B5;
+  --card-main: #18131F;
+  --scrollbar-bar: #423854;
+  --scrollbar-bg: #120E1A;
+}
 
-  /* 기본 배경 및 텍스트 색상 변수화 */
-  --bg-card: #121214;
-  --bg-card-active: #16121E;
-  --text-muted: #8E8E93;
+:root[data-author="author2"] {
+  --theme-color: #5F7898;
+  --theme-color-sub: #A9BCD6;
+  --header-bg: rgba(18, 25, 36, 0.82);
+  --bg-main: linear-gradient(180deg, #09101A 0%, #121C2B 100%);
+  --text-main: #F3F7FF;
+  --text-muted: #95A3B6;
+  --card-main: #1A2636;
+  --scrollbar-bar: #33445C;
+  --scrollbar-bg: #0E1624;
+}
+
+:root[data-author="author3"] {
+  --theme-color: #C98FA4;
+  --theme-color-sub: #E8B9C9;
+  --header-bg: rgba(255, 240, 246, 0.85);
+  --bg-main: linear-gradient(180deg, #FFF7FA 0%, #F8E4EB 100%);
+  --text-main: #241820;
+  --text-muted: #9E7F8B;
+  --card-main: #FFFDFE;
+  --scrollbar-bar: #E3CDD5;
+  --scrollbar-bg: #FDF1F5;
+}
+
+:root[data-author="author4"] {
+  --theme-color: #C99A62;
+  --theme-color-sub: #E6C79D;
+  --header-bg: rgba(255, 247, 236, 0.85);
+  --bg-main: linear-gradient(180deg, #FFF8EF 0%, #F3E2CA 100%);
+  --text-main: #241B12;
+  --text-muted: #9B856C;
+  --card-main: #FFFDF9;
+  --scrollbar-bar: #DECDB8;
+  --scrollbar-bg: #FAF2E6;
 }
 
 /* 전체 브라우저 기본 마진 초기화 및 부드러운 다크 그라데이션 적용 */
@@ -18,8 +55,10 @@ html,
   padding: 0;
   width: 100%;
   min-height: 100vh;
-  background: linear-gradient(180deg, #121214 0%, #1A1A24 100%);
+  background: var(--bg-main);
   overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-bar) var(--scrollbar-bg);
 }
 
 /* 상단 헤더 */
@@ -28,14 +67,13 @@ html,
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(30, 30, 38, 0.8);
+  background-color: var(--header-bg);
   gap: 16px;
   border-radius: 24px;
   box-sizing: border-box;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-color: #6A1B9A;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+  border: 1px solid;
+  border-color: var(--theme-color);
 }
 
 .header-image {
@@ -51,7 +89,7 @@ html,
   font-weight: 800;
   letter-spacing: 2px;
   text-align: center;
-  color: #ffffff;
+  color: var(--text-main);
 }
 
 .app-container {
