@@ -37,7 +37,6 @@
     display: flex;
     flex-direction: column;
     gap: 18px;
-    padding-bottom: 40px;
 }
 
 .worldview-step-indicator {
@@ -54,17 +53,57 @@
 }
 
 .author-side {
-    flex: 0 0 550px;
-    position: sticky;
-    top: 20px;
+    position: relative;
+    width: 550px;
+    height: 550px;
+    overflow: hidden;
+}
+
+.author-bg-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    pointer-events: none;
 }
 
 .worldview-author-image {
+    position: absolute;
+    top: 20px;
     width: 100%;
-    border-radius: 18px;
     object-fit: cover;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.04);
+}
+
+.avatar-wrapper {
+    width: 100%;
+    display: block;
+    border: none;
+    background: transparent;
+    transition: transform 0.15s ease-out;
+    transform-style: preserve-3d;
+    transform-origin: center center;
+}
+
+.breathing {
+    animation: breathing 4s ease-in-out infinite;
+}
+
+@keyframes breathing {
+    0% {
+        transform: translateY(0px) scale(1);
+    }
+
+    50% {
+        transform: translateY(-4px) scale(1.01);
+    }
+
+    100% {
+        transform: translateY(0px) scale(1);
+    }
 }
 
 .input-side {
@@ -121,6 +160,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    height: 300px;
 }
 
 .label-header {
@@ -192,9 +232,7 @@
     flex-direction: column;
     gap: 20px;
     margin-top: 12px;
-    max-height: 280px;
     overflow-y: auto;
-
     scrollbar-width: thin;
     scrollbar-color: #555 #222;
 }
@@ -206,7 +244,7 @@
     padding: 10px;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
     position: relative;
 }
 
@@ -228,7 +266,7 @@
 .char-sub-label {
     font-size: 0.85rem;
     color: #b0b0b0;
-    margin-bottom: 4px;
+    padding: 4px;
 }
 
 /* 버튼 */
@@ -354,7 +392,7 @@
 }
 
 /* 모바일 반응형 */
-@media (max-width: 768px) {
+@media (orientation: portrait) {
     .worldview-content {
         height: 100%;
     }
@@ -369,12 +407,17 @@
     }
 
     .author-side {
-        position: static;
-        flex: none;
         width: 100%;
-        height: 90vw;
-        display: flex;
-        justify-content: center;
+        height: auto;
+        position: relative;
+        aspect-ratio: 1 / 1;
+    }
+
+    .author-bg-layer,
+    .worldview-author-image {
+        position: absolute;
+        top: 0;
+        aspect-ratio: 1 / 1;
     }
 
     .input-side {
@@ -416,11 +459,10 @@
     }
 
     .author-dialogue-box {
-        height: auto;
-        padding: 16px;
+        padding: 8px;
     }
 
     .character-card {
-        padding: 16px;
+        padding: 8px;
     }
 }

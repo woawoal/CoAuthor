@@ -21,6 +21,7 @@ function Worldview() {
     const [setting, setSetting] = useState('');
     const [rules, setRules] = useState('');
     const [questions, setQuestions] = useState([]);
+    const [typedText, setTypedText] = useState('');
 
     // 2. 등장인물(characters) 테이블 스키마에 맞춘 초기 구조 정의
     const createNewCharacter = () => ({
@@ -37,6 +38,8 @@ function Worldview() {
     const [saving, setSaving] = useState(false);
     const currentDialogue = questions.find((question) => question.step === currentStep);
     const selectedAuthor = serverAuthors.find((author) => String(author.id) === String(authorId));
+    const [look, setLook] = useState({ x: 0, y: 0 });
+    const stateRef = React.useRef(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -67,6 +70,68 @@ function Worldview() {
             setGenre(selectedAuthor.genre);
         }
     }, [selectedAuthor, genre]);
+
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            const x = (e.clientX / window.innerWidth - 0.5);
+            const y = (e.clientY / window.innerHeight - 0.5);
+
+            setLook({ x, y });
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+        };
+    }, []);
+
+    useEffect(() => {
+        const fullText = currentDialogue?.text || '';
+        setTypedText('');
+
+        let index = 0;
+
+        const timer = setInterval(() => {
+            setTypedText(fullText.slice(0, index + 1));
+            index += 1;
+
+            if (index >= fullText.length) {
+                clearInterval(timer);
+            }
+        }, 100);
+
+        return () => clearInterval(timer);
+    }, [currentDialogue?.text]);
+
+    useEffect(() => {
+        const handleGlobalKeyDown = (e) => {
+            if (e.key === 'Enter') {
+                // 한글 입력 조합 중복 방지
+                if (e.nativeEvent.isComposing) return;
+
+                // 현재 포커스가 textarea에 가 있다면 줄바꿈을 해야 하므로 전역 엔터 동작을 막음
+                if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') {
+                    return;
+                }
+
+                // ref를 통해 항상 최신 상태와 함수를 가져옴
+                const { currentDialogue: activeDialogue, handleNext: nextFn, handleSave: saveFn } = stateRef.current;
+
+                if (activeDialogue?.field === 'confirm') {
+                    saveFn();
+                } else {
+                    e.preventDefault(); // 기본 엔터 동작(폼 제출 등) 방지
+                    nextFn();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleGlobalKeyDown);
+        };
+    }, []);
 
     // 등장인물 핸들러
     const handleAddCharacter = () => {
@@ -143,34 +208,62 @@ function Worldview() {
         }
     };
 
+    stateRef.current = { currentDialogue, handleNext, handleSave };
+
+    useEffect(() => {
+        const handleGlobalKeyDown = (e) => {
+            if (e.key === 'Enter') {
+                // 한글 입력 조합 중복 방지
+                if (e.isComposing) return;
+
+                // 현재 포커스가 textarea에 가 있다면 줄바꿈을 해야 하므로 전역 엔터 동작을 막음
+                if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') {
+                    return;
+                }
+
+                // ref를 통해 안전하게 최신 함수와 대화 정보 가져오기
+                if (!stateRef.current) return;
+                const { currentDialogue: activeDialogue, handleNext: nextFn, handleSave: saveFn } = stateRef.current;
+
+                if (activeDialogue?.field === 'confirm') {
+                    saveFn();
+                } else {
+                    e.preventDefault(); // 기본 엔터 동작 방지
+                    nextFn();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleGlobalKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleGlobalKeyDown);
+        };
+    }, []);
+
     const renderStepInput = () => {
         switch (currentDialogue?.field) {
             case 'intro':
                 return (
-                    <div className="form-row">
-                        <div className="form-group flex-3">
-                            <label className="form-label">안내</label>
-                            <div className="intro-guide-box">
-                                <p>작가와 대화하듯이 세계관을 하나씩 설정합니다.</p>
-                                <p>준비되었다면 아래 버튼을 눌러 시작해주세요.</p>
-                            </div>
+                    <div className="form-group">
+                        <label className="form-label">안내</label>
+                        <div className="intro-guide-box">
+                            <p>작가와 대화하듯이 세계관을 하나씩 설정합니다.</p>
+                            <p>준비되었다면 아래 버튼을 눌러 시작해주세요.</p>
                         </div>
                     </div>
                 );
 
             case 'title':
                 return (
-                    <div className="form-row">
-                        <div className="form-group flex-3">
-                            <label className="form-label">세계관 제목</label>
-                            <input
-                                type="text"
-                                className="form-input"
-                                placeholder="예: 무림외전, 네오 서울 2026"
-                                value={title}
-                                onChange={(e) => setTitle(e.target.value)}
-                            />
-                        </div>
+                    <div className="form-group">
+                        <label className="form-label">세계관 제목</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="예: 무림외전, 네오 서울 2026"
+                            value={title}
+                            onChange={(e) => setTitle(e.target.value)}
+                        />
                     </div>
                 );
 
@@ -192,8 +285,9 @@ function Worldview() {
                 return (
                     <div className="form-group">
                         <label className="form-label">시대 및 공간 배경</label>
-                        <textarea
-                            className="form-textarea"
+                        <input
+                            type="text"
+                            className="form-input"
                             placeholder="가상의 역사, 지리적 특징, 시대 분위기 등을 적어주세요."
                             value={setting}
                             onChange={(e) => setSetting(e.target.value)}
@@ -205,8 +299,9 @@ function Worldview() {
                 return (
                     <div className="form-group">
                         <label className="form-label">세계관 특별 규칙</label>
-                        <textarea
-                            className="form-textarea height-sm"
+                        <input
+                            type="text"
+                            className="form-input"
                             placeholder="개념, 마법 법칙, 사회적 제약 사항 등을 적어주세요."
                             value={rules}
                             onChange={(e) => setRules(e.target.value)}
@@ -240,7 +335,7 @@ function Worldview() {
                                     </div>
 
                                     <div className="form-row align-end">
-                                        <div className="form-group flex-2">
+                                        <div className="flex-2">
                                             <label className="char-sub-label">이름</label>
                                             <input
                                                 type="text"
@@ -253,7 +348,7 @@ function Worldview() {
                                             />
                                         </div>
 
-                                        <div className="form-group flex-2">
+                                        <div className="flex-2">
                                             <label className="char-sub-label">성격</label>
                                             <input
                                                 type="text"
@@ -266,7 +361,7 @@ function Worldview() {
                                             />
                                         </div>
 
-                                        <div className="form-group flex-2">
+                                        <div className="flex-2">
                                             <label className="char-sub-label">역할</label>
                                             <select
                                                 className="form-select"
@@ -281,10 +376,11 @@ function Worldview() {
                                         </div>
                                     </div>
 
-                                    <div className="form-group">
+                                    <div className="flex-2">
                                         <label className="char-sub-label">AI 캐릭터 지시문</label>
-                                        <textarea
-                                            className="form-textarea height-xs"
+                                        <input
+                                            type="text"
+                                            className="form-input"
                                             placeholder="AI가 이 역할을 연기할 때 지켜야 할 어조나 규칙"
                                             value={char.system_prompt}
                                             onChange={(e) =>
@@ -364,16 +460,32 @@ function Worldview() {
 
                     <div className="worldview-chat-layout">
                         <div className="author-side">
-                            <img
-                                src={currentDialogue?.image || selectedAuthor?.image}
-                                alt={selectedAuthor?.name || '작가'}
-                                className="worldview-author-image"
+                            <div
+                                className="author-bg-layer"
+                                style={{ backgroundImage: `url(${selectedAuthor?.bgImage})` }}
                             />
+                            <div
+                                className="avatar-wrapper"
+                                style={{
+                                    transform: `
+                                        perspective(1000px)
+                                        rotateY(${look.x * 20}deg)
+                                        rotateX(${-look.y * 15}deg)
+                                        translate(${look.x * 30}px, ${look.y * 15}px)
+                                    `
+                                }}
+                            >
+                                <img
+                                    src={currentDialogue?.image || selectedAuthor?.image}
+                                    alt={selectedAuthor?.name || '작가'}
+                                    className="worldview-author-image avatar breathing"
+                                />
+                            </div>
                         </div>
 
                         <div className="input-side">
                             <div className="author-dialogue-box">
-                                {currentDialogue?.text}
+                                {typedText}
                             </div>
 
                             <div className="step-input-area">

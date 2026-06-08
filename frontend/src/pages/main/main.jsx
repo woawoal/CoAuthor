@@ -120,7 +120,7 @@ function Main() {
 
                 {/* 작가 */}
                 <section className="author-section">
-                    <div className="grid">
+                    <div className={`grid ${hoveredAuthorId ? 'is-hovering' : ''}`}>
                         {authors.map((author) => {
                             const isHovered = hoveredAuthorId === author.id;
                             const hasVideo = !!author.video;
@@ -128,7 +128,7 @@ function Main() {
                             return (
                                 <div
                                     key={author.id}
-                                    className="card"
+                                    className={`card ${isHovered ? 'is-expanded' : ''}`}
                                     onClick={() => handleAuthorSelect(author.id)}
                                     onMouseEnter={() => setHoveredAuthorId(author.id)}
                                     onMouseLeave={() => setHoveredAuthorId(null)}
