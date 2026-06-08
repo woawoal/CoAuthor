@@ -1,5 +1,14 @@
-# PERSO API에 전달할 페르소나 시스템 프롬프트 템플릿
-# 각 작가 페르소나의 성격·말투·철학을 정의
+"""백엔드 런타임 프롬프트 중앙 모듈.
+
+작가 페르소나 정의(PERSONA_PROMPTS) + 3종 프롬프트 빌더를 한 곳에서 관리한다.
+서비스 3단계와 매핑:
+  1-1 세계관 advisory  → build_world_prompt()
+  1-2 대화            → get_author_prompt()
+  1-3 초안(소설 변환)  → NOVEL_SYSTEM / build_novel_system()
+
+프롬프트 문구 튜닝은 AI팀(동완님) 담당. 설계는 docs/프롬프트_설계.md 참고.
+(학습/실험용 프롬프트는 model/prompts/ 에 별도 보관)
+"""
 
 
 PERSONA_PROMPTS: dict[str, str] = {
@@ -125,3 +134,36 @@ def get_author_prompt(persona_id: str, world_context: str = "", mode: str = "aut
             "당신은 위 세계관 속 등장인물입니다. "
             "전지적 시점이 아닌 캐릭터 본인의 시점에서만 대화하세요."
         )
+
+
+# ── 1-1 세계관 advisory 프롬프트 (작가 공통) ──────────────────────
+# 사용자가 폼으로 세계관/등장인물을 입력한 뒤, 작가 AI가 대화로 보완점을 조언.
+# ※ 초안 — 실제 문구는 AI팀(동완님)이 튜닝. (P1: E2E를 막지 않음)
+def build_world_prompt(persona_id: str, world_context: str = "") -> str:
+    """세계관 설정 보조(advisory) 프롬프트. 진입장벽을 낮추는 역할."""
+    base = PERSONA_PROMPTS.get(persona_id)
+    if not base:
+        raise ValueError(f"알 수 없는 페르소나: {persona_id}")
+    return (
+        f"{base}\n\n"
+        f"[사용자가 작성한 세계관/등장인물]\n{world_context}\n\n"
+        "당신은 이 세계관을 함께 다듬는 작가입니다. "
+        "부족하거나 더 풍부해질 부분(주연/조연/엑스트라의 배경, 관계, 설정 구멍)을 "
+        "한두 가지만 구체적으로 짚어 제안하세요. 대신 써주지 말고 방향만 제시합니다."
+    )
+
+
+# ── 1-3 초안(소설 변환) 프롬프트 ─────────────────────────────────
+NOVEL_SYSTEM = (
+    "당신은 대화를 소설 문체로 변환하는 편집자입니다. "
+    "대화 흐름을 유지하면서 지문·묘사·감정선을 추가해 소설 한 장면으로 완성하세요. "
+    "3인칭 전지적 시점을 기본으로 합니다. "
+    '큰따옴표("")로 묶인 부분은 대사, 그 외는 서술로 처리합니다.'
+)
+
+
+def build_novel_system(world_description: str = "") -> str:
+    """소설 변환 시스템 프롬프트. 세계관 설명이 있으면 덧붙인다."""
+    if world_description:
+        return f"{NOVEL_SYSTEM}\n\n[세계관]\n{world_description}"
+    return NOVEL_SYSTEM

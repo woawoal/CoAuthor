@@ -6,7 +6,7 @@ from typing import AsyncGenerator
 import google.generativeai as genai
 
 from app.core.config import settings
-from app.core.personas import PERSONA_PROMPTS, get_author_prompt
+from app.core.personas import PERSONA_PROMPTS, get_author_prompt, build_novel_system
 from app.models.character import Character
 from app.services.cache import CacheService
 
@@ -29,12 +29,6 @@ _COACHING_SUFFIX = (
     "사용자가 작성한 글을 읽고 당신의 장르 철학에 맞는 구체적인 피드백을 주세요. "
     "잘된 점보다 개선점을 먼저, 수정 방향은 명확하게. "
     "대신 써주지 말고 방향만 짚어주세요."
-)
-
-_NOVEL_SYSTEM = (
-    "당신은 대화를 소설 문체로 변환하는 편집자입니다. "
-    "대화 흐름을 유지하면서 지문·묘사·감정선을 추가해 소설 한 장면으로 완성하세요. "
-    "3인칭 전지적 시점을 기본으로 합니다."
 )
 
 cache_svc = CacheService()
@@ -281,9 +275,7 @@ class LLMRouter:
         if not dialogue_history:
             return ""
 
-        system_prompt = _NOVEL_SYSTEM
-        if world_description:
-            system_prompt += f"\n\n[세계관]\n{world_description}"
+        system_prompt = build_novel_system(world_description)
 
         block = "\n".join(
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"

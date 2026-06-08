@@ -82,7 +82,7 @@
 - 페르소나 프롬프트 4종 완성도 높음(`core/personas.py`) — WORLD/CHARACTER RULE + GUARD RAIL + FEW-SHOT, 실사용 중
 - LLM-as-Judge 구현(`model/evaluation/llm_judge.py`) — Gemini로 페르소나 일관성 채점 (목표 평균 4.0)
 - 파인튜닝(`model/finetune/train.py`) — Qwen2.5-1.5B 타겟, Trainer 미구현 스텁
-- ⚠️ `model/prompts/system_prompts.py` — `PERSONAS` import하나 personas.py엔 `PERSONA_PROMPTS`만 존재 → 깨진 참조
+- ✅ 런타임 프롬프트 3종을 `core/personas.py`로 통합 (1-1 세계관 / 1-2 대화 / 1-3 초안) + 죽은 `model/prompts/system_prompts.py` 정리 — [프롬프트 설계](프롬프트_설계.md)
 
 **다음 할 일 (2주차)**
 - [ ] **🔥 세계관 일관성 RAG (장기 기억)** — 차별점 (메모·이전 설정을 검색·주입해 일관성 유지, 제미나이 설정붕괴 보완 / RAG-lite 우선)
@@ -90,7 +90,7 @@
 - [ ] 소설 변환 전용 프롬프트 품질
 - [ ] LLM-as-Judge로 4명 프롬프트 일관성 측정 → 개선 루프
 - [ ] (유득님) 모델 학습 필요성 재검토 — 강사님 "상용 API OK"로 완화돼 자체모델 우선순위 하락 가능
-- [ ] system_prompts.py 깨진 참조 정리/제거
+- [x] system_prompts.py 깨진 참조 정리 + 런타임 프롬프트 personas.py로 통합 (완료)
 
 ---
 
