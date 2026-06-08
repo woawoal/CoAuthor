@@ -90,8 +90,13 @@ function Main() {
                 </section>
 
                 {/* 하단 네비게이션 버튼 영역 */}
-                <div className="speech-text">
-                    <span>작가를 선택하세요</span>
+                <div className="bottom-nav">
+                    <div className="speech-text">
+                        <span>작가를 선택하세요</span>
+                    </div>
+                    <button className="chatlist-btn" onClick={() => navigate('/chatlist')}>
+                        내 소설 목록 →
+                    </button>
                 </div>
             </div>
         </div>

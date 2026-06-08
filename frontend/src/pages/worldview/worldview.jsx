@@ -27,7 +27,7 @@ function Worldview() {
     const createNewCharacter = () => ({
         id: Date.now() + Math.random(), // 임시 고유 키
         name: '',
-        role: 'supporting', // 기본값 조연        
+        role: 'protagonist', // 기본값 주연        
         personality: '',
         system_prompt: ''
     });
@@ -188,12 +188,11 @@ function Worldview() {
         setSaving(true);
 
         try {
-            const worldId = await createWorldview({
+            const { worldId, sessionId } = await createWorldview({
                 world: { title, description, genre, setting, rules },
                 characters: validCharacters,
             });
-
-            navigate('/chat', { state: { worldId, authorId } });
+            navigate('/chat', { state: { worldId, chatId: sessionId, authorId } });
         } catch (err) {
             alert(`저장 실패: ${err.message}`);
         } finally {

@@ -4,12 +4,40 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.session import Session, SessionStatus
-from app.schemas.session import SessionCreate, SessionResponse
+from app.schemas.session import SessionCreate, SessionResponse, SessionListItem
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+DUMMY_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+@router.get("/", response_model=list[SessionListItem])
+async def list_sessions(
+    user_id: uuid.UUID = DUMMY_USER_ID,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Session)
+        .options(selectinload(Session.world))
+        .where(Session.user_id == user_id)
+        .order_by(Session.started_at.desc())
+    )
+    sessions = result.scalars().all()
+    return [
+        SessionListItem(
+            id=s.id,
+            world_id=s.world_id,
+            world_title=s.world.title,
+            status=s.status,
+            started_at=s.started_at,
+            ended_at=s.ended_at,
+        )
+        for s in sessions
+    ]
 
 
 @router.post("/", response_model=SessionResponse, status_code=201)

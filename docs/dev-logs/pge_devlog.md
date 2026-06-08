@@ -2,6 +2,59 @@
 
 ---
 
+## 2026-06-08
+
+### 오늘 한 일
+
+**채팅 페이지 세계관 연동**
+- chatId(session_id) → session → world_id → 세계관+캐릭터 DB 조회 흐름 구현
+- 메모 패널에 세계관 요약(description/setting/rules) 토글 표시
+- 등장인물 목록 DB에서 불러와 표시 (기본값은 선택한 작가명으로 통일)
+
+**세션 기반 chat_id 연결 구조**
+- `sessions` 테이블을 chat_id 허브로 활용 (world_id + user_id + protagonist_id 연결)
+- worldview 저장 시 session 생성 → session_id를 chatId로 chat 페이지에 전달
+- chatId → getSession → world_id 체인으로 신규 채팅/이어쓰기 진입 경로 통일
+
+**소설 자동저장 기능**
+- "채팅 종료" 버튼: `PATCH /sessions/{id}/complete` → `POST /sessions/{id}/novel/generate` 순서로 자동 저장
+- `novels` 테이블에 대화 로그 원문 저장 (draft 상태, LLM 변환은 TODO)
+
+**소설 목록 페이지 (chatlist)**
+- `/chatlist` 라우트 및 페이지 신규 생성
+- 세션 목록 조회 (`GET /sessions/?user_id=...`) — world_title, status 배지, 날짜 표시
+- "이어쓰기 →" 버튼: chatId만으로 chat 페이지 재진입
+
+**백엔드**
+- `sessions.py`: 목록 조회 엔드포인트 추가 (`world_title` selectinload)
+- `schemas/session.py`: `SessionListItem` 스키마 추가
+- `config.py`: `.env` 경로를 절대경로로 수정 (uvicorn 실행 위치 무관하게 동작)
+
+**API 경로 정리**
+- `chatApi.js` / `worldviewApi.js` 모두 상대경로 `/api/v1` 로 통일 → Vite 프록시 경유, CORS 해결
+- `vite.config.js`가 `VITE_API_BASE_URL` 읽어 프록시 타겟 동적 설정 (로컬/ngrok 자동 전환)
+
+**UI 개선**
+- 메모 패널 토글 버튼 소형화 (36px 높이 버튼, 호버 보라색 강조)
+- 메인 페이지 "내 소설 목록 →" 버튼 추가
+- HoverVideo AbortError 콘솔 노이즈 수정 (`if (err.name === 'AbortError') return`)
+
+**dev 브랜치 머지**
+- 팀원 변경사항 반영: 작가 데이터 백엔드 API 연동, worldview 스텝 대화 형식 UI, 카드 호버 전체화면 효과
+- 충돌 해결: main.jsx(AbortError 수정 유지), worldview.jsx(chatId: sessionId navigate 유지)
+
+### 이슈 / 막힌 점
+- **Gemini API 키 오류**: `.env` 키 형식 오류 → 신규 발급으로 해결
+- **config.py `.env` 경로**: uvicorn을 프로젝트 루트에서 실행하면 `backend/.env`를 못 찾는 문제 → 절대경로로 수정
+- **worldviewApi.js 절대경로 CORS**: ngrok 원격 서버 전환 시 직접 요청으로 CORS 차단 → 상대경로로 통일
+- **이어쓰기 채팅 이력 복원**: 미구현 (TODO) — session_id로 진입은 되나 이전 대화가 표시 안 됨
+
+### 다음 할 일
+- 이어쓰기 시 이전 대화 이력 복원 (`GET /sessions/{id}/dialogues` 조회 후 messages 초기값 설정)
+- Gemini 응답 기반 소설 변환 구현 (현재 대화 로그 원문 저장)
+
+---
+
 ## 2026-06-05
 
 ### 오늘 한 일
