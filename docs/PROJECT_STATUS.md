@@ -1,9 +1,10 @@
+<!-- markdownlint-disable MD022 MD032 MD031 MD036 MD060 MD040 -->
 # NodeVelture 프로젝트 현황
 
-> 작성일: 2026-06-04
+> 최종 갱신: 2026-06-08 (1주차 마무리 / 2주차 진입)
 > Node + Novel + Adventure — AI와 함께 세계관을 만들고, 그 세계관 속 등장인물이 되어 소설을 완성하는 협업 창작 플랫폼
 
-지금까지 구축된 서비스 전체를 훑어보고, **만들어진 것 / 진행 중인 것 / 앞으로 할 것 / 내일 당장 할 것**을 정리한 문서입니다.
+분야(백엔드 / 프론트엔드 / AI)별로 **현재 진행상황과 다음 할 일**을 정리한 문서입니다.
 
 ---
 
@@ -19,133 +20,108 @@
 
 작가 페르소나 4명: **백야**(호러·미스터리) / **차로운**(추리) / **한여름**(로맨스) / **김도현**(일상·에세이)
 
+마감: 2026-06-19. 1주차(6/2~6/8) / 2주차(6/9~6/15) / 마지막주(6/16~6/19)
+
 ---
 
 ## 2. 기술 스택 / 아키텍처 현황
 
 | 영역 | 채택 기술 | 상태 |
 |------|-----------|------|
-| 프론트엔드 | React 19 + Vite 8 + react-router-dom 7 | 메인 페이지 골격만 |
-| 백엔드 | FastAPI (Python 3.11) | API 골격 완성 |
-| AI 엔진 | **Gemini 2.5 Flash** (실연동 완료) | PERSO는 TTS 용도로 보류 |
-| 관계형 DB | PostgreSQL + SQLAlchemy + Alembic | 모델/CRUD 완성 |
-| 문서 DB | MongoDB (motor) | RAG 임베딩 저장용 |
-| 캐시/세션 | Redis | 프롬프트 컨텍스트 관리 구현 |
-| 임베딩 | sentence-transformers (multilingual MiniLM) | RAG 유사 대화 검색 |
+| 프론트엔드 | React 19 + Vite + react-router-dom | 메인/세계관/채팅 페이지 구현 중 |
+| 백엔드 | FastAPI (Python 3.11, conda) | v1 API 골격 완성 |
+| AI 엔진 | **Gemini 2.5 Flash** (실연동) | 폴백: gemini-1.5-flash |
+| DB | **PostgreSQL only** + SQLAlchemy + Alembic | 통일 완료 (MongoDB 제거) |
+| 캐시/세션 | Redis (도커 ↔ Upstash 클라우드 토글) | 프롬프트 컨텍스트 관리 동작 |
+| 자체 모델 | Qwen2.5 (파인튜닝 예정) | 스텁만 존재 |
+| 평가 | LLM-as-Judge (Gemini) | 구현됨 |
 | 배포 | Render / Railway (예정) | 미착수 |
 
-> ⚠️ **아키텍처 정리 필요**: 현재 데이터 저장소가 PostgreSQL(`api/v1` CRUD), MongoDB(`rag_service`), Redis(`chats.py`) 3중으로 혼재합니다. DB=원본 저장소 / Redis=프롬프트 임시 복사본 역할 분담은 정해졌으나, MongoDB-RAG 라인과 Postgres 라인이 아직 통합되지 않았습니다. **역할 경계를 한 번 정리하고 가는 것이 시급합니다.**
-
-> ⚠️ **현재 작업 트리 상태**: `backend/app/api/chats.py` 와 `docs/dev-logs/jyj_devlog.md` 가 워킹 트리에서 삭제된 상태(uncommitted)입니다. `main.py`가 `chats.py`를 import하므로 이대로면 서버가 기동되지 않습니다. 의도된 삭제가 아니라면 `git restore`로 복원 필요.
+> ✅ **저장소 단일화 완료**: 기존 PostgreSQL/MongoDB/Redis 3중 구조 → **PostgreSQL(원본) + Redis(프롬프트 캐시)**로 정리됨 (강사님 6/5 스크럼 피드백 반영).
 
 ---
 
-## 3. 지금까지 만들어진 것 ✅
+## 3. 분야별 현황 & 다음 할 일
 
-### 백엔드 — API 서버
-- **FastAPI 앱 구조** (`main.py`): CORS, MongoDB lifespan 연결, `/health` 헬스체크
-- **v1 CRUD API** (`api/v1/`, PostgreSQL 기반)
-  - users / worlds / characters / sessions / dialogues / novels 엔드포인트
-  - 세션 생성·조회·완료(`PATCH /complete`) 등 라이프사이클 처리
-- **Chat API** (`api/chats.py`, Redis + Gemini) — **핵심 동작부**
-  - `POST /api/chats/{chatId}/messages` — 사용자 메시지 수신 → Redis 저장
-  - `GET /api/chats/{chatId}/stream` — SSE 스트리밍 (`event: token / done / error`)
-  - `PATCH /api/chats/{chatId}/state` — 현재 상태 수동 갱신
-  - **Gemini 2.5 Flash 실연동 완료** (스트리밍 응답 동작 확인)
+### 🟦 백엔드 (jyj · 가연님)
 
-### 백엔드 — 데이터 / 모델
-- **DB 모델 7종**: User, World, Character, Session, Dialogue, Novel, ApiLog
-- **Pydantic 스키마 6종** (chat, session, dialogue, character, world, novel ...)
-- **Alembic 마이그레이션** 초기 세팅 (`f74e0002f300_init`)
+**현재**
+- v1 CRUD API 완성: users / worlds / characters / sessions / dialogues / novels / authors / chats (PostgreSQL)
+- 채팅 본류(`api/v1/endpoints/chats.py`): Redis 컨텍스트 + Gemini 스트리밍 + 대화 PG 저장 (SSE `event: token`)
+- `services/llm_router.py`: Gemini 폴백(PRIMARY→FALLBACK)·캐싱 + `stream`/`coach`/`compare`/`generate_novel` 구현
+- 작가 정보 API(`authors.py`): authors.json / questions.json 제공
+- 인프라: docker-compose(pg+redis), Redis 도커↔Upstash 토글, Alembic, ngrok 공유, conda 통일
 
-### 백엔드 — 서비스 레이어
-- **CacheService** (`cache.py`): Redis TTL 캐시, SHA256 네임스페이스 키
-- **Redis 프롬프트 컨텍스트 관리** (`chats.py`): 최근 대화(N=20)·상태·등장인물·요약을 Redis에 저장하고 프롬프트로 조립, 5턴마다 DB 동기화 훅(`sync_to_db`, 구현 예정)
-- **RAGService** (`rag_service.py`): 대화 임베딩 저장 + 코사인 유사도로 과거 대화 검색 (MVP: Python 계산)
-- **LLMRouter** (`llm_router.py`): 캐릭터 응답 스트리밍 / 소설 생성 인터페이스 (PERSO·Ollama 연결부는 TODO)
-- **페르소나 프롬프트 템플릿** (`personas.py`): 작가 4명, 작가모드/등장인물모드 분기
+**다음 할 일 (2주차)**
+- [ ] **chats.py ↔ LLMRouter 통합** + SSE 포맷 통일 (현재 chats.py는 LLMRouter 미사용·인라인 Gemini, 포맷 `event:token` vs `data:` 이원화)
+- [ ] **소설 변환 실연결** — `novels.py` 플레이스홀더 → `LLMRouter.generate_novel`
+- [ ] 전역 에러 핸들링 미들웨어
+- [ ] API Log 미들웨어 (ApiLog 모델 미연결 — 토큰/비용/캐시히트율 기록)
+- [ ] 정리: `sync_to_db` 빈 스텁, `main.py`의 미사용 `import app.database as db`
+- [ ] (후순위) JWT 인증, 배포(Dockerfile/Render)
 
-### 프론트엔드
-- React + Vite 프로젝트 세팅, 라우팅 골격(`App.jsx`)
-- 메인 페이지(`pages/main/`), 작가 이미지 에셋, 아이콘
-- Capacitor 안드로이드 빌드 스크립트(`npm run and`)
+### 🟩 프론트엔드 (가은님 · 건혁님)
 
-### 인프라 / 협업
-- PostgreSQL + Redis docker-compose
-- GitHub Actions CI (pytest), PR 템플릿, feature 브랜치 전략
-- ngrok으로 로컬 서버 팀원 공유
-- 백엔드 문서 5종 (architecture / api / models / setup / coding-rules)
+**현재**
+- React+Vite 라우팅(main/worldview/chat), `/write`는 주석 처리
+- 메인페이지, 작가 4인 디자인·자기소개 영상·아이콘/로고
+- 세계관 페이지를 "작가와 대화형"으로 전환 중 (백야 완료, 나머지 3인 예정)
+- 채팅 UI: 말풍선, 작가 메모 사이드패널, SSE 실시간 렌더, DB 세계관/캐릭터 연동
+- API 클라이언트 3종(chatApi/worldviewApi/authorsApi), Vite 프록시(CORS 우회 + ngrok 헤더)
 
----
+**다음 할 일 (2주차)**
+- [ ] 나머지 작가 3인 세계관 페이지 대화형 적용 + 작가별 테마 색상
+- [ ] 작가 선택 → 세계관 설정 → 채팅 전체 플로우 연결
+- [ ] 알림/컨펌 공통 컴포넌트
+- [ ] 소설 변환 결과(3단계) 화면
+- [ ] 백엔드와 E2E 통합 테스트 (스트리밍·CORS)
 
-## 4. 진행 중 / 부분 구현 🚧
+### 🟪 AI 엔지니어 (동완님-프롬프트 · 유득님-모델)
 
-| 항목 | 현재 상태 | 남은 일 |
-|------|-----------|---------|
-| SSE 스트리밍 | Gemini로 실동작 | 작가모드/등장인물모드 분기, 에러 처리 다듬기 |
-| Redis ↔ DB 동기화 | `sync_to_db` 훅만 존재 | 가연님 DB 연동 후 실제 사건요약·호감도 동기화 |
-| RAG 검색 | MongoDB 임베딩 저장·검색 동작 | chats.py 채팅 흐름과 통합되지 않음 |
-| LLMRouter | 인터페이스만 | 엔진 스위칭(Gemini↔폴백) 실연결 |
-| 프론트 ↔ 백엔드 | API 스펙 합의됨 | 실제 호출/스트리밍 통합 테스트 |
-| 소설 변환 | `generate_novel` 스텁 | 변환 전용 프롬프트 + 엔드포인트 구현 |
+**현재**
+- 페르소나 프롬프트 4종 완성도 높음(`core/personas.py`) — WORLD/CHARACTER RULE + GUARD RAIL + FEW-SHOT, 실사용 중
+- LLM-as-Judge 구현(`model/evaluation/llm_judge.py`) — Gemini로 페르소나 일관성 채점 (목표 평균 4.0)
+- 파인튜닝(`model/finetune/train.py`) — Qwen2.5-1.5B 타겟, Trainer 미구현 스텁
+- ⚠️ `model/prompts/system_prompts.py` — `PERSONAS` import하나 personas.py엔 `PERSONA_PROMPTS`만 존재 → 깨진 참조
 
----
-
-## 5. 앞으로 할 것 (전체 로드맵)
-
-### 이번 주 (6/2~6/8) — 전체 흐름 동작 확인 우선
-- [ ] 프롬프트 품질 테스트 및 개선 (백야 / 차로운 / 한여름 / 김도현 각각)
-- [ ] 세계관 정보(`world_context`)를 프론트 → chat API로 연결
-- [ ] **전체 흐름 E2E 확인**: 작가 선택 → 세계관 설정 → 채팅 → AI 응답
-- [ ] 에러 핸들링 미들웨어 (전역 예외 처리, 일관된 에러 응답)
-
-### 다음 주 (6/9~6/15) — 채팅 핵심 + 운영
-- [ ] 작가모드 / 등장인물모드 응답 분기 완성
-- [ ] Redis → DB 5턴 동기화 실구현 (가연님 DB 연동)
-- [ ] RAG(과거 대화 검색)를 채팅 프롬프트에 통합
-- [ ] API Log 미들웨어 (토큰 수 / 비용 / 엔드포인트 자동 기록)
-- [ ] 환경변수 기반 엔진 스위칭 (Gemini ↔ 폴백)
-- [ ] 프론트엔드 통합 테스트 (CORS / 실호출 / 스트리밍)
-- [ ] JWT 인증 (로그인, 토큰 발급·검증) — 후순위
-
-### 마지막 주 (6/16~6/19) — 소설 변환 + 배포 + 발표
-- [ ] **소설 변환 기능** (대화 로그 → 소설 문체, 변환 전용 프롬프트)
-- [ ] 비용 모니터링 / 로그 조회 엔드포인트
-- [ ] Dockerfile 작성 + docker-compose에 앱 컨테이너 추가
-- [ ] Render / Railway 실배포 + 프로덕션 환경변수
-- [ ] README 실행 방법 업데이트, 발표 자료 백엔드 파트 정리
-- [ ] 평가 리포트 (페르소나 일관성, 캐릭터 구분도 등) + 시연 영상
+**다음 할 일 (2주차)**
+- [ ] **🔥 세계관 일관성 RAG (장기 기억)** — 차별점 (메모·이전 설정을 검색·주입해 일관성 유지, 제미나이 설정붕괴 보완 / RAG-lite 우선)
+- [ ] 등장인물 모드 프롬프트 강화 (조연 여러 명 동시 반응)
+- [ ] 소설 변환 전용 프롬프트 품질
+- [ ] LLM-as-Judge로 4명 프롬프트 일관성 측정 → 개선 루프
+- [ ] (유득님) 모델 학습 필요성 재검토 — 강사님 "상용 API OK"로 완화돼 자체모델 우선순위 하락 가능
+- [ ] system_prompts.py 깨진 참조 정리/제거
 
 ---
 
-## 6. 🔥 내일 당장 해야 할 것 (6/5)
+## 4. 핵심 리스크 (분야 가로지름)
 
-> 원칙: **"전체 흐름이 한 번 끝까지 도는 것"**을 최우선으로. 인증·배포보다 동작 확인이 먼저.
-
-1. **[복구] 워킹 트리 정리** — 삭제 상태인 `chats.py` / `jyj_devlog.md`가 의도된 건지 확인하고, 아니면 `git restore`로 복원. 서버가 뜨는 상태부터 만들기.
-2. **[테스트] 작가 4명 프롬프트 품질 확인** — 백야 / 차로운 / 한여름 / 김도현 각각에 같은 입력을 넣어 페르소나 톤이 구분되는지 직접 비교. 어색하면 `personas.py` 문구 수정.
-3. **[연결] 세계관 정보 연동** — 프론트에서 받은 `world_context`가 `build_prompt`까지 실제로 흘러 들어가는지 확인 (현재 요청 파라미터로는 받지만 프론트 연결 미확인).
-4. **[E2E] 전체 흐름 1회 완주** — 작가 선택 → 세계관 입력 → `POST messages` → `GET stream`으로 Gemini 응답까지 한 번 끝까지 돌려보기. 막히는 지점 기록.
-5. **[정리] 저장소 역할 경계 결정** — PostgreSQL / MongoDB / Redis 3중 구조 중 MVP에서 실제로 쓸 라인을 정리 (특히 RAG의 MongoDB 라인을 유지할지 결정). 팀(가연님)과 합의.
-6. **[설정] GitHub dev 브랜치 보호 규칙** — 직접 머지 방지 규칙 설정 (이전 일지 미완료 항목).
+| 리스크 | 내용 | 대응 |
+|--------|------|------|
+| **RAG 부재** | 차별점 "세계관 일관성 RAG(장기 기억)"가 MongoDB 제거로 사라짐. 발표 차별점인데 구현 없음 | RAG-lite 우선, 여유 시 pgvector |
+| **채팅 경로 이원화** | chats.py(인라인 Gemini) vs LLMRouter, SSE 포맷도 `event:token`/`data:`로 다름 | 통합 + 포맷 통일 |
+| **Gemini API 키 형식** | `AIzaSy...` 형식 확인 필요 (pge 일지) | 키 유효성 점검 |
+| **자체 모델 미착수** | train.py 스텁, 강사님 API 허용으로 우선순위 하락 | 발표 비중 결정 필요 |
 
 ---
 
-## 7. 알려진 이슈 / 리스크
+## 5. 발표 차별점 방어 논리 (6/8 확정)
 
-| 이슈 | 비고 |
-|------|------|
-| 워킹 트리에서 핵심 파일(`chats.py`) 삭제 상태 | 서버 기동 불가 — 우선 복구 |
-| 저장소 3중 구조 (Postgres/Mongo/Redis) 미통합 | 역할 경계 정리 필요 |
-| PERSO API는 텍스트 생성 불가 (영상 번역/더빙용) | 채팅은 Gemini 유지, PERSO는 TTS 후보 |
-| Python 3.13 빌드 실패 (asyncpg, pydantic-core) | Python 3.11 / conda 환경으로 통일 완료 |
-| RAG 유사도 Python 계산 (MongoDB Atlas 미사용) | 데이터 늘면 성능 한계 — MVP 한정 |
+> "ChatGPT/제미나이에 채팅하는 것과 뭐가 다른가" → 발표 때 반드시 나올 질문
+
+1. **사용자가 1인칭 주인공으로 이야기에 들어감** — "지시하는 도구"가 아니라 "들어가는 무대"
+2. **작가 페르소나와 협업 + 대화 → 소설 자동 변환** (결과물이 남음)
+3. **세계관 일관성 RAG (장기 기억)** — 긴 이야기에서 설정이 안 무너짐
+4. (확장) 동기부여 시스템 / 삽화 자동 생성
+
+> ※ 6/2 스크럼의 "캐릭터별 비밀정보 분리(서로 모르는 상태)"는 추리극 오해 기반이라 채택 안 함 — [scrum.md](dev-logs/scrum.md) 참고
 
 ---
 
-## 8. 참고 문서
+## 6. 참고 문서
 - 기획서: [docs/planning/NodeVelture.md](planning/NodeVelture.md)
 - 페르소나 카드: [docs/personas/persona_cards.md](personas/persona_cards.md)
+- 강사님 스크럼 기록: [docs/dev-logs/scrum.md](dev-logs/scrum.md)
 - 백엔드 상세: [backend/docs/](../backend/docs/) (architecture / api / models / setup / coding-rules)
-- 백엔드 TODO: [backend/docs/todo.md](../backend/docs/todo.md)
+- 백엔드 실행 가이드: [backend/docs/setup.md](../backend/docs/setup.md)
 - 개발일지: [docs/dev-logs/](dev-logs/)
