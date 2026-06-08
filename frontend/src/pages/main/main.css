@@ -206,6 +206,15 @@
     overflow: hidden;
 }
 
+/* 하단 네비게이션 */
+.bottom-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: auto;
+    margin-bottom: 10px;
+}
+
 /* 하단 스타일 */
 .speech-text {
     padding: 18px;
@@ -223,4 +232,23 @@
     margin-top: auto;
     letter-spacing: 0.5px;
     transition: background-color 0.2s ease;
+}
+
+.chatlist-btn {
+    width: 100%;
+    padding: 14px;
+    background: none;
+    border: 1px solid rgba(106, 27, 154, 0.5);
+    border-radius: 16px;
+    color: #D1C4E9;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.chatlist-btn:hover {
+    background-color: rgba(106, 27, 154, 0.2);
+    border-color: #6A1B9A;
 }

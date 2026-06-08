@@ -1,4 +1,4 @@
-const API_BASE_URL = `${import.meta.env.VITE_API_BASE_URL}api/v1`;
+const API_BASE_URL = `/api/v1`;
 
 export async function sendMessage(chatId, payload) {
   return fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
@@ -22,7 +22,23 @@ export function connectChatStream(chatId, { content, character_id, mode = "autho
     es.close();
   });
 
-  es.onerror = () => es.close();
+  es.onerror = () => { onDone?.(); es.close(); };
 
   return es;
+}
+
+export async function completeSession(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/complete`, {
+    method: 'PATCH',
+  });
+  if (!res.ok) throw new Error('세션 종료 실패');
+  return res.json();
+}
+
+export async function generateNovel(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/novel/generate`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('소설 저장 실패');
+  return res.json();
 }
