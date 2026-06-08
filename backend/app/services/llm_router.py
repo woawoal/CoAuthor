@@ -16,12 +16,12 @@ logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 PRIMARY_MODEL  = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-1.5-flash"
+FALLBACK_MODEL = "gemini-2.0-flash"  # 1.5-flash 단종(404) → 2.0-flash. primary와 별도 quota 버킷
 
 # Gemini 2025 기준 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
     "gemini-2.5-flash": {"input": 0.15,  "output": 0.60},
-    "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+    "gemini-2.0-flash": {"input": 0.10,  "output": 0.40},
 }
 
 _COACHING_SUFFIX = (
@@ -275,7 +275,8 @@ class LLMRouter:
         if not dialogue_history:
             return ""
 
-        system_prompt = build_novel_system(world_description)
+        # persona 미상(세션에 작가 정보 없음) → 작가 중립 폴백. world_description은 world_context 자리로.
+        system_prompt = build_novel_system("", world_description)
 
         block = "\n".join(
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"
