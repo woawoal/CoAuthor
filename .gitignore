@@ -27,6 +27,8 @@ model/checkpoints/
 *.safetensors
 *.pt
 *.pth
+!model/finetune/saved_model_sample/
+!model/finetune/saved_model_sample/**
 
 # Data (원본 데이터는 별도 보관)
 data/raw/
