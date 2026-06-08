@@ -1,4 +1,4 @@
-<!-- markdownlint-disable MD022 MD031 MD032 MD024 MD040 -->
+<!-- markdownlint-disable MD022 MD031 MD032 MD024 MD040 MD036 -->
 # 서버 운영 / 트러블슈팅
 
 서버 실행 중 발생한 에러와 해결 방법을 기록합니다.
@@ -63,6 +63,13 @@
 **예방**
 - 도커가 불안정하면 Redis처럼 `.env`의 `DATABASE_URL`을 클라우드 PG(Neon/Supabase)로 토글하는 것도 대안
 - DB 예외가 ASGI 레벨로 그대로 노출되는 문제는 **전역 에러 핸들링 미들웨어**(2주차 예정)로 일관 응답화 필요
+
+**⚠️ 추가 확인 (재발) — 실제 주원인은 "컨테이너 종료"**
+- 같은 에러가 `pool_pre_ping` 적용 후에도 재발. 트레이스백이 `_create_connection`(새 커넥션 생성) 단계에서 터지면 풀 문제가 아니라 **postgres 컨테이너 자체가 꺼진 것**.
+- 진단: `docker compose ps`가 비어 있음 + 로그 마지막에 `received fast shutdown request`.
+- 해결: `docker compose up -d` 로 재기동 → `docker compose ps`에서 `db`가 `(healthy)` 확인.
+- **구분법**: `_create_connection`에서 실패 → 컨테이너 죽음(`up -d`). / 재사용 커넥션 끊김 → `pool_pre_ping`이 처리.
+- 컨테이너가 자꾸 꺼지면(WSL/Docker Desktop 불안정) → 클라우드 PG 토글이 근본 대안.
 
 ---
 
