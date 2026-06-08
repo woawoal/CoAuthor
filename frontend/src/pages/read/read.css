@@ -1,0 +1,448 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;400;600&family=Noto+Sans+KR:wght@300;400;500&display=swap');
+
+.read-page {
+  font-family: 'Noto Sans KR', sans-serif;
+  background: #FAF8F4;
+  min-height: 100vh;
+  color: #1a1814;
+}
+
+/* ── TOP BAR ── */
+.read-top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(250, 248, 244, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 0.5px solid #d9d4c8;
+  padding: 0 2rem;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.read-top-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.read-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #7a7468;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 0.5px solid transparent;
+  background: none;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: background 0.15s, border-color 0.15s;
+}
+.read-back-btn:hover {
+  background: #f0ece4;
+  border-color: #d9d4c8;
+}
+
+.read-doc-title {
+  font-size: 13px;
+  color: #5a5650;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.read-top-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.read-icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 0.5px solid #d9d4c8;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5a5650;
+  font-size: 14px;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: background 0.15s, color 0.15s;
+}
+.read-icon-btn:hover {
+  background: #f0ece4;
+  color: #1a1814;
+}
+.read-icon-btn--active {
+  background: #1a1814;
+  color: #FAF8F4;
+  border-color: #1a1814;
+}
+
+.read-export-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 34px;
+  border-radius: 8px;
+  background: #1a1814;
+  color: #FAF8F4;
+  font-size: 13px;
+  font-weight: 400;
+  border: none;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: opacity 0.15s;
+  letter-spacing: 0.01em;
+}
+.read-export-btn:hover {
+  opacity: 0.8;
+}
+
+/* ── FONT PANEL ── */
+.read-font-panel {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  background: #FAF8F4;
+  border: 0.5px solid #d9d4c8;
+  border-radius: 10px;
+  padding: 1rem;
+  z-index: 200;
+  min-width: 180px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+}
+.read-font-panel__label {
+  font-size: 11px;
+  color: #9a9488;
+  margin-bottom: 10px;
+}
+.read-font-size-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.read-fs-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: 0.5px solid #d9d4c8;
+  background: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3a3830;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+.read-fs-btn:hover {
+  background: #f0ece4;
+}
+.read-fs-val {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  color: #1a1814;
+}
+
+/* ── LAYOUT ── */
+.read-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+/* ── SIDEBAR ── */
+.read-sidebar {
+  padding: 2rem 1.5rem;
+  border-right: 0.5px solid #d9d4c8;
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+}
+
+.read-sidebar__label {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: #9a9488;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.read-toc-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+  margin-bottom: 2px;
+  border-left: 2px solid transparent;
+}
+.read-toc-item:hover {
+  background: #f0ece4;
+}
+.read-toc-item--active {
+  background: #f0ece4;
+  border-left-color: #1a1814;
+}
+.read-toc-num {
+  font-size: 11px;
+  color: #9a9488;
+  min-width: 20px;
+  margin-top: 1px;
+}
+.read-toc-text {
+  font-size: 13px;
+  color: #3a3830;
+  line-height: 1.5;
+}
+.read-toc-item--active .read-toc-text {
+  color: #1a1814;
+  font-weight: 500;
+}
+
+.read-sidebar__divider {
+  height: 0.5px;
+  background: #d9d4c8;
+  margin: 1.5rem 0;
+}
+
+.read-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #9a9488;
+  padding: 4px 0;
+}
+.read-meta-val {
+  color: #5a5650;
+  font-weight: 400;
+  text-align: right;
+  max-width: 120px;
+  word-break: keep-all;
+}
+
+/* ── MAIN CONTENT ── */
+.read-main-content {
+  padding: 3rem 4rem;
+  max-width: 760px;
+}
+
+/* ── COVER ── */
+.read-novel-cover {
+  margin-bottom: 3.5rem;
+  padding-bottom: 3rem;
+  border-bottom: 0.5px solid #d9d4c8;
+}
+
+.read-persona-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: #f0ece4;
+  font-size: 11px;
+  color: #5a5650;
+  letter-spacing: 0.05em;
+  margin-bottom: 1.5rem;
+  border: 0.5px solid #d9d4c8;
+}
+.read-persona-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8b5e3c;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.read-novel-title {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #1a1814;
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+.read-novel-subtitle {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 16px;
+  color: #7a7468;
+  font-weight: 300;
+  margin-bottom: 2rem;
+}
+
+.read-cover-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 12px;
+  color: #9a9488;
+  margin-bottom: 1.5rem;
+}
+.read-cover-meta__div {
+  color: #d9d4c8;
+}
+
+.read-progress-wrap {
+  height: 2px;
+  background: #e8e4dc;
+  border-radius: 2px;
+  margin-bottom: 6px;
+}
+.read-progress-fill {
+  height: 100%;
+  background: #1a1814;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.read-progress-label {
+  font-size: 11px;
+  color: #9a9488;
+  text-align: right;
+}
+
+/* ── CHAPTER ── */
+.read-chapter {
+  margin-bottom: 4rem;
+  scroll-margin-top: 80px;
+}
+
+.read-chapter__header {
+  margin-bottom: 2rem;
+}
+.read-chapter__num {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #9a9488;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.read-chapter__title {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #1a1814;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+.read-chapter__divider {
+  width: 32px;
+  height: 1.5px;
+  background: #1a1814;
+  margin-top: 14px;
+}
+
+.read-chapter__body {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 16px;
+  line-height: 2;
+  color: #2a2820;
+  font-weight: 300;
+  transition: font-size 0.1s;
+}
+.read-chapter__body p {
+  margin-bottom: 1.5em;
+}
+.read-chapter__body p:last-child {
+  margin-bottom: 0;
+}
+
+/* ── END CARD ── */
+.read-end-card {
+  text-align: center;
+  padding: 3rem 2rem;
+  margin-top: 2rem;
+  background: #f5f2ec;
+  border-radius: 12px;
+  border: 0.5px solid #d9d4c8;
+}
+.read-end-symbol {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 18px;
+  color: #9a9488;
+  margin-bottom: 1rem;
+  letter-spacing: 0.2em;
+}
+.read-end-text {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 15px;
+  color: #7a7468;
+  font-weight: 300;
+  margin-bottom: 2rem;
+}
+.read-end-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.read-end-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 18px;
+  height: 38px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: 'Noto Sans KR', sans-serif;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.read-end-btn--primary {
+  background: #1a1814;
+  color: #FAF8F4;
+  border: none;
+}
+.read-end-btn--primary:hover {
+  opacity: 0.8;
+}
+.read-end-btn--secondary {
+  background: none;
+  color: #3a3830;
+  border: 0.5px solid #d9d4c8;
+}
+.read-end-btn--secondary:hover {
+  background: #f0ece4;
+}
+
+/* ── EMPTY STATE ── */
+.read-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 16px;
+  color: #9a9488;
+  font-size: 14px;
+}
+.read-empty button {
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 0.5px solid #d9d4c8;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'Noto Sans KR', sans-serif;
+  color: #5a5650;
+}
+.read-empty button:hover {
+  background: #f0ece4;
+}

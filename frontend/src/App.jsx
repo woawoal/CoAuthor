@@ -5,6 +5,7 @@ import Worldview from './pages/worldview/worldview';
 import Intro from './pages/intro/intro';
 import Chat from './pages/chat/ui';
 import ChatList from './pages/chatlist/chatlist';
+import ReadNovel from './pages/read/read';
 
 function App() {
   useEffect(() => {
@@ -26,6 +27,7 @@ function App() {
         <Route path="/intro" element={<Intro />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/chatlist" element={<ChatList />} />
+        <Route path="/read/:storyId" element={<ReadNovel />} />
       </Routes>
     </Router>
   );

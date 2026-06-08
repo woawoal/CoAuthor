@@ -1,4 +1,4 @@
-const API_BASE_URL = `/api/v1`;
+import { API_BASE_URL } from './apiBase';
 
 export async function sendMessage(chatId, payload) {
   return fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
@@ -40,5 +40,11 @@ export async function generateNovel(sessionId) {
     method: 'POST',
   });
   if (!res.ok) throw new Error('소설 저장 실패');
+  return res.json();
+}
+
+export async function getNovel(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/novel`);
+  if (!res.ok) throw new Error('소설 조회 실패');
   return res.json();
 }
