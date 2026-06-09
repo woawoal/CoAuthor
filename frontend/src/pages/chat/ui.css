@@ -1,8 +1,10 @@
+/* 작가별 테마 풀 적용: 배경/표면/글자/강조 모두 테마 변수.
+   라이트 테마(한여름·김도현)에서도 글자가 잘 보이도록 --text-main/--text-muted 사용. */
 .chat-layout {
   display: flex;
   height: 100vh;
-  background: linear-gradient(160deg, #121214, #1a1a24);
-  color: #fff;
+  background: var(--bg-main);
+  color: var(--text-main);
   font-family: inherit;
 }
 
@@ -20,9 +22,10 @@
   justify-content: space-between;
   gap: 10px;
   padding: 16px 20px;
-  background: rgba(30, 30, 38, 0.8);
+  background: var(--header-bg);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid #6A1B9A44;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
 }
 
 .chat-header__info {
@@ -36,7 +39,7 @@
   height: 38px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1.5px solid #6A1B9A88;
+  border: 1.5px solid color-mix(in srgb, var(--theme-color) 55%, transparent);
   flex-shrink: 0;
 }
 
@@ -49,28 +52,29 @@
 .chat-header__persona {
   font-size: 16px;
   font-weight: 700;
+  color: var(--text-main);
 }
 
 .chat-header__genre {
   font-size: 12px;
-  color: #8E8E93;
+  color: var(--text-muted);
 }
 
 .chat-end-btn {
   flex-shrink: 0;
   background: none;
-  border: 1px solid #6A1B9A;
-  color: #D1C4E9;
+  border: 1px solid var(--theme-color);
+  color: var(--theme-color);
   font-size: 12px;
   font-weight: 600;
   padding: 6px 14px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, color 0.2s;
 }
 
 .chat-end-btn:hover:not(:disabled) {
-  background-color: #6A1B9A;
+  background-color: var(--theme-color);
   color: #fff;
 }
 
@@ -105,7 +109,7 @@
   height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1.5px solid #6A1B9A88;
+  border: 1.5px solid color-mix(in srgb, var(--theme-color) 55%, transparent);
   flex-shrink: 0;
 }
 
@@ -118,12 +122,12 @@
 .badge {
   font-size: 11px;
   font-weight: 600;
-  color: #D1C4E9;
+  color: var(--theme-color);
   white-space: nowrap;
 }
 
 .badge--user {
-  color: #8E8E93;
+  color: var(--text-muted);
   padding-bottom: 4px;
 }
 
@@ -134,17 +138,20 @@
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
+  color: var(--text-main);
 }
 
+/* AI(작가/등장인물) 말풍선 — 테마색 틴트 */
 .bubble--char {
-  background: rgba(106, 27, 154, 0.25);
-  border: 1px solid #6A1B9A66;
+  background: color-mix(in srgb, var(--theme-color) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
   border-bottom-left-radius: 4px;
 }
 
+/* 사용자 말풍선 — 중립 표면(라이트/다크 자동) */
 .bubble--user {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: color-mix(in srgb, var(--text-main) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-main) 16%, transparent);
   border-bottom-right-radius: 4px;
 }
 
@@ -153,27 +160,33 @@
   display: flex;
   gap: 8px;
   padding: 14px 16px;
-  border-top: 1px solid #6A1B9A44;
-  background: rgba(18, 18, 20, 0.9);
+  border-top: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
+  background: var(--header-bg);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .chat-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
   border-radius: 12px;
   padding: 10px 14px;
-  color: #fff;
+  color: var(--text-main);
   font-size: 14px;
   outline: none;
 }
 
+.chat-input::placeholder {
+  color: var(--text-muted);
+}
+
 .chat-input:focus {
-  border-color: #6A1B9A;
+  border-color: var(--theme-color);
 }
 
 .chat-send-btn {
-  background: #6A1B9A;
+  background: var(--theme-color);
   color: #fff;
   border: none;
   border-radius: 12px;
@@ -184,11 +197,11 @@
 }
 
 .chat-send-btn:hover {
-  background: #7B1FA2;
+  background: color-mix(in srgb, var(--theme-color) 85%, #fff);
 }
 
 .chat-send-btn:disabled {
-  background: #4a4a4a;
+  background: color-mix(in srgb, var(--text-main) 25%, transparent);
   cursor: not-allowed;
 }
 
@@ -209,7 +222,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #D1C4E9;
+  background: var(--theme-color);
   animation: typing-bounce 1.2s infinite ease-in-out;
 }
 
@@ -234,10 +247,10 @@
   flex-shrink: 0;
   width: 20px;
   height: 36px;
-  background: #2e2e36;
-  border: 1px solid #555;
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--text-main) 20%, transparent);
   border-radius: 6px;
-  color: #aaa;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -249,9 +262,9 @@
 }
 
 .panel-toggle-btn:hover {
-  background: #6A1B9A55;
-  border-color: #6A1B9A;
-  color: #D1C4E9;
+  background: color-mix(in srgb, var(--theme-color) 33%, transparent);
+  border-color: var(--theme-color);
+  color: var(--theme-color);
 }
 
 /* ── 슬라이드 컨테이너 ── */
@@ -262,18 +275,18 @@
 }
 
 .memo-slide--open {
-  width: 240px;
+  width: 340px;
 }
 
 /* ── 메모 패널 내용 ── */
 .memo-panel {
-  width: 240px;
+  width: 340px;
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border-left: 1px solid #6A1B9A44;
-  background: rgba(18, 18, 20, 0.95);
+  border-left: 1px solid color-mix(in srgb, var(--theme-color) 28%, transparent);
+  background: var(--card-main);
   padding: 16px 14px;
   box-sizing: border-box;
 }
@@ -281,8 +294,10 @@
 .memo-panel__title {
   font-size: 13px;
   font-weight: 700;
-  color: #D1C4E9;
+  color: var(--theme-color);
   margin: 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
+  padding-top: 12px;
 }
 
 .memo-list {
@@ -301,15 +316,15 @@
 }
 
 .memo-item--auto {
-  background: rgba(106, 27, 154, 0.15);
-  border-left: 2px solid #6A1B9A;
-  color: #D1C4E9;
+  background: color-mix(in srgb, var(--theme-color) 15%, transparent);
+  border-left: 2px solid var(--theme-color);
+  color: var(--text-main);
 }
 
 .memo-item--manual {
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 2px solid #555;
-  color: #ccc;
+  background: color-mix(in srgb, var(--text-main) 6%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--text-main) 25%, transparent);
+  color: var(--text-muted);
 }
 
 .memo-add {
@@ -319,23 +334,27 @@
 
 .memo-input {
   flex: 1;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--text-main) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
   border-radius: 8px;
   padding: 6px 10px;
-  color: #fff;
+  color: var(--text-main);
   font-size: 12px;
   outline: none;
   min-width: 0;
 }
 
+.memo-input::placeholder {
+  color: var(--text-muted);
+}
+
 .memo-input:focus {
-  border-color: #6A1B9A;
+  border-color: var(--theme-color);
 }
 
 .memo-add-btn {
-  background: rgba(106, 27, 154, 0.4);
-  border: 1px solid #6A1B9A66;
+  background: color-mix(in srgb, var(--theme-color) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 45%, transparent);
   color: #fff;
   border-radius: 8px;
   padding: 6px 10px;
@@ -346,14 +365,13 @@
 
 /* ── 세계관 요약 ── */
 .world-summary {
-  border-top: 1px solid #6A1B9A33;
-  padding-top: 10px;
+  padding-top: 2px;
 }
 
 .world-summary__toggle {
   background: none;
   border: none;
-  color: #8E8E93;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -365,7 +383,7 @@
 }
 
 .world-summary__toggle:hover {
-  color: #D1C4E9;
+  color: var(--theme-color);
 }
 
 .world-summary__body {
@@ -376,7 +394,7 @@
 
 .world-summary__desc {
   font-size: 12px;
-  color: #D1C4E9;
+  color: var(--text-main);
   margin: 0;
   line-height: 1.5;
 }
@@ -389,7 +407,7 @@
 
 .world-summary__label {
   font-size: 10px;
-  color: #6A1B9A;
+  color: var(--theme-color);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -397,7 +415,7 @@
 
 .world-summary__text {
   font-size: 11px;
-  color: #8E8E93;
+  color: var(--text-muted);
   margin: 0;
   line-height: 1.5;
   max-height: 80px;
@@ -405,18 +423,18 @@
 }
 
 .char-list {
-  border-top: 1px solid #6A1B9A33;
+  border-top: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
   padding-top: 10px;
 }
 
 .char-list__title {
   font-size: 11px;
-  color: #8E8E93;
+  color: var(--text-muted);
   margin: 0 0 6px 0;
 }
 
 .char-item {
   font-size: 12px;
-  color: #D1C4E9;
+  color: var(--text-main);
   padding: 4px 0;
 }

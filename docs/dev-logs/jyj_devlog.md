@@ -3,6 +3,50 @@
 
 ---
 
+## 2026-06-08
+
+### 작업 내역
+
+#### 인프라 / DB 트러블슈팅 (가장 큰 건)
+
+- **DB 커넥션 간헐 끊김(`ConnectionResetError`/`ConnectionDoesNotExistError`) 원인 규명** — Windows 네이티브 **PostgreSQL 17**이 5432를 도커 컨테이너와 **동시 점유** → 연결이 오락가락 리셋되던 것
+  - 해결: 도커 호스트 포트를 **5433**으로 이전(`docker-compose.yml`), `.env` `DATABASE_URL` 5433으로, `migrations/env.py`가 alembic.ini 하드코딩 대신 **`.env`의 DATABASE_URL을 단일 소스로** 쓰도록 수정
+  - `database.py` 엔진에 `pool_pre_ping`/`pool_recycle` 추가(끊긴 커넥션 자동 복원)
+- **빈 DB → `alembic upgrade head`로 테이블 8종 생성**, 프론트용 더미 유저(`00000000-…-001`) 시드
+- **`setup.md` conda 기준 전면 정리** + ngrok 고정 도메인 팀 공유 가이드 / **GitHub CLI 설치**
+- 서버 운영·트러블슈팅 문서 `backend/docs/server-ops.md` 신설 (DB 끊김/컨테이너 종료 진단법)
+
+#### E2E 검증 + 소설 변환 실연결
+
+- **백엔드 E2E 스모크 스크립트(`scripts/e2e_smoke.py`)** 작성 — 유저→세계관→캐릭터→세션→메시지→AI 스트리밍→채팅종료→소설변환 전 체인을 인프로세스(TestClient)로 검증, **9단계 전부 통과**
+- **소설 변환 실연결(F-NV-02)** — `novels.py` 플레이스홀더 → `LLMRouter.generate_novel` 연결 (세계관 주입 + LLM 실패 시 폴백). 실제 소설 문체 변환 확인
+
+#### 프롬프트 정리
+
+- 런타임 프롬프트 3종(세계관/대화/초안)을 `core/personas.py`로 통합, 죽은 `model/prompts/system_prompts.py` 포인터화
+- 이후 동완님이 personas.py를 리치 버전(character 모드·입력형식 규칙·novel_style)으로 보강 → llm_router도 새 시그니처에 맞게 정합 확인
+
+#### 기획 / 문서
+
+- 현황·시나리오 문서 정비: `PROJECT_STATUS.md` 최신화, **`사용자_시나리오.md`**(작가선택→세계관폼→채팅[AI가 대사/나레이션 자동구분]→채팅종료→소설변환, 사용자=주인공 고정) 확정, **`기능정의서.md`/`.html`**(발표용), **`문체모델_연동_설계.md`**, **`프롬프트_설계.md`**
+- **강사님 스크럼 기록 `scrum.md`** 정리(6/1·6/2·6/4·6/5·6/8). 팀 결정 반영: **RAG = "세계관 일관성(장기 기억)"으로 재정의**(추리극 오해 기반 "캐릭터별 비밀정보 분리"는 채택 안 함), 타겟 2030 취미 창작러
+
+### 이슈
+
+- **Gemini 429 쿼터 소진** — 하루 테스트/시연 누적으로 무료 한도 초과. AI 생성이 폴백으로 떨어짐 → 새 키 또는 리셋 대기 필요
+- **`/users/register` 깨짐** — passlib+bcrypt 버전 충돌(`password cannot be longer than 72 bytes`). 인증 후순위라 E2E에선 유저 직접 삽입으로 우회 (`bcrypt==4.0.1` 핀으로 해결 가능)
+- **브랜치 사고** — 옛 로컬 `dev`(origin/dev보다 70커밋 뒤) 체크아웃으로 워킹트리가 옛 상태로 보임 + Vite가 mp4 잠금으로 체크아웃 막힘 → Vite 종료 후 `feature/jyj` 복귀, **작업 무손실**
+
+### 다음 할 일
+
+- **AI 오프닝**: AI 호출(비용) 대신 **세계관 setting 텍스트 기반 무료 템플릿**으로 (프론트가 표시, 백엔드 추가 호출 없음)
+- **메모 → 프롬프트 주입(P0)**: 프론트(가은님) 메모가 현재 mock → 실제 전송 + 백엔드 컨텍스트 합치기 (합의 필요)
+- **소설 footer 작가명**: Session에 `author_id`(persona) 저장 필요 — 현재 작가 선택이 백엔드에 미저장 (footer가 작가명 못 찾음)
+- 전역 에러 핸들링 미들웨어 → **가연님** 담당
+- 작가별 문체 소설 변환 주입(persona_id 연동), RAG(세계관 일관성) 검토
+
+---
+
 ## 2026-06-05
 
 ### 작업 내역
