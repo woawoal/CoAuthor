@@ -16,26 +16,62 @@ const MOCK_MEMOS = [
   { id: 2, type: 'auto', text: '방향 제안 — 골목 끝에 익숙한 실루엣을 등장시킬 것' },
 ];
 
+function buildWorldContext(world, characters) {
+  if (!world) return '';
+  const lines = [];
+  if (world.title)       lines.push(`제목: ${world.title}`);
+  if (world.genre)       lines.push(`장르: ${world.genre}`);
+  if (world.description) lines.push(`배경: ${world.description}`);
+  if (world.setting)     lines.push(`공간: ${world.setting}`);
+  if (world.rules)       lines.push(`규칙: ${world.rules}`);
+  if (characters.length > 0) {
+    lines.push('등장인물:');
+    characters.forEach(c => {
+      const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
+      lines.push(`- ${c.name} (${roleKo})${c.personality ? ': ' + c.personality : ''}`);
+    });
+  }
+  return lines.join('\n');
+}
+
 function formatText(text) {
   return text
+    .replace(/\n?\[STATE:[^\]]*\]/g, '')
     .replace(/"([^"]*)"/g, '\n\n"$1"\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 function Bubble({ msg, persona }) {
+  if (msg.role === 'system') {
+    return <div className="world-info-header">{msg.text}</div>;
+  }
+
   const isUser = msg.role === 'user';
-  const displayText = isUser ? msg.text : formatText(msg.text);
-  const isLoading = !isUser && msg.text === '';
 
   if (!isUser) {
+    // 복원된 대화(text 필드) vs 새 응답(narration/dialogue 필드)
+    const hasStructured = msg.narration !== undefined || msg.dialogue !== undefined;
+    const isLoading = hasStructured
+      ? (!msg.narration && !msg.dialogue)
+      : !msg.text;
+
     return (
       <div className="bubble-row bubble-row--char">
         <img src={persona.image} alt={msg.name} className="bubble-avatar" />
         <div className="bubble-content">
           <span className="badge">{msg.name}</span>
           <div className="bubble bubble--char">
-            {isLoading ? <div className="typing-dots"><span /><span /><span /></div> : displayText}
+            {isLoading ? (
+              <div className="typing-dots"><span /><span /><span /></div>
+            ) : hasStructured ? (
+              <>
+                {msg.narration && <p className="bubble__narration">{msg.narration}</p>}
+                {msg.dialogue  && <p className="bubble__dialogue">"{msg.dialogue}"</p>}
+              </>
+            ) : (
+              formatText(msg.text)
+            )}
           </div>
         </div>
       </div>
@@ -44,7 +80,7 @@ function Bubble({ msg, persona }) {
 
   return (
     <div className="bubble-row bubble-row--user">
-      <div className={`bubble bubble--user`}>{displayText}</div>
+      <div className="bubble bubble--user">{msg.text}</div>
       <span className="badge badge--user">{msg.name}</span>
     </div>
   );
@@ -83,6 +119,25 @@ export default function Chat() {
       .then(([w, chars, dialogues]) => {
         setWorld(w);
         setDbCharacters(chars);
+        // 세계관 요약 헤더 — 신규/이어쓰기 모두 항상 표시
+        const summaryLines = [];
+        if (w.title)       summaryLines.push(`제목     ${w.title}`);
+        if (w.genre)       summaryLines.push(`장르     ${w.genre}`);
+        if (w.description) summaryLines.push(`배경     ${w.description}`);
+        if (w.setting)     summaryLines.push(`공간     ${w.setting}`);
+        if (w.rules)       summaryLines.push(`규칙     ${w.rules}`);
+        if (chars.length > 0) {
+          if (summaryLines.length) summaryLines.push('');
+          summaryLines.push('등장인물');
+          chars.forEach(c => {
+            const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
+            summaryLines.push(`• ${c.name}  (${roleKo})${c.personality ? `  —  ${c.personality}` : ''}`);
+          });
+        }
+        summaryLines.push('');
+        summaryLines.push('───────────────────────────────');
+        const summaryMsg = { id: `summary_${Date.now()}`, role: 'system', text: summaryLines.join('\n') };
+
         if (dialogues.length > 0) {
           const restored = dialogues.map(d => ({
             id: d.id,
@@ -90,7 +145,9 @@ export default function Chat() {
             name: d.speaker_type === 'user' ? '나' : persona.displayName,
             text: d.content,
           }));
-          setMessages(restored);
+          setMessages([summaryMsg, ...restored]);
+        } else {
+          setMessages([summaryMsg]);
         }
       })
       .catch(console.error);
@@ -113,12 +170,17 @@ export default function Chat() {
     setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: persona.displayName, text: '' }]);
     setStreaming(true);
 
+    const worldContext = buildWorldContext(world, dbCharacters);
     esRef.current = connectChatStream(
       chatId,
-      { content: userText, character_id: persona.characterId, mode: 'author' },
-      (data) => {
+      { content: userText, character_id: persona.characterId, mode: 'author', world_context: worldContext },
+      ({ narration, dialogue }) => {
         setMessages(prev =>
-          prev.map(m => m.id === streamMsgId ? { ...m, text: m.text + data.text } : m)
+          prev.map(m =>
+            m.id === streamMsgId
+              ? { ...m, narration, dialogue }
+              : m
+          )
         );
       },
       () => setStreaming(false),

@@ -43,14 +43,41 @@
 - 팀원 변경사항 반영: 작가 데이터 백엔드 API 연동, worldview 스텝 대화 형식 UI, 카드 호버 전체화면 효과
 - 충돌 해결: main.jsx(AbortError 수정 유지), worldview.jsx(chatId: sessionId navigate 유지)
 
+**dev 브랜치 재최신화 (2차)**
+- `GIT_LFS_SKIP_SMUDGE=1` 설정 후 `feature/pge ← origin/dev` 머지 (LFS hang 방지)
+- stash → merge → stash pop 순서로 진행, 충돌 없이 fast-forward 완료
+
+**소설 읽기 페이지 (`/read/:storyId`) 구현**
+- HTML 목업 기반으로 React 페이지 신규 생성 (`pages/read/read.jsx`, `read.css`)
+- 기능: 사이드바 목차(TOC), 스크롤 진행률 바, 폰트 크기 조절(14-20px), 북마크 토글, txt 내보내기
+- `parseChapters()`: 본문을 `\n\n` 기준 5단락씩 챕터로 분할, 자동 챕터 제목 생성
+- `chatApi.js`에 `getNovel(sessionId)` 추가 (`GET /sessions/{id}/novel`)
+- `chatlist.jsx`에 완료 세션 "읽기" 버튼 추가, `App.jsx`에 `/read/:storyId` 라우트 등록
+
+**author_id 버그 수정 — 항상 백야가 표시되는 문제**
+- 원인: `chatlist.handleResume`이 `authorId`를 navigate state에 미포함 → `AUTHOR_MAP[undefined]` → 기본값 백야
+- 해결: `sessions` 테이블에 `author_id INTEGER` 컬럼 추가, 세션 생성 시 저장, 이어쓰기 진입 시 state로 전달
+- Alembic 마이그레이션 `e1f2a3b4c5d6` 생성 및 적용 (`alembic upgrade head`)
+- `worldviewApi.createWorldview`가 `authorId` 파라미터 받아 session POST body에 포함하도록 수정
+- `schemas/session.py`: `SessionCreate` / `SessionResponse` / `SessionListItem`에 `author_id` 필드 추가
+
+**이어쓰기 대화 이력 복원**
+- `worldviewApi.js`에 `getDialogues(sessionId)` 추가 (`GET /sessions/{id}/dialogues/`)
+- `chat/ui.jsx` 세션 로딩 useEffect에서 dialogues 조회 후 `messages` 초기값으로 복원
+- `DialogueResponse.speaker_type` 기준으로 `user` / `character` 역할 분류
+
 ### 이슈 / 막힌 점
 - **Gemini API 키 오류**: `.env` 키 형식 오류 → 신규 발급으로 해결
 - **config.py `.env` 경로**: uvicorn을 프로젝트 루트에서 실행하면 `backend/.env`를 못 찾는 문제 → 절대경로로 수정
 - **worldviewApi.js 절대경로 CORS**: ngrok 원격 서버 전환 시 직접 요청으로 CORS 차단 → 상대경로로 통일
-- **이어쓰기 채팅 이력 복원**: 미구현 (TODO) — session_id로 진입은 되나 이전 대화가 표시 안 됨
+- **채팅 페이지 항상 백야 표시**: `handleResume`에서 `authorId` 미전달 → `author_id` 컬럼 추가 + navigate state 전달로 해결
+- **선택적 커밋**: `session.py`에 완성된 변경(author_id)과 미완성 변경(current_state, story_summary)이 혼재 → 미완성 부분 임시 제거 후 커밋, 재복원하는 방식으로 처리
 
 ### 다음 할 일
-- 이어쓰기 시 이전 대화 이력 복원 (`GET /sessions/{id}/dialogues` 조회 후 messages 초기값 설정)
+- Redis → DB 동기화 구현 (미완성 로컬 코드 존재)
+  - `chats.py`: `get_context()` DB fallback, `sync_to_db()` (current_state/story_summary 백업)
+  - `session.py` 모델에 `current_state`, `story_summary` 컬럼 추가 (마이그레이션 `d4e5f6a7b8c9` 포함)
+  - state 자동감지 방법 결정 필요 (AI 응답에 `[STATE: ...]` 태그 삽입 방식 검토 중)
 - Gemini 응답 기반 소설 변환 구현 (현재 대화 로그 원문 저장)
 
 ---

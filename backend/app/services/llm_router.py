@@ -3,8 +3,6 @@ import json
 import logging
 from typing import AsyncGenerator
 
-import google.generativeai as genai
-
 from app.core.config import settings
 from app.core.personas import PERSONA_PROMPTS, get_author_prompt, build_novel_system
 from app.models.character import Character
@@ -12,16 +10,24 @@ from app.services.cache import CacheService
 
 logger = logging.getLogger(__name__)
 
-# ── Gemini 초기화 ──────────────────────────────────────────────
-genai.configure(api_key=settings.GEMINI_API_KEY)
+# ── LLM 초기화 ──────────────────────────────────────────────────
+if settings.LLM_PROVIDER == "openai":
+    from openai import AsyncOpenAI
+    _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    PRIMARY_MODEL  = "gpt-4o"
+    FALLBACK_MODEL = "gpt-4o-mini"
+else:
+    import google.generativeai as genai
+    genai.configure(api_key=settings.GEMINI_API_KEY)
+    PRIMARY_MODEL  = "gemini-2.5-flash"
+    FALLBACK_MODEL = "gemini-1.5-flash"
 
-PRIMARY_MODEL  = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-1.5-flash"
-
-# Gemini 2025 기준 1M 토큰당 가격 (USD)
+# 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
     "gemini-2.5-flash": {"input": 0.15,  "output": 0.60},
     "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
+    "gpt-4o":           {"input": 2.50,  "output": 10.00},
+    "gpt-4o-mini":      {"input": 0.15,  "output": 0.60},
 }
 
 _COACHING_SUFFIX = (
@@ -56,7 +62,17 @@ def _to_gemini_contents(history: list[dict], user_message: str) -> list[dict]:
     return contents
 
 
-def _make_model(system_prompt: str, model_name: str) -> genai.GenerativeModel:
+def _gemini_contents_to_openai(system_prompt: str, contents: list[dict]) -> list[dict]:
+    """Gemini contents 포맷을 OpenAI messages 포맷으로 변환."""
+    messages = [{"role": "system", "content": system_prompt}]
+    for c in contents:
+        role = "user" if c.get("role") == "user" else "assistant"
+        text = c["parts"][0]["text"] if c.get("parts") else ""
+        messages.append({"role": role, "content": text})
+    return messages
+
+
+def _make_model(system_prompt: str, model_name: str) -> "genai.GenerativeModel":
     return genai.GenerativeModel(
         model_name=model_name,
         system_instruction=system_prompt,
@@ -64,7 +80,17 @@ def _make_model(system_prompt: str, model_name: str) -> genai.GenerativeModel:
 
 
 async def _generate(system_prompt: str, contents: list[dict]) -> str:
-    """단발성 Gemini 호출. PRIMARY → FALLBACK 자동 전환."""
+    """단발성 LLM 호출."""
+    if settings.LLM_PROVIDER == "openai":
+        messages = _gemini_contents_to_openai(system_prompt, contents)
+        response = await _openai_client.chat.completions.create(
+            model=PRIMARY_MODEL,
+            messages=messages,
+            stream=False,
+        )
+        return response.choices[0].message.content or ""
+
+    # Gemini: PRIMARY → FALLBACK 자동 전환
     for model_id in (PRIMARY_MODEL, FALLBACK_MODEL):
         try:
             model = _make_model(system_prompt, model_id)
@@ -82,7 +108,23 @@ async def _stream_gemini(
     contents: list[dict],
     usage_out: list | None = None,
 ) -> AsyncGenerator[str, None]:
-    """스트리밍 Gemini 호출. 완료 후 usage_out에 토큰 정보 기록."""
+    """스트리밍 LLM 호출. 완료 후 usage_out에 토큰 정보 기록."""
+    if settings.LLM_PROVIDER == "openai":
+        messages = _gemini_contents_to_openai(system_prompt, contents)
+        stream = await _openai_client.chat.completions.create(
+            model=PRIMARY_MODEL,
+            messages=messages,
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content or ""
+            if delta:
+                yield delta
+        if usage_out is not None:
+            usage_out.append({"model": PRIMARY_MODEL, "prompt_tokens": 0, "completion_tokens": 0})
+        return
+
+    # Gemini: PRIMARY → FALLBACK 자동 전환
     for model_id in (PRIMARY_MODEL, FALLBACK_MODEL):
         try:
             model = _make_model(system_prompt, model_id)
@@ -93,7 +135,6 @@ async def _stream_gemini(
                 if chunk.text:
                     yield chunk.text
 
-            # 스트림 완료 후 토큰 사용량 수집
             if usage_out is not None:
                 try:
                     meta = response.usage_metadata
@@ -145,7 +186,6 @@ class LLMRouter:
 
         yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
 
-        # 엔드포인트가 수신 후 ApiLog 저장용 (클라이언트에 전달 안 됨)
         if usage_out:
             u = usage_out[0]
             log_payload = json.dumps({
@@ -168,7 +208,7 @@ class LLMRouter:
     ) -> AsyncGenerator[str, None]:
         """
         /api/chats/{id}/stream 에서 호출.
-        캐시 히트 시 즉시 반환, 미스 시 Gemini 스트리밍.
+        캐시 히트 시 즉시 반환, 미스 시 LLM 스트리밍.
         """
         history = history or []
         cache_key = {"persona_id": persona_id, "text": text, "mode": mode}

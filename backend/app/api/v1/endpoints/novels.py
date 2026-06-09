@@ -36,8 +36,9 @@ async def generate_novel(
         raise HTTPException(status_code=400, detail="완료된 세션만 소설로 변환할 수 있습니다.")
 
     existing = await db.execute(select(Novel).where(Novel.session_id == session_id))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="이미 소설 초안이 존재합니다.")
+    existing_novel = existing.scalar_one_or_none()
+    if existing_novel:
+        return existing_novel
 
     dialogues_result = await db.execute(
         select(Dialogue)

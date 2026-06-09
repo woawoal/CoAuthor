@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     AI_API_KEY: str = ""
     AI_API_BASE_URL: str = ""
     GEMINI_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    LLM_PROVIDER: str = "gemini"  # "gemini" | "openai"
 
     # CORS
     ALLOWED_ORIGINS: List[str] = ["*"]

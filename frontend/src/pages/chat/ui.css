@@ -420,3 +420,30 @@
   color: #D1C4E9;
   padding: 4px 0;
 }
+
+/* ── narration / dialogue 분리 렌더링 ── */
+.bubble__narration {
+  margin: 0 0 8px 0;
+  color: #c8c8d8;
+  font-style: italic;
+  line-height: 1.8;
+}
+
+.bubble__dialogue {
+  margin: 0;
+  color: #ffffff;
+  font-weight: 500;
+  line-height: 1.8;
+}
+
+/* ── 세계관 정보 헤더 (채팅 최초 진입 시) ── */
+.world-info-header {
+  padding: 16px 24px 8px;
+  color: #55556a;
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  text-align: center;
+  letter-spacing: 0.3px;
+  user-select: none;
+}
