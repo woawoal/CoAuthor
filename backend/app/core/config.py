@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     AI_API_KEY: str = ""
     AI_API_BASE_URL: str = ""
     GEMINI_API_KEY: str = ""
+    # 모델은 .env로 교체 가능 (무료 쿼터는 모델당 20req/day → 소진 시 미사용 모델로 스왑)
+    GEMINI_MODEL: str = "gemini-2.0-flash-lite"
+    GEMINI_FALLBACK_MODEL: str = "gemini-2.0-flash"
 
     # CORS
     ALLOWED_ORIGINS: List[str] = ["*"]

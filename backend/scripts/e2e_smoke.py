@@ -79,12 +79,15 @@ with TestClient(app) as c:
     })
     show("3b", "조연 생성", r2)
 
-    # 4) 세션(채팅) 시작 — session_id 가 곧 chat_id
+    # 4) 세션(채팅) 시작 — session_id 가 곧 chat_id. author_id=3(한여름) 저장 검증
     r = c.post("/api/v1/sessions/", json={
         "world_id": world_id, "user_id": user_id, "protagonist_id": protagonist_id,
+        "author_id": 3,
     })
     show(4, "세션(채팅) 시작", r)
     session_id = r.json()["id"]
+    returned_author = r.json().get("author_id")
+    print(f"[4b] author_id 저장/반환: {ok if returned_author == 3 else ng} (보냄=3, 받음={returned_author})")
 
     # 5) 메시지 전송
     payload = {

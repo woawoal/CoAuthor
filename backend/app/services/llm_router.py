@@ -15,13 +15,14 @@ logger = logging.getLogger(__name__)
 # ── Gemini 초기화 ──────────────────────────────────────────────
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
-PRIMARY_MODEL  = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-2.0-flash"  # 1.5-flash 단종(404) → 2.0-flash. primary와 별도 quota 버킷
+PRIMARY_MODEL  = settings.GEMINI_MODEL          # .env로 교체 가능
+FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
 
 # Gemini 2025 기준 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
-    "gemini-2.5-flash": {"input": 0.15,  "output": 0.60},
-    "gemini-2.0-flash": {"input": 0.10,  "output": 0.40},
+    "gemini-2.5-flash":      {"input": 0.15,  "output": 0.60},
+    "gemini-2.0-flash":      {"input": 0.10,  "output": 0.40},
+    "gemini-2.0-flash-lite": {"input": 0.075, "output": 0.30},
 }
 
 _COACHING_SUFFIX = (
@@ -270,13 +271,14 @@ class LLMRouter:
         self,
         dialogue_history: list[dict],
         world_description: str = "",
+        persona_id: str = "",
     ) -> str:
-        """대화 히스토리를 소설 한 장면으로 변환."""
+        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로."""
         if not dialogue_history:
             return ""
 
-        # persona 미상(세션에 작가 정보 없음) → 작가 중립 폴백. world_description은 world_context 자리로.
-        system_prompt = build_novel_system("", world_description)
+        # persona_id 없으면 build_novel_system이 작가 중립 폴백으로 처리
+        system_prompt = build_novel_system(persona_id, world_description)
 
         block = "\n".join(
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"

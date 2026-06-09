@@ -207,7 +207,7 @@ async def stream_response(
                 user_input=content,
             )
 
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel(settings.GEMINI_MODEL)
             response = model.generate_content(full_prompt, stream=True)
 
             seq = 1
@@ -254,10 +254,10 @@ async def stream_response(
                         api_log = ApiLog(
                             session_id=session_uuid,
                             endpoint=f"GET /chats/{chat_id}/stream",
-                            model_used="gemini-2.5-flash",
+                            model_used=settings.GEMINI_MODEL,
                             prompt_tokens=prompt_tokens,
                             completion_tokens=completion_tokens,
-                            total_cost=calc_cost("gemini-2.5-flash", prompt_tokens, completion_tokens),
+                            total_cost=calc_cost(settings.GEMINI_MODEL, prompt_tokens, completion_tokens),
                         )
                         save_session.add(api_log)
                         await save_session.commit()
