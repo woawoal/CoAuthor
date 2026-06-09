@@ -279,6 +279,7 @@ async def stream_response(
     character_id: str = "baekya",
     world_context: str = "",
     mode: str = "author",
+    use_rag: bool = True,
     db: AsyncSession = Depends(get_db),
 ):
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
@@ -291,14 +292,16 @@ async def stream_response(
         world_context = await _build_world_context(chat_id, db)
 
     # RAG: 현재 입력과 관련된 '오래된' 과거 대화를 검색해 보강 (요약이 놓친 구체 사건)
+    # use_rag=false 면 검색을 건너뛴다(시연/디버깅용 대조).
     relevant_memories: list[str] = []
-    try:
-        relevant_memories = await memory.retrieve_relevant(chat_id, db, content)
-        if relevant_memories:
-            logger.info("관련 기억 %d건 검색 - chat_id=%s: %s",
-                        len(relevant_memories), chat_id, [m[:30] for m in relevant_memories])
-    except Exception as e:
-        logger.warning("기억 검색 실패(보강 생략): %s", e)
+    if use_rag:
+        try:
+            relevant_memories = await memory.retrieve_relevant(chat_id, db, content)
+            if relevant_memories:
+                logger.info("관련 기억 %d건 검색 - chat_id=%s: %s",
+                            len(relevant_memories), chat_id, [m[:30] for m in relevant_memories])
+        except Exception as e:
+            logger.warning("기억 검색 실패(보강 생략): %s", e)
 
     async def generate():
         try:
@@ -408,7 +411,8 @@ async def stream_response(
                     logger.warning("요약 갱신 실패: %s", e)
 
             reply_payload = json.dumps(
-                {"messageId": message_id, "narration": narration, "dialogue": dialogue},
+                {"messageId": message_id, "narration": narration, "dialogue": dialogue,
+                 "memories": relevant_memories},
                 ensure_ascii=False,
             )
             yield f"event: reply\ndata: {reply_payload}\n\n"
