@@ -34,10 +34,6 @@ export default function ChatList() {
     navigate(`/read/${session.id}`);
   };
 
-  const handleRead = (session) => {
-    navigate(`/read/${session.id}`);
-  };
-
   return (
     <div className="chatlist-container">
       <div className="chatlist-wrapper">

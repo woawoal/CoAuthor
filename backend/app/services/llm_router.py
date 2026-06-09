@@ -3,25 +3,22 @@ import json
 import logging
 from typing import AsyncGenerator
 
-import google.generativeai as genai
-
 from app.core.config import settings
 from app.core.personas import PERSONA_PROMPTS, get_author_prompt, build_novel_system
 from app.models.character import Character
 from app.services.cache import CacheService
+from app.services import llm  # 엔진 추상화 (Gemini ↔ Groq + 폴백)
 
 logger = logging.getLogger(__name__)
 
-# ── Gemini 초기화 ──────────────────────────────────────────────
-genai.configure(api_key=settings.GEMINI_API_KEY)
-
-PRIMARY_MODEL  = "gemini-2.5-flash"
-FALLBACK_MODEL = "gemini-2.0-flash"  # 1.5-flash 단종(404) → 2.0-flash. primary와 별도 quota 버킷
+PRIMARY_MODEL  = settings.GEMINI_MODEL          # .env로 교체 가능
+FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
 
 # Gemini 2025 기준 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
-    "gemini-2.5-flash": {"input": 0.15,  "output": 0.60},
-    "gemini-2.0-flash": {"input": 0.10,  "output": 0.40},
+    "gemini-2.5-flash":      {"input": 0.15,  "output": 0.60},
+    "gemini-2.0-flash":      {"input": 0.10,  "output": 0.40},
+    "gemini-2.0-flash-lite": {"input": 0.075, "output": 0.30},
 }
 
 _COACHING_SUFFIX = (
@@ -56,25 +53,9 @@ def _to_gemini_contents(history: list[dict], user_message: str) -> list[dict]:
     return contents
 
 
-def _make_model(system_prompt: str, model_name: str) -> genai.GenerativeModel:
-    return genai.GenerativeModel(
-        model_name=model_name,
-        system_instruction=system_prompt,
-    )
-
-
 async def _generate(system_prompt: str, contents: list[dict]) -> str:
-    """단발성 Gemini 호출. PRIMARY → FALLBACK 자동 전환."""
-    for model_id in (PRIMARY_MODEL, FALLBACK_MODEL):
-        try:
-            model = _make_model(system_prompt, model_id)
-            resp = await asyncio.to_thread(model.generate_content, contents)
-            return resp.text
-        except Exception as e:
-            logger.warning("[Gemini:%s] 실패: %s", model_id, e)
-            if model_id == FALLBACK_MODEL:
-                raise
-    raise RuntimeError("Gemini 호출 전체 실패")
+    """단발성 호출 — 엔진(Gemini/Groq) + 폴백은 llm 모듈이 처리."""
+    return await llm.generate(system_prompt, contents)
 
 
 async def _stream_gemini(
@@ -82,33 +63,9 @@ async def _stream_gemini(
     contents: list[dict],
     usage_out: list | None = None,
 ) -> AsyncGenerator[str, None]:
-    """스트리밍 Gemini 호출. 완료 후 usage_out에 토큰 정보 기록."""
-    for model_id in (PRIMARY_MODEL, FALLBACK_MODEL):
-        try:
-            model = _make_model(system_prompt, model_id)
-            response = await asyncio.to_thread(
-                lambda m=model: m.generate_content(contents, stream=True)
-            )
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
-
-            # 스트림 완료 후 토큰 사용량 수집
-            if usage_out is not None:
-                try:
-                    meta = response.usage_metadata
-                    usage_out.append({
-                        "model": model_id,
-                        "prompt_tokens": getattr(meta, "prompt_token_count", 0) or 0,
-                        "completion_tokens": getattr(meta, "candidates_token_count", 0) or 0,
-                    })
-                except Exception:
-                    usage_out.append({"model": model_id, "prompt_tokens": 0, "completion_tokens": 0})
-            return
-        except Exception as e:
-            logger.warning("[stream_gemini:%s] 실패: %s", model_id, e)
-            if model_id == FALLBACK_MODEL:
-                raise
+    """스트리밍 호출 — 엔진/폴백은 llm 모듈이 처리. usage_out에 토큰 기록."""
+    async for text in llm.stream(system_prompt, contents, usage_out):
+        yield text
 
 
 class LLMRouter:
@@ -270,13 +227,14 @@ class LLMRouter:
         self,
         dialogue_history: list[dict],
         world_description: str = "",
+        persona_id: str = "",
     ) -> str:
-        """대화 히스토리를 소설 한 장면으로 변환."""
+        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로."""
         if not dialogue_history:
             return ""
 
-        # persona 미상(세션에 작가 정보 없음) → 작가 중립 폴백. world_description은 world_context 자리로.
-        system_prompt = build_novel_system("", world_description)
+        # persona_id 없으면 build_novel_system이 작가 중립 폴백으로 처리
+        system_prompt = build_novel_system(persona_id, world_description)
 
         block = "\n".join(
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"
