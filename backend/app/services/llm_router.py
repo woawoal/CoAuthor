@@ -276,7 +276,12 @@ class LLMRouter:
                 examples = await style.retrieve_examples(persona_id, block, k=3)
                 if examples:
                     ex = "\n".join(f"- {e}" for e in examples)
-                    system_prompt += f"\n\n[이 작가의 문체 예시 — 어조·리듬·호흡을 참고하되 베끼지는 말 것]\n{ex}"
+                    system_prompt += (
+                        "\n\n[이 작가의 문체 예시]\n"
+                        "아래는 어조·리듬·호흡·시선 처리를 보여주는 참고용 문장이다. "
+                        "문장·표현·소재를 베끼지 말고, 목소리만 닮게 이 장면에 맞는 새 문장을 써라.\n"
+                        f"{ex}"
+                    )
             except Exception as e:
                 logger.warning("문체 예시 검색 실패(건너뜀): %s", e)
         contents = [{
