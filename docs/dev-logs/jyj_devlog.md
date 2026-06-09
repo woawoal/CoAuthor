@@ -5,9 +5,19 @@
 
 ## 2026-06-09
 
+> 강사님 피드백("LLM 활용이 핵심" → 16:00 "RAG 없으면 차별점 없다") 대응에 집중한 날.
+> 멀티엔진 LLM 파이프라인 → RAG 3종(기억·검수·문체) → 백엔드 백로그 일괄 → Neon 전환까지.
+
 ### 작업 내역
 
-#### RAG 3종 구축 (핵심 차별점 — "ChatGPT와 뭐가 다르냐"의 답)
+#### 1. LLM 멀티엔진 파이프라인 (오전 — 가장 큰 건)
+
+- **Groq 엔진 추가 + 엔진 토글** — `LLM_PROVIDER`로 Groq↔Gemini 전환, 모델/키 폴백 추상화(`services/llm.py`). Gemini 무료 한도 소진 문제를 Groq(넉넉한 무료)로 우회
+- **정교한 분기 파이프라인** — 프로바이더 체인 · n키 순환 · 429(쿼터) 분기 · 인증/일시오류 분류 · 쿨다운 · 지수 백오프. "팀 핵심이 LLM 성능"이라는 요구에 대응
+- **OpenAI(GPT) 프로바이더 추가 + 크로스 프로바이더 폴백** — `.env` 한 줄로 Groq↔Gemini↔GPT 전환. `.env.example` 팀 가이드 정비
+- **author_id → 작가 persona 문체 연동** — 세션의 `author_id`(1~4)를 persona로 매핑해 소설 변환을 작가 문체로(`novels.py`), Gemini 모델명도 `.env` 설정화
+
+#### 2. RAG 3종 구축 (핵심 차별점 — "ChatGPT와 뭐가 다르냐"의 답)
 
 - **세계관 일관성 RAG (F-CH-10)** — 강사님 16:00 "RAG 없으면 차별점 없다"에 정면 대응
   - 누적 요약: `services/memory.py` — N턴마다 이전 요약+최근 대화만 증분 요약해 `story_summary`에 누적(토큰 절약)
@@ -16,13 +26,13 @@
 - **설정 일관성 검수 (F-QC-01)** — `services/consistency.py`. 확립된 설정·기억과 새 응답을 LLM(JSON 모드)으로 대조해 모순 탐지. **형사↔의사 모순 탐지 / 정상 통과** 검증
 - **문체 RAG (F-NV-08)** — `services/style.py` + `data/style_samples.json`(작가당 12개). 장면과 가까운 작가 문체 예시를 few-shot으로 주입. `use_style` 토글 + 3회 평균 채점 시 **ON > OFF(+1.0점)** 검증
 
-#### 채팅 응답 안정화 (가은님 구조화 버전 머지 대응)
+#### 3. 채팅 응답 안정화 (가은님 구조화 버전 #49 머지 대응)
 
-- `event:token` 스트리밍 → **narration/dialogue JSON 구조화**(가은님 #49)로 정합. `llm.generate(json_mode=True)`로 **유효 JSON 강제**(Groq `response_format` / Gemini `response_mime_type`)
+- `event:token` 스트리밍 → **narration/dialogue JSON 구조화**로 정합. `llm.generate(json_mode=True)`로 **유효 JSON 강제**(Groq `response_format` / Gemini `response_mime_type`)
 - `parse_ai_response` 견고화 — 깨진 JSON·`null` 값 폴백 처리(슬라이싱 크래시 수정)
 - **출력 한국어 강제** 프롬프트 추가 (Groq Llama 한자/일본어 누수 완화)
 
-#### 백엔드 기능 (jyj 백로그 일괄)
+#### 4. 백엔드 기능 (jyj 백로그 일괄)
 
 - **F-CH-11** 작가 메모 백엔드 — `POST /chats/{id}/memo` → 프롬프트 `[작가 메모]` 주입 (+ 조회/삭제)
 - **F-AS-01/03** 어시스턴트 — `GET /chats/{id}/suggest` 다음 전개·막힘 도움 3개 제안
@@ -30,16 +40,24 @@
 - **F-SY-10** 토큰 절약 — 프롬프트 verbatim 대화를 최근 10턴으로 제한(그 이전은 요약+RAG가 커버)
 - **F-EV-06** 근거 리포트 측정 — `services/evaluate.py`(LLM-judge 4축 채점) + `scripts/evidence_report.py`(맨손 vs 우리)
 
-#### 시연 · 문서
+#### 5. 프론트엔드 (테마·메모 패널)
+
+- **작가별 테마 전 화면 적용** — 채팅(`chat/ui.css`)·소설 목록(`chatlist.css`)·소설 읽기(`read.css`)를 `data-author` + CSS 변수(`--theme-color`/`--bg-main`/`--text-main` 등 + `color-mix`)로 통일. 라이트/다크 자동, 글자 가독성 확보
+- **채팅 메모 패널 재배치/확대** — 세계관 요약·등장인물을 위로, 작가 메모를 아래로. 폭 340px, 입력창 높이를 채팅 입력과 정렬
+- `chatlist.jsx` 중복 `handleRead` 함수 제거(Vite 파스 에러 수정)
+
+#### 6. 시연 · 문서
 
 - 시연 데모 3종: `scripts/rag_demo.py`(기억) · `consistency_demo.py`(검수) · `style_demo.py`(문체 off/on 평균)
 - **`docs/rag/성능지표.md`** — RAG 3종 켰을 때/껐을 때 실측 결과 (발표 근거)
-- `기능정의서.md`/`업무분담.md` 상태 갱신, **scrum 16:00 강사님 피드백** 기록
+- **`docs/scrum/`** — 6/9 팀 스크럼 정리 + **16:00 강사님 피드백**(RAG 필수·어시스턴트·토큰 분석) 기록
+- **기획 문서 현행화** — `PROJECT_STATUS.md`·`기능정의서.md`/`.html`(Groq엔진·소설변환/읽기·author_id 완료 반영), **`업무분담.md` 신설/분리**(팀 공유용)
 - **서비스 방향 확정**: "진지한 창작 도구(척추) + 엔터테인먼트(껍데기)", 다리 = "캐릭터랑 놀듯 대화 → 진짜 내 소설"
+- 어제치 **`2026-06-08` 개발일지** 작성
 
-#### 인프라
+#### 7. 인프라
 
-- **Neon 클라우드 DB 전환** — `.env` `DATABASE_URL`을 Neon으로(로컬은 주석 보존). `database.py _prepare_db_url`이 `postgresql://...?sslmode=require` → **asyncpg + SSL 자동 변환**
+- **Neon 클라우드 DB 전환**(가연님 셋업) — `.env` `DATABASE_URL`을 Neon으로(로컬은 주석 보존). `database.py _prepare_db_url`이 `postgresql://...?sslmode=require` → **asyncpg + SSL 자동 변환**
 - `psycopg2-binary` 설치 (alembic 마이그레이션 sync 경로용)
 
 ### 이슈
