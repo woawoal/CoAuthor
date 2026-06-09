@@ -43,6 +43,10 @@ def _groq_keys() -> list[str]:
     return _dedup(_csv(settings.GROQ_API_KEYS) + [settings.GROQ_API_KEY])
 
 
+def _openai_keys() -> list[str]:
+    return _dedup(_csv(settings.OPENAI_API_KEYS) + [settings.OPENAI_API_KEY])
+
+
 def _provider_chain() -> list[str]:
     return _csv(settings.LLM_PROVIDER_CHAIN) or _csv(settings.LLM_PROVIDER) or ["gemini"]
 
@@ -53,7 +57,7 @@ MAX_TRANSIENT_RETRY = settings.LLM_MAX_TRANSIENT_RETRY
 # 런타임 상태 (프로세스 메모리)
 _cooldown: dict[tuple, float] = {}   # (provider, model, key) → 해제 시각(monotonic)
 _bad_keys: set[str] = set()          # 인증 실패한 키 (영구 스킵)
-_groq_clients: dict[str, object] = {}
+_oai_clients: dict[tuple, object] = {}   # (provider, key) → OpenAI호환 클라이언트
 
 logger.info("LLM 파이프라인: chain=%s | gemini키=%d | groq키=%d",
             _provider_chain(), len(_gemini_keys()), len(_groq_keys()))
@@ -70,6 +74,9 @@ def _candidates() -> list[tuple]:
         elif prov == "groq":
             models = [m for m in (settings.GROQ_MODEL, settings.GROQ_FALLBACK_MODEL) if m]
             keys = _groq_keys() or [settings.GROQ_API_KEY]
+        elif prov == "openai":
+            models = [m for m in (settings.OPENAI_MODEL, settings.OPENAI_FALLBACK_MODEL) if m]
+            keys = _openai_keys() or [settings.OPENAI_API_KEY]
         else:
             continue
         for m in models:
@@ -117,11 +124,17 @@ def _to_openai_messages(system_prompt: str, contents: list[dict]) -> list[dict]:
     return msgs
 
 
-def _groq_client(key: str):
-    if key not in _groq_clients:
-        from groq import Groq
-        _groq_clients[key] = Groq(api_key=key)
-    return _groq_clients[key]
+def _oai_client(prov: str, key: str):
+    """OpenAI 호환 클라이언트(groq/openai). 둘 다 chat.completions API 동일."""
+    ck = (prov, key)
+    if ck not in _oai_clients:
+        if prov == "openai":
+            from openai import OpenAI
+            _oai_clients[ck] = OpenAI(api_key=key)
+        else:  # groq
+            from groq import Groq
+            _oai_clients[ck] = Groq(api_key=key)
+    return _oai_clients[ck]
 
 
 def _gemini_model(model: str, key: str, system_prompt: str):
@@ -132,8 +145,8 @@ def _gemini_model(model: str, key: str, system_prompt: str):
 
 # ── 단발 호출(동기) ──────────────────────────────────────────────
 def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: list[dict]) -> tuple[str, dict]:
-    if prov == "groq":
-        resp = _groq_client(key).chat.completions.create(
+    if prov in ("groq", "openai"):
+        resp = _oai_client(prov, key).chat.completions.create(
             model=model, messages=_to_openai_messages(system_prompt, contents)
         )
         u = getattr(resp, "usage", None)
@@ -153,8 +166,8 @@ def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: lis
 # ── 스트림 호출(동기 제너레이터) ─────────────────────────────────
 def _stream_once(prov: str, model: str, key: str, system_prompt: str, contents: list[dict], usage_box: list):
     """텍스트 청크를 yield. 완료 후 usage_box에 사용량 기록. 429 등은 첫 next()에서 raise."""
-    if prov == "groq":
-        s = _groq_client(key).chat.completions.create(
+    if prov in ("groq", "openai"):
+        s = _oai_client(prov, key).chat.completions.create(
             model=model, messages=_to_openai_messages(system_prompt, contents), stream=True
         )
         pt = ct = 0

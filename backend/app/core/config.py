@@ -34,10 +34,16 @@ class Settings(BaseSettings):
     GOOGLE_CLOUD_PROJECT: str = ""
     GOOGLE_CLOUD_LOCATION: str = "us-central1"
 
-    # Groq (무료 한도 넉넉) — LLM_PROVIDER=groq 일 때 사용
+    # Groq (무료 한도 넉넉)
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GROQ_FALLBACK_MODEL: str = "llama-3.1-8b-instant"
+
+    # OpenAI (GPT) — 유료·안정적. 체인에 openai 추가 시 사용
+    OPENAI_API_KEY: str = ""
+    OPENAI_API_KEYS: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_FALLBACK_MODEL: str = ""
 
     # 정교 파이프라인 — 프로바이더 체인 + n개 키 순환 + 429 쿨다운 + 백오프
     LLM_PROVIDER_CHAIN: str = ""        # 예 "groq,gemini" (비면 LLM_PROVIDER 단일 사용)
