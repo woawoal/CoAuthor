@@ -268,6 +268,17 @@ class LLMRouter:
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"
             for m in dialogue_history
         )
+
+        # 문체 RAG: 이 작가의 문체 예시 중 장면과 가장 가까운 것을 few-shot으로 주입
+        if persona_id:
+            try:
+                from app.services import style
+                examples = await style.retrieve_examples(persona_id, block, k=3)
+                if examples:
+                    ex = "\n".join(f"- {e}" for e in examples)
+                    system_prompt += f"\n\n[이 작가의 문체 예시 — 어조·리듬·호흡을 참고하되 베끼지는 말 것]\n{ex}"
+            except Exception as e:
+                logger.warning("문체 예시 검색 실패(건너뜀): %s", e)
         contents = [{
             "role": "user",
             "parts": [{"text": f"아래 대화를 소설 장면으로 변환해주세요:\n\n{block}"}],
