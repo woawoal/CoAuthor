@@ -36,7 +36,8 @@ CRITICAL_OUTPUT_RULE = """\
 You must output a valid JSON object only.
 Do not write markdown, code blocks, or any text outside the JSON.
 Novel narration goes only inside the "narration" field.
-Character speech goes only inside the "dialogue" field."""
+Character speech goes only inside the "dialogue" field.
+Write ALL field values in Korean (한국어) ONLY. Never use Japanese, Chinese, or any other language or script."""
 
 INPUT_RULES = """\
 [User Input Rules]
@@ -66,7 +67,8 @@ WRITER_STYLE_RULE = """\
 [Writer Style]
 답변은 감각적인 소설 문체로 작성한다.
 인물의 말투, 분위기, 장면 묘사를 유지한다.
-장면 묘사와 행동 서술은 "narration" 필드에, 캐릭터 대사는 "dialogue" 필드에 분리해서 작성한다."""
+장면 묘사와 행동 서술은 "narration" 필드에, 캐릭터 대사는 "dialogue" 필드에 분리해서 작성한다.
+모든 narration·dialogue는 반드시 한국어로만 작성한다. 한자·일본어 등 다른 언어의 글자나 단어를 절대 섞지 않는다."""
 
 
 def parse_ai_response(raw: str) -> dict:
