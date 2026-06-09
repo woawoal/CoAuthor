@@ -20,6 +20,7 @@ from app.models.character import Character
 from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
+from app.services import consistency  # 설정 일관성 검수 (F-QC-01)
 from app.prompts import parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES, WRITER_STYLE_RULE
 
 router = APIRouter()
@@ -280,6 +281,7 @@ async def stream_response(
     world_context: str = "",
     mode: str = "author",
     use_rag: bool = True,
+    check_consistency: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
@@ -362,6 +364,18 @@ async def stream_response(
                 parts.append(f'"{dialogue}"')
             reply_text = "\n\n".join(parts)
 
+            # F-QC-01: 일관성 검수(옵션) — 새 응답이 확립된 설정·기억과 모순되는지
+            consistency_result = {"consistent": True, "violations": []}
+            if check_consistency:
+                facts = world_context
+                if relevant_memories:
+                    facts += "\n[관련 기억]\n" + "\n".join(f"- {m}" for m in relevant_memories)
+                consistency_result = await consistency.check(facts, reply_text)
+                if not consistency_result["consistent"]:
+                    logger.info("⚠️ 일관성 위반 %d건 - chat_id=%s: %s",
+                                len(consistency_result["violations"]), chat_id,
+                                consistency_result["violations"])
+
             turn = await append_history(chat_id, "ai", reply_text)
 
             try:
@@ -412,7 +426,7 @@ async def stream_response(
 
             reply_payload = json.dumps(
                 {"messageId": message_id, "narration": narration, "dialogue": dialogue,
-                 "memories": relevant_memories},
+                 "memories": relevant_memories, "consistency": consistency_result},
                 ensure_ascii=False,
             )
             yield f"event: reply\ndata: {reply_payload}\n\n"

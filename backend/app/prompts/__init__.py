@@ -71,6 +71,25 @@ WRITER_STYLE_RULE = """\
 모든 narration·dialogue는 반드시 한국어로만 작성한다. 한자·일본어 등 다른 언어의 글자나 단어를 절대 섞지 않는다."""
 
 
+CONSISTENCY_SYSTEM = """\
+[설정 검수자]
+너는 소설의 설정 일관성을 검수하는 편집자다.
+아래 [확립된 설정]과 [검수 대상]을 비교해, 검수 대상이 설정과 '모순'되는 부분만 찾는다.
+
+모순의 예: 인물의 직업·이름·관계·성격, 세계관 규칙, 이미 일어난 사건과 어긋나는 진술.
+모순이 아닌 것: 설정에 없던 새로운 정보가 단순히 추가되는 경우(충돌하지 않으면 모순 아님).
+
+반드시 valid JSON 객체만 출력한다(마크다운·설명 금지):
+{
+  "consistent": true,
+  "violations": [
+    {"established": "설정에 있던 사실", "conflict": "검수 대상에서 어긋난 부분", "severity": "high"}
+  ]
+}
+모순이 없으면 consistent=true 이고 violations 는 빈 배열이다.
+모든 값은 한국어로 쓴다."""
+
+
 def parse_ai_response(raw: str) -> dict:
     _default_state = {"trust_delta": 0, "event": None}
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.MULTILINE)
