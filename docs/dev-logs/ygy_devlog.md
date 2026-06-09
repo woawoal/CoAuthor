@@ -2,6 +2,48 @@
 
 ---
 
+## 2026-06-09
+
+### 작업 내용
+
+#### 1. ContextManager 구현 (10턴 초과 시 대화 요약 주입)
+
+**문제**: 대화가 길어질수록 전체 히스토리를 LLM에 그대로 전달해 토큰 낭비 + 컨텍스트 창 초과 위험.
+
+**구현**: 10턴 초과 시 오래된 대화를 LLM으로 요약해 `sessions.context_summary`에 저장, 이후 요청부터 `[요약 + 최근 10턴]`만 LLM에 전달.
+
+**동작 방식**
+
+```
+1~10턴:  그대로 전달 (최근 10턴)
+11턴~:   오래된 턴(전체 - 최근 10) → summarize_history() → context_summary 저장
+         LLM 전달: [이전 대화 요약] + [최근 10턴]
+```
+
+**수정 파일**
+- `services/llm_router.py` — `summarize_history()` 메서드 추가 (Gemini로 3~4문장 요약)
+- `endpoints/dialogues.py` — `turn_count > 10` 시 요약 트리거 + `context_summary` 주입 로직 추가, 히스토리 조회 `limit(20)` → `limit(CONTEXT_WINDOW=10)`
+- `models/session.py` — `context_summary: Text` 컬럼 추가
+- `migrations/versions/a1b2c3d4e5f6_add_context_summary_to_sessions.py` — migration 수동 작성 (Alembic Windows asyncpg 연결 문제 우회)
+
+**Alembic 우회 이유**: asyncpg가 Windows에서 `localhost`를 IPv6(::1)로 먼저 시도 → WinError 1225 ConnectionRefused. Docker exec로 직접 SQL 실행 후 migration 파일 수동 작성.
+
+```sql
+-- Docker exec로 직접 실행
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS context_summary TEXT;
+```
+
+---
+
+### 남은 작업
+
+- [x] ContextManager 구현 (10턴 초과 시 요약)
+- [ ] NovelConverter — `llm_router.generate_novel()` 실제 호출 연결
+- [ ] Guardrail (연령대별 콘텐츠 필터)
+- [ ] DB 시드 데이터 (페르소나 4개 기본 캐릭터)
+
+---
+
 ## 2026-06-08
 
 ### 작업 내용
@@ -75,7 +117,7 @@ SELECT model_used, prompt_tokens, completion_tokens, total_cost FROM api_logs;
 ### 남은 작업
 
 - [ ] 컨텍스트 트리밍 (토큰 수 기준 히스토리 잘라내기)
-- [ ] ContextManager 구현 (10턴 초과 시 요약)
+- [x] ContextManager 구현 (10턴 초과 시 요약)
 - [ ] NovelConverter — `llm_router.generate_novel()` 실제 호출 연결
 - [ ] Guardrail (연령대별 콘텐츠 필터)
 - [ ] DB 시드 데이터 (페르소나 4개 기본 캐릭터)
