@@ -256,8 +256,12 @@ class LLMRouter:
         dialogue_history: list[dict],
         world_description: str = "",
         persona_id: str = "",
+        use_style: bool = True,
     ) -> str:
-        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로."""
+        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로.
+
+        use_style=False 면 문체 RAG(few-shot) 주입을 건너뛴다(시연/비교용 대조).
+        """
         if not dialogue_history:
             return ""
 
@@ -270,7 +274,7 @@ class LLMRouter:
         )
 
         # 문체 RAG: 이 작가의 문체 예시 중 장면과 가장 가까운 것을 few-shot으로 주입
-        if persona_id:
+        if persona_id and use_style:
             try:
                 from app.services import style
                 examples = await style.retrieve_examples(persona_id, block, k=3)
