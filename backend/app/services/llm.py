@@ -144,18 +144,21 @@ def _gemini_model(model: str, key: str, system_prompt: str):
 
 
 # ── 단발 호출(동기) ──────────────────────────────────────────────
-def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: list[dict]) -> tuple[str, dict]:
+def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: list[dict],
+              json_mode: bool = False) -> tuple[str, dict]:
     if prov in ("groq", "openai"):
-        resp = _oai_client(prov, key).chat.completions.create(
-            model=model, messages=_to_openai_messages(system_prompt, contents)
-        )
+        kwargs = {"model": model, "messages": _to_openai_messages(system_prompt, contents)}
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}  # 유효한 JSON 강제
+        resp = _oai_client(prov, key).chat.completions.create(**kwargs)
         u = getattr(resp, "usage", None)
         usage = {"model": model,
                  "prompt_tokens": getattr(u, "prompt_tokens", 0) or 0,
                  "completion_tokens": getattr(u, "completion_tokens", 0) or 0}
         return (resp.choices[0].message.content or ""), usage
     # gemini
-    resp = _gemini_model(model, key, system_prompt).generate_content(contents)
+    gen_cfg = {"response_mime_type": "application/json"} if json_mode else None
+    resp = _gemini_model(model, key, system_prompt).generate_content(contents, generation_config=gen_cfg)
     meta = getattr(resp, "usage_metadata", None)
     usage = {"model": model,
              "prompt_tokens": getattr(meta, "prompt_token_count", 0) or 0,
@@ -213,15 +216,20 @@ def _handle_failure(cand: tuple, exc: Exception, attempt: int) -> str:
 
 
 # ── 공개 API ─────────────────────────────────────────────────────
-async def generate(system_prompt: str, contents: list[dict], usage_out: list | None = None) -> str:
-    """단발 생성. 후보 순회 + 429 분기 + 백오프. 전부 실패 시 마지막 예외 raise."""
+async def generate(system_prompt: str, contents: list[dict], usage_out: list | None = None,
+                   json_mode: bool = False) -> str:
+    """단발 생성. 후보 순회 + 429 분기 + 백오프. 전부 실패 시 마지막 예외 raise.
+
+    json_mode=True 면 프로바이더에 JSON 출력을 강제(Groq/OpenAI response_format,
+    Gemini response_mime_type) — narration/dialogue 구조화 응답에 사용.
+    """
     last_exc = None
     for cand in _active_candidates():
         prov, model, key = cand
         attempt = 0
         while True:
             try:
-                text, usage = await asyncio.to_thread(_gen_once, prov, model, key, system_prompt, contents)
+                text, usage = await asyncio.to_thread(_gen_once, prov, model, key, system_prompt, contents, json_mode)
                 if usage_out is not None:
                     usage_out.append(usage)
                 return text
@@ -263,3 +271,27 @@ async def stream(system_prompt: str, contents: list[dict], usage_out: list | Non
                     continue
                 break
     raise last_exc or RuntimeError("LLM 스트리밍 실패: 후보 없음")
+
+
+# ── 임베딩(RAG 검색용) ────────────────────────────────────────────
+EMBED_MODEL = "models/gemini-embedding-001"
+
+
+def _embed_sync(key: str, texts: list[str]) -> list[list[float]]:
+    import google.generativeai as genai
+    genai.configure(api_key=key)
+    out = []
+    for t in texts:
+        r = genai.embed_content(model=EMBED_MODEL, content=t)
+        out.append(list(r["embedding"]))
+    return out
+
+
+async def embed(texts: list[str]) -> list[list[float]]:
+    """문장 리스트 → 임베딩 벡터 리스트 (Gemini text-embedding-004)."""
+    if not texts:
+        return []
+    keys = _gemini_keys()
+    if not keys:
+        raise RuntimeError("임베딩용 Gemini 키가 없습니다 (GEMINI_API_KEY).")
+    return await asyncio.to_thread(_embed_sync, keys[0], texts)

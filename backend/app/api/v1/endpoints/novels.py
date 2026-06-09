@@ -31,6 +31,7 @@ async def get_novel(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 @router.post("/{session_id}/novel/generate", response_model=NovelResponse, status_code=201)
 async def generate_novel(
     session_id: uuid.UUID,
+    use_style: bool = True,
     db: AsyncSession = Depends(get_db),
 ):
     """세션의 대화 로그를 선택한 작가의 문체로 소설 초안으로 변환한다."""
@@ -76,7 +77,7 @@ async def generate_novel(
 
     # LLM 소설 변환 — 실패 시 대화 로그 이어붙이기로 폴백
     try:
-        content = await llm_router.generate_novel(dialogue_history, world_desc, persona_id=persona_id)
+        content = await llm_router.generate_novel(dialogue_history, world_desc, persona_id=persona_id, use_style=use_style)
     except Exception as e:
         logger.error("소설 LLM 변환 실패, 폴백 사용 (session=%s): %s", session_id, e)
         content = ""
