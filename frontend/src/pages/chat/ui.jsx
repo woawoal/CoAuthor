@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import { sendMessage, connectChatStream, completeSession, generateNovel } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import './ui.css';
@@ -42,7 +43,7 @@ function formatText(text) {
     .trim();
 }
 
-function Bubble({ msg, persona, streaming }) {
+function Bubble({ msg, persona, streaming, hasBookmark, isSelected, onClick }) {
   if (msg.role === 'system') {
     return <div className="world-info-header">{msg.text}</div>;
   }
@@ -52,11 +53,12 @@ function Bubble({ msg, persona, streaming }) {
   if (!isUser) {
     const hasContent = msg.narration || msg.dialogue || msg.text;
     return (
-      <div className="bubble-row bubble-row--char">
+      <div id={`bubble-${msg.id}`} className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`} onClick={onClick}>
         <img src={persona.image} alt={msg.name} className="bubble-avatar" />
         <div className="bubble-content">
           <span className="badge">{msg.name}</span>
           <div className="bubble bubble--char">
+            {hasBookmark && <span className="bubble-bookmark">🔖</span>}
             {(!hasContent && streaming)
               ? <div className="typing-dots"><span /><span /><span /></div>
               : <>
@@ -71,9 +73,14 @@ function Bubble({ msg, persona, streaming }) {
   }
 
   return (
-    <div className="bubble-row bubble-row--user">
-      <div className="bubble bubble--user">{msg.text}</div>
-      <span className="badge badge--user">{msg.name}</span>
+    <div id={`bubble-${msg.id}`} className={`bubble-row bubble-row--user${isSelected ? ' bubble-row--selected' : ''}`} onClick={onClick}>
+      <div className="bubble-content bubble-content--user">
+        <span className="badge badge--user">{msg.name}</span>
+        <div className="bubble bubble--user bubble--markdown">
+          {hasBookmark && <span className="bubble-bookmark">🔖</span>}
+          <ReactMarkdown>{msg.text}</ReactMarkdown>
+        </div>
+      </div>
     </div>
   );
 }
@@ -85,18 +92,30 @@ export default function Chat() {
   const chatId = chatIdFromState ?? worldId ?? 'room_001';
   const persona = AUTHOR_MAP[authorId] ?? { characterId: 'baekya', displayName: '백야' };
 
+  const MEMO_KEY = `memos_${chatId}`;
+
   const [messages, setMessages] = useState([]);
-  const [memos, setMemos] = useState(MOCK_MEMOS);
+  const [memos, setMemos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MEMO_KEY)) ?? MOCK_MEMOS; }
+    catch { return MOCK_MEMOS; }
+  });
   const [input, setInput] = useState('');
   const [memoInput, setMemoInput] = useState('');
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
   const [ending, setEnding] = useState(false);
   const [worldOpen, setWorldOpen] = useState(true);
+  const [selectedMsgId, setSelectedMsgId] = useState(null);
+  const [editingMemoId, setEditingMemoId] = useState(null);
   const bottomRef = useRef(null);
   const esRef = useRef(null);
+  const memoInputRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem(MEMO_KEY, JSON.stringify(memos));
+  }, [memos]);
 
   useEffect(() => {
     if (!chatId || chatId === 'room_001') return;
@@ -130,11 +149,14 @@ export default function Chat() {
         summaryLines.push('───────────────────────────────');
         const summaryMsg = { id: `summary_${Date.now()}`, role: 'system', text: summaryLines.join('\n') };
 
+        const protagonistName = chars.find(c => c.role === 'protagonist')?.name ?? '나';
+
+
         if (dialogues.length > 0) {
           const restored = dialogues.map(d => ({
             id: d.id,
             role: d.speaker_type === 'user' ? 'user' : 'character',
-            name: d.speaker_type === 'user' ? '나' : persona.displayName,
+            name: d.speaker_type === 'user' ? protagonistName : persona.displayName,
             text: d.content,
           }));
           setMessages([summaryMsg, ...restored]);
@@ -154,7 +176,8 @@ export default function Chat() {
     const userText = input.trim();
     setInput('');
 
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: '나', text: userText }]);
+    const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
 
     await sendMessage(chatId, { content: userText, character_id: persona.characterId });
 
@@ -194,10 +217,57 @@ export default function Chat() {
     }
   }
 
+  function getMsgPreview(msgId) {
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) return '';
+    const text = msg.narration || msg.dialogue || msg.text || '';
+    return text.length > 36 ? text.slice(0, 36) + '…' : text;
+  }
+
+  function clearBookmarkState() {
+    setSelectedMsgId(null);
+    setEditingMemoId(null);
+    setMemoInput('');
+  }
+
+  function handleBubbleClick(msgId) {
+    const existing = memos.find(m => m.msgId === msgId);
+    if (existing) {
+      setEditingMemoId(existing.id);
+      setMemoInput(existing.text);
+    } else {
+      setEditingMemoId(null);
+      setMemoInput('');
+    }
+    setSelectedMsgId(prev => prev === msgId ? null : msgId);
+    setPanelOpen(true);
+    setTimeout(() => memoInputRef.current?.focus(), 80);
+  }
+
+  function handleMemoClick(memo) {
+    if (memo.msgId) {
+      document.getElementById(`bubble-${memo.msgId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setSelectedMsgId(memo.msgId);
+      setEditingMemoId(memo.id);
+      setMemoInput(memo.text);
+      setPanelOpen(true);
+      setTimeout(() => memoInputRef.current?.focus(), 80);
+    }
+  }
+
   function handleAddMemo() {
     if (!memoInput.trim()) return;
-    setMemos(prev => [...prev, { id: Date.now(), type: 'manual', text: memoInput }]);
-    setMemoInput('');
+    if (editingMemoId) {
+      setMemos(prev => prev.map(m => m.id === editingMemoId ? { ...m, text: memoInput } : m));
+    } else {
+      setMemos(prev => [...prev, {
+        id: Date.now(),
+        type: 'manual',
+        text: memoInput,
+        msgId: selectedMsgId || null,
+      }]);
+    }
+    clearBookmarkState();
   }
 
   return (
@@ -220,18 +290,34 @@ export default function Chat() {
         </div>
 
         <div className="chat-messages">
-          {messages.map(msg => <Bubble key={msg.id} msg={msg} persona={persona} streaming={streaming} />)}
+          {messages.map(msg => (
+            <Bubble
+              key={msg.id}
+              msg={msg}
+              persona={persona}
+              streaming={streaming}
+              hasBookmark={memos.some(m => m.msgId === msg.id)}
+              isSelected={selectedMsgId === msg.id}
+              onClick={msg.role !== 'system' ? () => handleBubbleClick(msg.id) : undefined}
+            />
+          ))}
           <div ref={bottomRef} />
         </div>
 
         <div className="chat-input-bar">
-          <input
+          <textarea
             className="chat-input"
             placeholder={streaming ? '응답 중...' : '주인공으로 대사 입력...'}
             value={input}
             disabled={streaming}
+            rows={1}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
           />
           <button className="chat-send-btn" onClick={handleSend} disabled={streaming}>전송</button>
         </div>
@@ -293,24 +379,69 @@ export default function Chat() {
 
             <p className="memo-panel__title">작가 메모</p>
 
+            {selectedMsgId && (
+              <div className="memo-context">
+                <div className="memo-context__header">
+                  <span className="memo-context__label">🔖 책갈피</span>
+                  <button className="memo-context__clear" onClick={clearBookmarkState}>×</button>
+                </div>
+                <textarea
+                  ref={memoInputRef}
+                  className="memo-input memo-context__input"
+                  placeholder="메모 작성..."
+                  value={memoInput}
+                  rows={3}
+                  onChange={e => setMemoInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAddMemo();
+                    }
+                  }}
+                />
+                <button className="memo-context__save" onClick={handleAddMemo}>{editingMemoId ? '수정' : '저장'}</button>
+              </div>
+            )}
+
             <div className="memo-list">
               {memos.map(memo => (
-                <div key={memo.id} className={`memo-item memo-item--${memo.type}`}>
-                  {memo.text}
+                <div
+                  key={memo.id}
+                  className={`memo-item memo-item--${memo.type}${memo.msgId ? ' memo-item--bookmark' : ''}`}
+                  onClick={() => handleMemoClick(memo)}
+                >
+                  {memo.msgId && (
+                    <p className="memo-item__ref">🔖 책갈피</p>
+                  )}
+                  <div className="memo-item__body">
+                    <span>{memo.text}</span>
+                    <button
+                      className="memo-item__delete"
+                      onClick={e => { e.stopPropagation(); setMemos(prev => prev.filter(m => m.id !== memo.id)); }}
+                    >×</button>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <div className="memo-add">
-              <input
-                className="memo-input"
-                placeholder="메모 추가..."
-                value={memoInput}
-                onChange={e => setMemoInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddMemo()}
-              />
-              <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
-            </div>
+            {!selectedMsgId && (
+              <div className="memo-add">
+                <textarea
+                  className="memo-input"
+                  placeholder="메모 추가..."
+                  value={memoInput}
+                  rows={2}
+                  onChange={e => setMemoInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAddMemo();
+                    }
+                  }}
+                />
+                <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
+              </div>
+            )}
           </aside>
         </div>
       </div>
