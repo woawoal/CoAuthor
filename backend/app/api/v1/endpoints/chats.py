@@ -21,14 +21,18 @@ from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
 from app.services import consistency  # 설정 일관성 검수 (F-QC-01)
-from app.prompts import parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES, WRITER_STYLE_RULE
+from app.prompts import (
+    parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
+    WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
-RECENT_DIALOGUE_LIMIT = 20
+RECENT_DIALOGUE_LIMIT = 20   # Redis에 유지하는 최근 대화 수
+PROMPT_HISTORY_LIMIT = 10    # 프롬프트에 verbatim으로 넣는 최근 대화 수 (그 이전은 요약+RAG가 커버 → 토큰 절약)
 DB_SYNC_INTERVAL = 5
 
 
@@ -47,6 +51,9 @@ def key_summary(chat_id: str) -> str:
 
 def key_turn(chat_id: str) -> str:
     return f"session:{chat_id}:turn"
+
+def key_memos(chat_id: str) -> str:
+    return f"session:{chat_id}:memos"
 
 
 # ── Redis 조회 헬퍼 (DB fallback 포함) ────────────────────
@@ -100,11 +107,13 @@ async def get_context(chat_id: str, db: AsyncSession) -> dict:
             logger.warning("history DB fallback 실패 - chat_id=%s: %s", chat_id, e)
 
     history = [json.loads(item) for item in history_raw]
+    memos = await redis_client.lrange(key_memos(chat_id), 0, -1)
     return {
         "history":    history,
         "state":      state,
         "characters": characters,
         "summary":    summary,
+        "memos":      memos,
     }
 
 
@@ -174,13 +183,18 @@ def build_messages(
         context_parts.append(f"[주요 등장인물]\n{context['characters']}")
     if context["summary"]:
         context_parts.append(f"[사건 요약]\n{context['summary']}")
+    if context.get("memos"):
+        memo_lines = "\n".join(f"- {m}" for m in context["memos"])
+        context_parts.append(f"[작가 메모 — 반드시 반영할 것]\n{memo_lines}")
     if relevant_memories:
         mem_lines = "\n".join(f"- {m}" for m in relevant_memories)
         context_parts.append(f"[관련 기억] (과거 대화에서 검색됨, 일관성 유지에 활용)\n{mem_lines}")
     if context["state"]:
         context_parts.append(f"[현재 상태]\n{context['state']}")
 
-    for h in reversed(context["history"]):
+    # 토큰 절약: 최근 PROMPT_HISTORY_LIMIT개만 verbatim 주입 (그 이전은 요약/RAG가 커버)
+    recent_history = context["history"][:PROMPT_HISTORY_LIMIT]
+    for h in reversed(recent_history):
         role = "user" if h["role"] == "user" else "assistant"
         messages.append({"role": role, "content": h["content"]})
 
@@ -454,3 +468,75 @@ async def stream_response(
 async def update_chat_state(chat_id: str, new_state: str):
     await update_state(chat_id, new_state)
     return {"status": "updated"}
+
+
+# ── 작가 메모 (F-CH-11) ────────────────────────────────────
+class MemoRequest(BaseModel):
+    note: str
+
+
+@router.post("/{chat_id}/memo", status_code=201)
+async def add_memo(chat_id: str, body: MemoRequest):
+    """작가 메모 추가 → 이후 AI 응답 프롬프트에 [작가 메모]로 주입된다."""
+    note = (body.note or "").strip()
+    if not note:
+        return {"status": "empty", "memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}
+    await redis_client.rpush(key_memos(chat_id), note)
+    memos = await redis_client.lrange(key_memos(chat_id), 0, -1)
+    logger.info("작가 메모 추가 - chat_id=%s (총 %d개)", chat_id, len(memos))
+    return {"status": "added", "memos": memos}
+
+
+@router.get("/{chat_id}/memos")
+async def list_memos(chat_id: str):
+    """현재 세션의 작가 메모 목록."""
+    return {"memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}
+
+
+# ── AI 어시스턴트: 다음 전개 제안 (F-AS-01~03) ─────────────
+@router.get("/{chat_id}/suggest")
+async def suggest_next(
+    chat_id: str,
+    world_context: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """막혔을 때 다음 전개(주인공 행동/대사) 후보 3개를 제안. 입력이 없을 때 '유도'용."""
+    context = await get_context(chat_id, db)
+    if not world_context:
+        world_context = await _build_world_context(chat_id, db)
+
+    parts = []
+    if world_context:
+        parts.append(f"[세계관]\n{world_context}")
+    if context["history"]:
+        recent = "\n".join(
+            f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+            for h in reversed(context["history"][:6])
+        )
+        parts.append(f"[최근 대화]\n{recent}")
+    user_msg = "\n\n".join(parts) or "(아직 대화가 없습니다. 도입 상황에서 시작할 행동을 제안하세요.)"
+
+    try:
+        raw = await llm.generate(
+            ASSISTANT_SUGGEST_SYSTEM,
+            [{"role": "user", "parts": [{"text": user_msg}]}],
+            json_mode=True,
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        data = json.loads(cleaned)
+        suggestions = [s for s in (data.get("suggestions") or []) if isinstance(s, str) and s.strip()][:3]
+    except Exception as e:
+        logger.warning("제안 생성 실패 - chat_id=%s: %s", chat_id, e)
+        suggestions = []
+    return {"suggestions": suggestions}
+
+
+@router.delete("/{chat_id}/memo/{index}")
+async def delete_memo(chat_id: str, index: int):
+    """index번째 메모 삭제 (Redis 리스트에서 제거)."""
+    memos = await redis_client.lrange(key_memos(chat_id), 0, -1)
+    if 0 <= index < len(memos):
+        target = memos[index]
+        await redis_client.lrem(key_memos(chat_id), 1, target)
+    return {"memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}

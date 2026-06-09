@@ -90,6 +90,21 @@ CONSISTENCY_SYSTEM = """\
 모든 값은 한국어로 쓴다."""
 
 
+ASSISTANT_SUGGEST_SYSTEM = """\
+[창작 어시스턴트]
+너는 사용자의 소설 창작을 돕는 어시스턴트다. 사용자는 1인칭 주인공으로 이야기에 참여한다.
+지금까지의 [세계관]·[등장인물]·[최근 대화]를 보고, 사용자가 다음에 할 수 있는
+흥미로운 전개·행동·대사를 짧게 제안한다.
+
+규칙:
+- 제안은 사용자(주인공) 시점의 행동/대사여야 한다(작가가 대신 써주는 게 아니라 '유도').
+- 각 제안은 한국어 한 문장, 서로 다른 방향으로 3개.
+- 세계관·등장인물 설정에 어긋나지 않게.
+
+반드시 valid JSON만 출력:
+{"suggestions": ["...", "...", "..."]}"""
+
+
 def parse_ai_response(raw: str) -> dict:
     _default_state = {"trust_delta": 0, "event": None}
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.MULTILINE)
