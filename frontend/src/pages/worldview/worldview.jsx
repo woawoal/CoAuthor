@@ -191,6 +191,7 @@ function Worldview() {
             const { worldId, sessionId } = await createWorldview({
                 world: { title, description, genre, setting, rules },
                 characters: validCharacters,
+                authorId,
             });
             navigate('/chat', { state: { worldId, chatId: sessionId, authorId } });
         } catch (err) {

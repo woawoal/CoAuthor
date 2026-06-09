@@ -32,6 +32,7 @@ async def list_sessions(
             id=s.id,
             world_id=s.world_id,
             world_title=s.world.title,
+            author_id=s.author_id,
             status=s.status,
             started_at=s.started_at,
             ended_at=s.ended_at,
