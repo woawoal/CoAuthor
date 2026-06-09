@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from sqlalchemy import ForeignKey, func
+from sqlalchemy import ForeignKey, Text, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -23,6 +23,7 @@ class Session(Base):
     status: Mapped[SessionStatus] = mapped_column(SAEnum(SessionStatus), default=SessionStatus.ACTIVE)
     started_at: Mapped[datetime] = mapped_column(default=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    context_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     world: Mapped["World"] = relationship(back_populates="sessions")
     user: Mapped["User"] = relationship(back_populates="sessions")
