@@ -27,7 +27,11 @@ export default function ChatList() {
   }, []);
 
   const handleResume = (session) => {
-    navigate('/chat', { state: { chatId: session.id } });
+    navigate('/chat', { state: { chatId: session.id, authorId: session.author_id } });
+  };
+
+  const handleRead = (session) => {
+    navigate(`/read/${session.id}`);
   };
 
   const handleRead = (session) => {
