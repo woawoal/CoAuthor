@@ -15,8 +15,11 @@ from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
+from app.models.world import World
+from app.models.character import Character
 from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
+from app.services import memory
 from app.prompts import parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES, WRITER_STYLE_RULE
 
 router = APIRouter()
@@ -237,6 +240,34 @@ async def send_message(
     return {"messageId": message_id, "status": "queued", "turn": turn}
 
 
+async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
+    """chat_id(세션)로 세계관·등장인물을 DB에서 조회해 프롬프트용 문자열로 구성."""
+    try:
+        sid = uuid.UUID(chat_id)
+    except (ValueError, TypeError):
+        return ""
+    session = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
+    if not session:
+        return ""
+    world = (await db.execute(select(World).where(World.id == session.world_id))).scalar_one_or_none()
+    chars = (await db.execute(select(Character).where(Character.world_id == session.world_id))).scalars().all()
+    parts = []
+    if world:
+        for label, val in (("제목", world.title), ("장르", world.genre),
+                           ("배경", world.setting), ("요약", world.description), ("규칙", world.rules)):
+            if val:
+                parts.append(f"{label}: {val}")
+    if chars:
+        lines = "\n".join(
+            f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in chars
+        )
+        parts.append(f"[등장인물]\n{lines}")
+    # RAG-lite: 누적된 줄거리 요약(장기 기억)을 주입해 긴 대화에서도 일관성 유지
+    if session.story_summary:
+        parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
+    return "\n".join(parts)
+
+
 @router.get("/{chat_id}/stream")
 async def stream_response(
     chat_id: str,
@@ -249,9 +280,11 @@ async def stream_response(
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     context = await get_context(chat_id, db)
     # send_message가 이미 현재 사용자 메시지를 history에 저장했으므로 제거
-    # (build_messages가 user_input으로 다시 추가하기 때문에 중복 방지)
     if context["history"] and context["history"][0].get("role") == "user":
         context["history"] = context["history"][1:]
+    # 프론트가 world_context를 안 보내면 세션에서 세계관·등장인물을 직접 조회해 주입
+    if not world_context:
+        world_context = await _build_world_context(chat_id, db)
 
     async def generate():
         try:
@@ -347,8 +380,17 @@ async def stream_response(
             except (ValueError, Exception):
                 pass
 
+            # RAG-lite: N턴마다 누적 요약 갱신 (이전 요약 + 최근 대화만 재요약 → 토큰 절약)
             if turn % DB_SYNC_INTERVAL == 0:
-                await sync_to_db(chat_id)
+                recent_turns = list(reversed(context["history"])) + [
+                    {"role": "user", "content": content},
+                    {"role": "ai", "content": reply_text},
+                ]
+                try:
+                    async with AsyncSessionLocal() as mem_session:
+                        await memory.refresh_session_summary(chat_id, mem_session, recent_turns)
+                except Exception as e:  # 요약 실패는 대화 흐름을 막지 않는다
+                    logger.warning("요약 갱신 실패: %s", e)
 
             reply_payload = json.dumps(
                 {"messageId": message_id, "narration": narration, "dialogue": dialogue},
