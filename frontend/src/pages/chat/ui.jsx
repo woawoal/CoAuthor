@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { sendMessage, connectChatStream, completeSession, generateNovel } from '../../lib/chatApi';
-import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
+import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import './ui.css';
 
 const AUTHOR_MAP = {
@@ -74,11 +74,24 @@ export default function Chat() {
     if (!chatId || chatId === 'room_001') return;
     getSession(chatId)
       .then(session =>
-        Promise.all([getWorld(session.world_id), getCharacters(session.world_id)])
+        Promise.all([
+          getWorld(session.world_id),
+          getCharacters(session.world_id),
+          getDialogues(chatId),
+        ])
       )
-      .then(([w, chars]) => {
+      .then(([w, chars, dialogues]) => {
         setWorld(w);
         setDbCharacters(chars);
+        if (dialogues.length > 0) {
+          const restored = dialogues.map(d => ({
+            id: d.id,
+            role: d.speaker_type === 'user' ? 'user' : 'character',
+            name: d.speaker_type === 'user' ? '나' : persona.displayName,
+            text: d.content,
+          }));
+          setMessages(restored);
+        }
       })
       .catch(console.error);
   }, [chatId]);
