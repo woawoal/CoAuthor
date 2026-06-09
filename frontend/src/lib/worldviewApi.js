@@ -1,4 +1,4 @@
-const API_BASE_URL = `/api/v1`;
+import { API_BASE_URL } from './apiBase';
 
 // 테스트용 더미 user_id (인증 구현 전까지 고정)
 // PostgreSQL users 테이블에 이 UUID 행이 존재해야 World FK 통과
@@ -9,7 +9,7 @@ const DUMMY_USER_ID = "00000000-0000-0000-0000-000000000001";
  * @param {{ world: object, characters: object[] }} payload
  * @returns {Promise<string>} 생성된 world_id (UUID)
  */
-export async function createWorldview({ world, characters }) {
+export async function createWorldview({ world, characters, authorId }) {
   // 1. 세계관 생성
   const worldRes = await fetch(`${API_BASE_URL}/worlds/?user_id=${DUMMY_USER_ID}`, {
     method: "POST",
@@ -57,6 +57,7 @@ export async function createWorldview({ world, characters }) {
       world_id: worldId,
       user_id: DUMMY_USER_ID,
       protagonist_id: protagonistId,
+      author_id: authorId ?? null,
     }),
   });
   if (!sessionRes.ok) {
@@ -108,5 +109,16 @@ export async function getWorld(worldId) {
 export async function getCharacters(worldId) {
   const res = await fetch(`${API_BASE_URL}/worlds/${worldId}/characters/`);
   if (!res.ok) throw new Error('캐릭터 조회 실패');
+  return res.json();
+}
+
+/**
+ * 세션의 대화 이력 조회 (이어쓰기 복원용)
+ * @param {string} sessionId
+ * @returns {Promise<object[]>} DialogueResponse[]
+ */
+export async function getDialogues(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/dialogues/`);
+  if (!res.ok) throw new Error('대화 이력 조회 실패');
   return res.json();
 }

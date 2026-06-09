@@ -10,6 +10,7 @@
     margin-top: 24px;
     margin-bottom: 24px;
     border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .banner-avatar {
@@ -18,18 +19,18 @@
     border-radius: 50%;
     object-fit: cover;
     margin-right: 16px;
-    border: 2px solid #8a2be2;
+    border: 2px solid var(--theme-color);
 }
 
 .banner-genre {
     font-size: 0.8rem;
-    color: #aaa;
+    color: var(--text-muted);
 }
 
 .banner-name {
     font-size: 1.1rem;
     margin: 4px 0 0 0;
-    color: #fff;
+    color: var(--text-main);
 }
 
 /* 전체 컨텐츠 */
@@ -40,9 +41,10 @@
 }
 
 .worldview-step-indicator {
-    align-self: flex-end;
-    color: #aaa;
-    font-size: 0.9rem;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: var(--text-main);
 }
 
 /* 작가 대화형 레이아웃 */
@@ -57,6 +59,7 @@
     width: 550px;
     height: 550px;
     overflow: hidden;
+    border-radius: 12px;
 }
 
 .author-bg-layer {
@@ -118,9 +121,10 @@
     height: 100px;
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     border-radius: 14px;
     padding: 18px;
-    color: #fff;
+    color: var(--text-main);
     line-height: 1.6;
     word-break: keep-all;
     white-space: pre-line;
@@ -135,9 +139,10 @@
 .summary-box {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     border-radius: 12px;
     padding: 18px;
-    color: #ddd;
+    color: var(--text-muted);
     line-height: 1.6;
 }
 
@@ -152,7 +157,7 @@
 .summary-box strong {
     display: inline-block;
     min-width: 74px;
-    color: #fff;
+    color: var(--text-main);
 }
 
 /* 폼 공통 스타일 */
@@ -160,7 +165,7 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    height: 300px;
+    height: 275px;
 }
 
 .label-header {
@@ -172,7 +177,7 @@
 .form-label {
     font-size: 1rem;
     font-weight: 600;
-    color: #e0e0e0;
+    color: var(--text-main);
 }
 
 /* 입력 필드 스타일 */
@@ -182,8 +187,9 @@
     font-size: 1rem;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     border-radius: 8px;
-    color: #fff;
+    color: var(--text-main);
     padding: 12px;
     outline: none;
     transition: border-color 0.2s, background 0.2s;
@@ -206,7 +212,7 @@
 
 .form-textarea:focus,
 .form-input:focus {
-    border-color: #8a2be2;
+    border-color: var(--theme-color);
     background: rgba(255, 255, 255, 0.06);
 }
 
@@ -218,10 +224,11 @@
 /* 셀렉트 박스 */
 .form-select {
     width: 100%;
-    background: #1e1e1e;
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     border-radius: 8px;
-    color: #fff;
+    color: var(--text-main);
     padding: 11px;
     outline: none;
 }
@@ -234,18 +241,20 @@
     margin-top: 12px;
     overflow-y: auto;
     scrollbar-width: thin;
-    scrollbar-color: #555 #222;
+    scrollbar-color: var(--scrollbar-bar) var(--scrollbar-bg);
 }
 
 .character-card {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     border-radius: 12px;
     padding: 10px;
     display: flex;
     flex-direction: column;
     gap: 10px;
     position: relative;
+    margin: 5px;
 }
 
 .char-card-header {
@@ -253,19 +262,17 @@
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    padding-bottom: 10px;
-    margin-bottom: 4px;
 }
 
 .char-index {
     font-size: 0.9rem;
-    color: #8a2be2;
+    color: var(--theme-color);
     font-weight: bold;
 }
 
 .char-sub-label {
     font-size: 0.85rem;
-    color: #b0b0b0;
+    color: var(--text-main);
     padding: 4px;
 }
 
@@ -289,12 +296,12 @@
     width: auto;
     height: auto;
     font-size: 0.85rem;
-    background: #8a2be2;
+    background: var(--theme-color);
     border: none;
 }
 
 .btn-add:hover {
-    background: #a046f5;
+    background: var(--theme-color-sub);
 }
 
 .btn-card-remove {
@@ -349,7 +356,7 @@
 }
 
 .btn-save {
-    background: #8a2be2;
+    background: var(--theme-color);
     border: none;
     color: #fff;
 }
@@ -411,12 +418,12 @@
         height: auto;
         position: relative;
         aspect-ratio: 1 / 1;
+        margin-top: 10px;
     }
 
     .author-bg-layer,
     .worldview-author-image {
         position: absolute;
-        top: 0;
         aspect-ratio: 1 / 1;
     }
 

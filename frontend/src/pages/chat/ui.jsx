@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { sendMessage, connectChatStream, completeSession, generateNovel } from '../../lib/chatApi';
-import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
+import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import './ui.css';
 
 const AUTHOR_MAP = {
-  1: { characterId: 'baekya',      displayName: '백야' },
-  2: { characterId: 'charoun',     displayName: '차로운' },
-  3: { characterId: 'hanyeoreum', displayName: '한여름' },
-  4: { characterId: 'kimdohyeon', displayName: '김도현' },
+  1: { characterId: 'baekya',      displayName: '백야',   image: '/assets/author1/author1.png' },
+  2: { characterId: 'charoun',     displayName: '차로운', image: '/assets/author2/author2.png' },
+  3: { characterId: 'hanyeoreum', displayName: '한여름', image: '/assets/author3/author3.png' },
+  4: { characterId: 'kimdohyeon', displayName: '김도현', image: '/assets/author4/author4.png' },
 };
 
 const MOCK_MEMOS = [
@@ -23,21 +23,29 @@ function formatText(text) {
     .trim();
 }
 
-function Bubble({ msg }) {
+function Bubble({ msg, persona }) {
   const isUser = msg.role === 'user';
   const displayText = isUser ? msg.text : formatText(msg.text);
   const isLoading = !isUser && msg.text === '';
-  return (
-    <div className={`bubble-row ${isUser ? 'bubble-row--user' : 'bubble-row--char'}`}>
-      {!isUser && <span className="badge">{msg.name}</span>}
-      <div className={`bubble ${isUser ? 'bubble--user' : 'bubble--char'}`}>
-        {isLoading ? (
-          <div className="typing-dots">
-            <span /><span /><span />
+
+  if (!isUser) {
+    return (
+      <div className="bubble-row bubble-row--char">
+        <img src={persona.image} alt={msg.name} className="bubble-avatar" />
+        <div className="bubble-content">
+          <span className="badge">{msg.name}</span>
+          <div className="bubble bubble--char">
+            {isLoading ? <div className="typing-dots"><span /><span /><span /></div> : displayText}
           </div>
-        ) : displayText}
+        </div>
       </div>
-      {isUser && <span className="badge badge--user">{msg.name}</span>}
+    );
+  }
+
+  return (
+    <div className="bubble-row bubble-row--user">
+      <div className={`bubble bubble--user`}>{displayText}</div>
+      <span className="badge badge--user">{msg.name}</span>
     </div>
   );
 }
@@ -66,11 +74,24 @@ export default function Chat() {
     if (!chatId || chatId === 'room_001') return;
     getSession(chatId)
       .then(session =>
-        Promise.all([getWorld(session.world_id), getCharacters(session.world_id)])
+        Promise.all([
+          getWorld(session.world_id),
+          getCharacters(session.world_id),
+          getDialogues(chatId),
+        ])
       )
-      .then(([w, chars]) => {
+      .then(([w, chars, dialogues]) => {
         setWorld(w);
         setDbCharacters(chars);
+        if (dialogues.length > 0) {
+          const restored = dialogues.map(d => ({
+            id: d.id,
+            role: d.speaker_type === 'user' ? 'user' : 'character',
+            name: d.speaker_type === 'user' ? '나' : persona.displayName,
+            text: d.content,
+          }));
+          setMessages(restored);
+        }
       })
       .catch(console.error);
   }, [chatId]);
@@ -131,8 +152,13 @@ export default function Chat() {
       <div className="chat-main">
         <div className="chat-header">
           <div className="chat-header__info">
-            <span className="chat-header__persona">{world?.title ?? persona.displayName}</span>
-            <span className="chat-header__genre">{world?.genre ?? ''}</span>
+            {persona.image && (
+              <img src={persona.image} alt={persona.displayName} className="chat-header__avatar" />
+            )}
+            <div className="chat-header__text">
+              <span className="chat-header__persona">{world?.title ?? persona.displayName}</span>
+              <span className="chat-header__genre">{world?.genre ?? ''}</span>
+            </div>
           </div>
           <button className="chat-end-btn" onClick={handleEnd} disabled={ending}>
             {ending ? '저장 중...' : '채팅 종료'}
@@ -140,7 +166,7 @@ export default function Chat() {
         </div>
 
         <div className="chat-messages">
-          {messages.map(msg => <Bubble key={msg.id} msg={msg} />)}
+          {messages.map(msg => <Bubble key={msg.id} msg={msg} persona={persona} />)}
           <div ref={bottomRef} />
         </div>
 
@@ -169,27 +195,6 @@ export default function Chat() {
 
         <div className={`memo-slide ${panelOpen ? 'memo-slide--open' : ''}`}>
           <aside className="memo-panel">
-            <p className="memo-panel__title">작가 메모</p>
-
-            <div className="memo-list">
-              {memos.map(memo => (
-                <div key={memo.id} className={`memo-item memo-item--${memo.type}`}>
-                  {memo.text}
-                </div>
-              ))}
-            </div>
-
-            <div className="memo-add">
-              <input
-                className="memo-input"
-                placeholder="메모 추가..."
-                value={memoInput}
-                onChange={e => setMemoInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddMemo()}
-              />
-              <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
-            </div>
-
             {world && (
               <div className="world-summary">
                 <button
@@ -230,6 +235,27 @@ export default function Chat() {
                   ))
                 : <div className="char-item">● {persona.displayName} (작가 AI)</div>
               }
+            </div>
+
+            <p className="memo-panel__title">작가 메모</p>
+
+            <div className="memo-list">
+              {memos.map(memo => (
+                <div key={memo.id} className={`memo-item memo-item--${memo.type}`}>
+                  {memo.text}
+                </div>
+              ))}
+            </div>
+
+            <div className="memo-add">
+              <input
+                className="memo-input"
+                placeholder="메모 추가..."
+                value={memoInput}
+                onChange={e => setMemoInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddMemo()}
+              />
+              <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
             </div>
           </aside>
         </div>

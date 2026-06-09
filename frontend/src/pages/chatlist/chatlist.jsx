@@ -27,7 +27,11 @@ export default function ChatList() {
   }, []);
 
   const handleResume = (session) => {
-    navigate('/chat', { state: { chatId: session.id } });
+    navigate('/chat', { state: { chatId: session.id, authorId: session.author_id } });
+  };
+
+  const handleRead = (session) => {
+    navigate(`/read/${session.id}`);
   };
 
   return (
@@ -56,9 +60,16 @@ export default function ChatList() {
                   <span className="chatlist-card__date">{formatDate(s.started_at)}</span>
                 </div>
               </div>
-              <button className="chatlist-card__btn" onClick={() => handleResume(s)}>
-                이어쓰기 →
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {s.status === 'completed' && (
+                  <button className="chatlist-card__btn chatlist-card__btn--read" onClick={() => handleRead(s)}>
+                    읽기
+                  </button>
+                )}
+                <button className="chatlist-card__btn" onClick={() => handleResume(s)}>
+                  이어쓰기 →
+                </button>
+              </div>
             </div>
           ))}
         </div>
