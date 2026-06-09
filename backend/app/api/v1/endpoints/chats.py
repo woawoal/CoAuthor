@@ -1,4 +1,3 @@
-import asyncio
 import json
 import uuid
 import logging
@@ -17,14 +16,8 @@ from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
 from app.services.llm_router import calc_cost, PRIMARY_MODEL
+from app.services import llm
 from app.prompts import parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES, WRITER_STYLE_RULE
-
-if settings.LLM_PROVIDER == "openai":
-    from openai import AsyncOpenAI
-    _openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-else:
-    import google.generativeai as genai
-    genai.configure(api_key=settings.GEMINI_API_KEY)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -280,34 +273,17 @@ async def stream_response(
                 logger.info("│ [%d] %s:\n%s", i, role, body)
             logger.info("└───────────────────────────────────────────────────")
 
-            if settings.LLM_PROVIDER == "openai":
-                response = await _openai_client.chat.completions.create(
-                    model=PRIMARY_MODEL,
-                    messages=messages,
-                    stream=False,
-                    response_format={"type": "json_object"},
-                )
-                raw = response.choices[0].message.content or ""
-                prompt_tokens = response.usage.prompt_tokens if response.usage else 0
-                completion_tokens = response.usage.completion_tokens if response.usage else 0
-            else:
-                system_content = messages[0]["content"]
-                gemini_contents = [
-                    {"role": "user" if m["role"] == "user" else "model",
-                     "parts": [{"text": m["content"]}]}
-                    for m in messages[1:]
-                ]
-                gemini_model = genai.GenerativeModel(
-                    model_name=PRIMARY_MODEL,
-                    system_instruction=system_content,
-                )
-                response = await asyncio.to_thread(gemini_model.generate_content, gemini_contents)
-                raw = response.text or ""
-                try:
-                    prompt_tokens = response.usage_metadata.prompt_token_count or 0
-                    completion_tokens = response.usage_metadata.candidates_token_count or 0
-                except Exception:
-                    prompt_tokens = completion_tokens = 0
+            # llm 모듈이 프로바이더(gemini/groq/openai) 선택, 키 로테이션, 폴백을 처리
+            system_prompt = messages[0]["content"]
+            contents = [
+                {"role": "user" if m["role"] == "user" else "model",
+                 "parts": [{"text": m["content"]}]}
+                for m in messages[1:]
+            ]
+            usage: list = []
+            raw = await llm.generate(system_prompt, contents, usage_out=usage)
+            prompt_tokens     = usage[0]["prompt_tokens"]     if usage else 0
+            completion_tokens = usage[0]["completion_tokens"] if usage else 0
 
             # ── 원본 응답 로그 ──────────────────────────────────────
             logger.info("┌─ RAW RESPONSE (tokens: prompt=%d / completion=%d) ─", prompt_tokens, completion_tokens)
