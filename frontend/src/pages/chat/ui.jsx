@@ -50,28 +50,16 @@ function Bubble({ msg, persona }) {
   const isUser = msg.role === 'user';
 
   if (!isUser) {
-    // 복원된 대화(text 필드) vs 새 응답(narration/dialogue 필드)
-    const hasStructured = msg.narration !== undefined || msg.dialogue !== undefined;
-    const isLoading = hasStructured
-      ? (!msg.narration && !msg.dialogue)
-      : !msg.text;
-
     return (
       <div className="bubble-row bubble-row--char">
         <img src={persona.image} alt={msg.name} className="bubble-avatar" />
         <div className="bubble-content">
           <span className="badge">{msg.name}</span>
           <div className="bubble bubble--char">
-            {isLoading ? (
-              <div className="typing-dots"><span /><span /><span /></div>
-            ) : hasStructured ? (
-              <>
-                {msg.narration && <p className="bubble__narration">{msg.narration}</p>}
-                {msg.dialogue  && <p className="bubble__dialogue">"{msg.dialogue}"</p>}
-              </>
-            ) : (
-              formatText(msg.text)
-            )}
+            {!msg.text
+              ? <div className="typing-dots"><span /><span /><span /></div>
+              : formatText(msg.text)
+            }
           </div>
         </div>
       </div>
@@ -174,11 +162,11 @@ export default function Chat() {
     esRef.current = connectChatStream(
       chatId,
       { content: userText, character_id: persona.characterId, mode: 'author', world_context: worldContext },
-      ({ narration, dialogue }) => {
+      ({ text }) => {
         setMessages(prev =>
           prev.map(m =>
             m.id === streamMsgId
-              ? { ...m, narration, dialogue }
+              ? { ...m, text: (m.text || '') + text }
               : m
           )
         );

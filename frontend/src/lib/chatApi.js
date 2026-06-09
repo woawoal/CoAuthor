@@ -12,9 +12,9 @@ export function connectChatStream(chatId, { content, character_id, mode = "autho
   const params = new URLSearchParams({ content, character_id, mode, world_context });
   const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream?${params}`);
 
-  es.addEventListener("reply", (event) => {
-    const { narration, dialogue } = JSON.parse(event.data);
-    onToken({ narration: narration || "", dialogue: dialogue || "" });
+  es.addEventListener("token", (event) => {
+    const { text } = JSON.parse(event.data);
+    onToken({ text: text || "" });
   });
 
   es.addEventListener("done", () => {
