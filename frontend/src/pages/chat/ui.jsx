@@ -151,6 +151,7 @@ export default function Chat() {
 
         const protagonistName = chars.find(c => c.role === 'protagonist')?.name ?? '나';
 
+
         if (dialogues.length > 0) {
           const restored = dialogues.map(d => ({
             id: d.id,
