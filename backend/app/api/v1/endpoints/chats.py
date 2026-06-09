@@ -2,7 +2,6 @@ import json
 import uuid
 import logging
 
-import google.generativeai as genai
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -17,11 +16,10 @@ from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
 from app.services.llm_router import calc_cost
+from app.services import llm  # 엔진 추상화 (Gemini ↔ Groq + 폴백)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-genai.configure(api_key=settings.GEMINI_API_KEY)
 
 redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
@@ -207,31 +205,26 @@ async def stream_response(
                 user_input=content,
             )
 
-            model = genai.GenerativeModel(settings.GEMINI_MODEL)
-            response = model.generate_content(full_prompt, stream=True)
-
+            # 엔진(Gemini/Groq) + 폴백은 llm 모듈이 처리. full_prompt를 단일 user 메시지로 전달.
+            usage: list = []
             seq = 1
-            for chunk in response:
-                if chunk.text:
-                    full_response += chunk.text
-                    payload = json.dumps(
-                        {"messageId": message_id, "seq": seq, "text": chunk.text},
-                        ensure_ascii=False,
-                    )
-                    yield f"event: token\ndata: {payload}\n\n"
-                    seq += 1
+            async for text in llm.stream(
+                "", [{"role": "user", "parts": [{"text": full_prompt}]}], usage_out=usage
+            ):
+                full_response += text
+                payload = json.dumps(
+                    {"messageId": message_id, "seq": seq, "text": text},
+                    ensure_ascii=False,
+                )
+                yield f"event: token\ndata: {payload}\n\n"
+                seq += 1
 
             turn = await append_history(chat_id, "ai", full_response)
 
-            # 토큰 사용량 수집 및 ApiLog 저장
-            prompt_tokens = 0
-            completion_tokens = 0
-            try:
-                meta = response.usage_metadata
-                prompt_tokens = getattr(meta, "prompt_token_count", 0) or 0
-                completion_tokens = getattr(meta, "candidates_token_count", 0) or 0
-            except Exception:
-                pass
+            # 토큰/모델 — usage_out에서 추출
+            used_model = usage[0]["model"] if usage else settings.GEMINI_MODEL
+            prompt_tokens = usage[0]["prompt_tokens"] if usage else 0
+            completion_tokens = usage[0]["completion_tokens"] if usage else 0
 
             # PostgreSQL에 AI 응답 + ApiLog 저장 (chat_id가 유효한 session UUID인 경우)
             try:
@@ -254,10 +247,10 @@ async def stream_response(
                         api_log = ApiLog(
                             session_id=session_uuid,
                             endpoint=f"GET /chats/{chat_id}/stream",
-                            model_used=settings.GEMINI_MODEL,
+                            model_used=used_model,
                             prompt_tokens=prompt_tokens,
                             completion_tokens=completion_tokens,
-                            total_cost=calc_cost(settings.GEMINI_MODEL, prompt_tokens, completion_tokens),
+                            total_cost=calc_cost(used_model, prompt_tokens, completion_tokens),
                         )
                         save_session.add(api_log)
                         await save_session.commit()
