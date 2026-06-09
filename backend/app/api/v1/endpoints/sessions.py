@@ -3,9 +3,10 @@ import uuid
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from app.database import get_db
+from app.models.api_log import ApiLog
 from app.models.session import Session, SessionStatus
 from app.schemas.session import SessionCreate, SessionResponse, SessionListItem
 
@@ -32,6 +33,7 @@ async def list_sessions(
             id=s.id,
             world_id=s.world_id,
             world_title=s.world.title,
+            world_genre=s.world.genre,
             author_id=s.author_id,
             status=s.status,
             started_at=s.started_at,
@@ -60,6 +62,18 @@ async def get_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     return session
 
 
+@router.delete("/{session_id}", status_code=204)
+async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    # ApiLog: nullable FK, DB CASCADE 없음 → 먼저 삭제
+    await db.execute(delete(ApiLog).where(ApiLog.session_id == session_id))
+    # Session 삭제 (Dialogue/Novel은 DB FK CASCADE로 처리)
+    await db.execute(delete(Session).where(Session.id == session_id))
+    logger.info("세션 삭제: %s", session_id)
+
+
 @router.patch("/{session_id}/complete", response_model=SessionResponse)
 async def complete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Session).where(Session.id == session_id))
@@ -67,7 +81,7 @@ async def complete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
     if session.status == SessionStatus.COMPLETED:
-        raise HTTPException(status_code=400, detail="이미 완료된 세션입니다.")
+        return session
 
     session.status = SessionStatus.COMPLETED
     session.ended_at = datetime.utcnow()

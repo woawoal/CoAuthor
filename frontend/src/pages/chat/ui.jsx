@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
 import { sendMessage, connectChatStream, completeSession, generateNovel } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import './ui.css';
@@ -16,26 +17,55 @@ const MOCK_MEMOS = [
   { id: 2, type: 'auto', text: '방향 제안 — 골목 끝에 익숙한 실루엣을 등장시킬 것' },
 ];
 
+function buildWorldContext(world, characters) {
+  if (!world) return '';
+  const lines = [];
+  if (world.title)       lines.push(`제목: ${world.title}`);
+  if (world.genre)       lines.push(`장르: ${world.genre}`);
+  if (world.description) lines.push(`배경: ${world.description}`);
+  if (world.setting)     lines.push(`공간: ${world.setting}`);
+  if (world.rules)       lines.push(`규칙: ${world.rules}`);
+  if (characters.length > 0) {
+    lines.push('등장인물:');
+    characters.forEach(c => {
+      const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
+      lines.push(`- ${c.name} (${roleKo})${c.personality ? ': ' + c.personality : ''}`);
+    });
+  }
+  return lines.join('\n');
+}
+
 function formatText(text) {
   return text
+    .replace(/\n?\[STATE:[^\]]*\]/g, '')
     .replace(/"([^"]*)"/g, '\n\n"$1"\n\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
-function Bubble({ msg, persona }) {
+function Bubble({ msg, persona, streaming, hasBookmark, isSelected, onClick }) {
+  if (msg.role === 'system') {
+    return <div className="world-info-header">{msg.text}</div>;
+  }
+
   const isUser = msg.role === 'user';
-  const displayText = isUser ? msg.text : formatText(msg.text);
-  const isLoading = !isUser && msg.text === '';
 
   if (!isUser) {
+    const hasContent = msg.narration || msg.dialogue || msg.text;
     return (
-      <div className="bubble-row bubble-row--char">
+      <div id={`bubble-${msg.id}`} className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`} onClick={onClick}>
         <img src={persona.image} alt={msg.name} className="bubble-avatar" />
         <div className="bubble-content">
           <span className="badge">{msg.name}</span>
           <div className="bubble bubble--char">
-            {isLoading ? <div className="typing-dots"><span /><span /><span /></div> : displayText}
+            {hasBookmark && <span className="bubble-bookmark">🔖</span>}
+            {(!hasContent && streaming)
+              ? <div className="typing-dots"><span /><span /><span /></div>
+              : <>
+                  {(msg.narration || msg.text) && <p className="bubble-narration">{formatText(msg.narration || msg.text)}</p>}
+                  {msg.dialogue && <p className="bubble-dialogue">"{msg.dialogue}"</p>}
+                </>
+            }
           </div>
         </div>
       </div>
@@ -43,9 +73,14 @@ function Bubble({ msg, persona }) {
   }
 
   return (
-    <div className="bubble-row bubble-row--user">
-      <div className={`bubble bubble--user`}>{displayText}</div>
-      <span className="badge badge--user">{msg.name}</span>
+    <div id={`bubble-${msg.id}`} className={`bubble-row bubble-row--user${isSelected ? ' bubble-row--selected' : ''}`} onClick={onClick}>
+      <div className="bubble-content bubble-content--user">
+        <span className="badge badge--user">{msg.name}</span>
+        <div className="bubble bubble--user bubble--markdown">
+          {hasBookmark && <span className="bubble-bookmark">🔖</span>}
+          <ReactMarkdown>{msg.text}</ReactMarkdown>
+        </div>
+      </div>
     </div>
   );
 }
@@ -57,18 +92,30 @@ export default function Chat() {
   const chatId = chatIdFromState ?? worldId ?? 'room_001';
   const persona = AUTHOR_MAP[authorId] ?? { characterId: 'baekya', displayName: '백야' };
 
+  const MEMO_KEY = `memos_${chatId}`;
+
   const [messages, setMessages] = useState([]);
-  const [memos, setMemos] = useState(MOCK_MEMOS);
+  const [memos, setMemos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(MEMO_KEY)) ?? MOCK_MEMOS; }
+    catch { return MOCK_MEMOS; }
+  });
   const [input, setInput] = useState('');
   const [memoInput, setMemoInput] = useState('');
-  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
   const [ending, setEnding] = useState(false);
   const [worldOpen, setWorldOpen] = useState(true);
+  const [selectedMsgId, setSelectedMsgId] = useState(null);
+  const [editingMemoId, setEditingMemoId] = useState(null);
   const bottomRef = useRef(null);
   const esRef = useRef(null);
+  const memoInputRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem(MEMO_KEY, JSON.stringify(memos));
+  }, [memos]);
 
   useEffect(() => {
     if (!chatId || chatId === 'room_001') return;
@@ -83,14 +130,38 @@ export default function Chat() {
       .then(([w, chars, dialogues]) => {
         setWorld(w);
         setDbCharacters(chars);
+        // 세계관 요약 헤더 — 신규/이어쓰기 모두 항상 표시
+        const summaryLines = [];
+        if (w.title)       summaryLines.push(`제목     ${w.title}`);
+        if (w.genre)       summaryLines.push(`장르     ${w.genre}`);
+        if (w.description) summaryLines.push(`배경     ${w.description}`);
+        if (w.setting)     summaryLines.push(`공간     ${w.setting}`);
+        if (w.rules)       summaryLines.push(`규칙     ${w.rules}`);
+        if (chars.length > 0) {
+          if (summaryLines.length) summaryLines.push('');
+          summaryLines.push('등장인물');
+          chars.forEach(c => {
+            const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
+            summaryLines.push(`• ${c.name}  (${roleKo})${c.personality ? `  —  ${c.personality}` : ''}`);
+          });
+        }
+        summaryLines.push('');
+        summaryLines.push('───────────────────────────────');
+        const summaryMsg = { id: `summary_${Date.now()}`, role: 'system', text: summaryLines.join('\n') };
+
+        const protagonistName = chars.find(c => c.role === 'protagonist')?.name ?? '나';
+
+
         if (dialogues.length > 0) {
           const restored = dialogues.map(d => ({
             id: d.id,
             role: d.speaker_type === 'user' ? 'user' : 'character',
-            name: d.speaker_type === 'user' ? '나' : persona.displayName,
+            name: d.speaker_type === 'user' ? protagonistName : persona.displayName,
             text: d.content,
           }));
-          setMessages(restored);
+          setMessages([summaryMsg, ...restored]);
+        } else {
+          setMessages([summaryMsg]);
         }
       })
       .catch(console.error);
@@ -105,7 +176,8 @@ export default function Chat() {
     const userText = input.trim();
     setInput('');
 
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: '나', text: userText }]);
+    const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
 
     await sendMessage(chatId, { content: userText, character_id: persona.characterId });
 
@@ -113,12 +185,17 @@ export default function Chat() {
     setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: persona.displayName, text: '' }]);
     setStreaming(true);
 
+    const worldContext = buildWorldContext(world, dbCharacters);
     esRef.current = connectChatStream(
       chatId,
-      { content: userText, character_id: persona.characterId, mode: 'author' },
-      (data) => {
+      { content: userText, character_id: persona.characterId, mode: 'author', world_context: worldContext },
+      ({ narration, dialogue }) => {
         setMessages(prev =>
-          prev.map(m => m.id === streamMsgId ? { ...m, text: m.text + data.text } : m)
+          prev.map(m =>
+            m.id === streamMsgId
+              ? { ...m, narration, dialogue }
+              : m
+          )
         );
       },
       () => setStreaming(false),
@@ -140,10 +217,57 @@ export default function Chat() {
     }
   }
 
+  function getMsgPreview(msgId) {
+    const msg = messages.find(m => m.id === msgId);
+    if (!msg) return '';
+    const text = msg.narration || msg.dialogue || msg.text || '';
+    return text.length > 36 ? text.slice(0, 36) + '…' : text;
+  }
+
+  function clearBookmarkState() {
+    setSelectedMsgId(null);
+    setEditingMemoId(null);
+    setMemoInput('');
+  }
+
+  function handleBubbleClick(msgId) {
+    const existing = memos.find(m => m.msgId === msgId);
+    if (existing) {
+      setEditingMemoId(existing.id);
+      setMemoInput(existing.text);
+    } else {
+      setEditingMemoId(null);
+      setMemoInput('');
+    }
+    setSelectedMsgId(prev => prev === msgId ? null : msgId);
+    setPanelOpen(true);
+    setTimeout(() => memoInputRef.current?.focus(), 80);
+  }
+
+  function handleMemoClick(memo) {
+    if (memo.msgId) {
+      document.getElementById(`bubble-${memo.msgId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setSelectedMsgId(memo.msgId);
+      setEditingMemoId(memo.id);
+      setMemoInput(memo.text);
+      setPanelOpen(true);
+      setTimeout(() => memoInputRef.current?.focus(), 80);
+    }
+  }
+
   function handleAddMemo() {
     if (!memoInput.trim()) return;
-    setMemos(prev => [...prev, { id: Date.now(), type: 'manual', text: memoInput }]);
-    setMemoInput('');
+    if (editingMemoId) {
+      setMemos(prev => prev.map(m => m.id === editingMemoId ? { ...m, text: memoInput } : m));
+    } else {
+      setMemos(prev => [...prev, {
+        id: Date.now(),
+        type: 'manual',
+        text: memoInput,
+        msgId: selectedMsgId || null,
+      }]);
+    }
+    clearBookmarkState();
   }
 
   return (
@@ -166,18 +290,34 @@ export default function Chat() {
         </div>
 
         <div className="chat-messages">
-          {messages.map(msg => <Bubble key={msg.id} msg={msg} persona={persona} />)}
+          {messages.map(msg => (
+            <Bubble
+              key={msg.id}
+              msg={msg}
+              persona={persona}
+              streaming={streaming}
+              hasBookmark={memos.some(m => m.msgId === msg.id)}
+              isSelected={selectedMsgId === msg.id}
+              onClick={msg.role !== 'system' ? () => handleBubbleClick(msg.id) : undefined}
+            />
+          ))}
           <div ref={bottomRef} />
         </div>
 
         <div className="chat-input-bar">
-          <input
+          <textarea
             className="chat-input"
             placeholder={streaming ? '응답 중...' : '주인공으로 대사 입력...'}
             value={input}
             disabled={streaming}
+            rows={1}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
           />
           <button className="chat-send-btn" onClick={handleSend} disabled={streaming}>전송</button>
         </div>
@@ -239,24 +379,69 @@ export default function Chat() {
 
             <p className="memo-panel__title">작가 메모</p>
 
+            {selectedMsgId && (
+              <div className="memo-context">
+                <div className="memo-context__header">
+                  <span className="memo-context__label">🔖 책갈피</span>
+                  <button className="memo-context__clear" onClick={clearBookmarkState}>×</button>
+                </div>
+                <textarea
+                  ref={memoInputRef}
+                  className="memo-input memo-context__input"
+                  placeholder="메모 작성..."
+                  value={memoInput}
+                  rows={3}
+                  onChange={e => setMemoInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAddMemo();
+                    }
+                  }}
+                />
+                <button className="memo-context__save" onClick={handleAddMemo}>{editingMemoId ? '수정' : '저장'}</button>
+              </div>
+            )}
+
             <div className="memo-list">
               {memos.map(memo => (
-                <div key={memo.id} className={`memo-item memo-item--${memo.type}`}>
-                  {memo.text}
+                <div
+                  key={memo.id}
+                  className={`memo-item memo-item--${memo.type}${memo.msgId ? ' memo-item--bookmark' : ''}`}
+                  onClick={() => handleMemoClick(memo)}
+                >
+                  {memo.msgId && (
+                    <p className="memo-item__ref">🔖 책갈피</p>
+                  )}
+                  <div className="memo-item__body">
+                    <span>{memo.text}</span>
+                    <button
+                      className="memo-item__delete"
+                      onClick={e => { e.stopPropagation(); setMemos(prev => prev.filter(m => m.id !== memo.id)); }}
+                    >×</button>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <div className="memo-add">
-              <input
-                className="memo-input"
-                placeholder="메모 추가..."
-                value={memoInput}
-                onChange={e => setMemoInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddMemo()}
-              />
-              <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
-            </div>
+            {!selectedMsgId && (
+              <div className="memo-add">
+                <textarea
+                  className="memo-input"
+                  placeholder="메모 추가..."
+                  value={memoInput}
+                  rows={2}
+                  onChange={e => setMemoInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleAddMemo();
+                    }
+                  }}
+                />
+                <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
+              </div>
+            )}
           </aside>
         </div>
       </div>

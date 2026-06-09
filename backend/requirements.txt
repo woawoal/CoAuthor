@@ -11,6 +11,6 @@ httpx==0.27.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
 google-generativeai>=0.7.0
-google-cloud-aiplatform>=1.60.0   # Vertex AI (USE_VERTEX=true 시)
-groq>=0.11.0                       # Groq (체인에 groq 시)
-openai>=1.40.0                     # OpenAI/GPT (체인에 openai 시)
+google-cloud-aiplatform>=1.60.0
+groq>=0.11.0
+openai>=1.40.0

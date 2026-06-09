@@ -97,11 +97,34 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+
+.bubble-row:hover {
+  background: color-mix(in srgb, var(--theme-color) 6%, transparent);
 }
 
 .bubble-row--user {
   flex-direction: row-reverse;
+  align-items: flex-start;
+}
+
+.bubble-content--user {
   align-items: flex-end;
+}
+
+.bubble-row--selected {
+  background: color-mix(in srgb, var(--theme-color) 12%, transparent);
+}
+
+.bubble-bookmark {
+  float: right;
+  font-size: 12px;
+  margin-left: 6px;
+  line-height: 1;
+  opacity: 0.8;
 }
 
 .bubble-avatar {
@@ -128,7 +151,7 @@
 
 .badge--user {
   color: var(--text-muted);
-  padding-bottom: 4px;
+  text-align: right;
 }
 
 .bubble {
@@ -145,14 +168,29 @@
 .bubble--char {
   background: color-mix(in srgb, var(--theme-color) 20%, transparent);
   border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
-  border-bottom-left-radius: 4px;
+  border-top-left-radius: 4px;
 }
 
 /* 사용자 말풍선 — 중립 표면(라이트/다크 자동) */
 .bubble--user {
   background: color-mix(in srgb, var(--text-main) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-main) 16%, transparent);
-  border-bottom-right-radius: 4px;
+  border-top-right-radius: 4px;
+}
+
+/* ── 마크다운 버블 ── */
+.bubble--markdown p { margin: 0; }
+.bubble--markdown p + p { margin-top: 6px; }
+.bubble--markdown ul,
+.bubble--markdown ol { margin: 4px 0; padding-left: 18px; }
+.bubble--markdown li { margin: 2px 0; }
+.bubble--markdown strong { font-weight: 700; }
+.bubble--markdown em { font-style: italic; }
+.bubble--markdown code {
+  background: color-mix(in srgb, var(--text-main) 12%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.9em;
 }
 
 /* ── 입력창 ── */
@@ -175,6 +213,11 @@
   color: var(--text-main);
   font-size: 14px;
   outline: none;
+  resize: none;
+  line-height: 1.5;
+  max-height: 120px;
+  overflow-y: auto;
+  font-family: inherit;
 }
 
 .chat-input::placeholder {
@@ -287,7 +330,7 @@
   gap: 12px;
   border-left: 1px solid color-mix(in srgb, var(--theme-color) 28%, transparent);
   background: var(--card-main);
-  padding: 16px 14px;
+  padding: 16px 14px 14px;
   box-sizing: border-box;
 }
 
@@ -308,11 +351,116 @@
   overflow-y: auto;
 }
 
+/* ── 메모 컨텍스트 (말풍선 선택 시) ── */
+.memo-context {
+  background: color-mix(in srgb, var(--theme-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 35%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.memo-context__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.memo-context__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--theme-color);
+}
+
+.memo-context__clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  line-height: 1;
+}
+
+.memo-context__input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  border-color: color-mix(in srgb, var(--theme-color) 40%, transparent);
+}
+
+.memo-context__save {
+  margin-top: 6px;
+  width: 100%;
+  background: var(--theme-color);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.memo-context__save:hover {
+  background: color-mix(in srgb, var(--theme-color) 85%, #fff);
+}
+
 .memo-item {
   font-size: 12px;
   line-height: 1.5;
   padding: 8px 10px;
   border-radius: 8px;
+}
+
+.memo-item__ref {
+  font-size: 10px;
+  color: var(--theme-color);
+  opacity: 0.7;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memo-item__body {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.memo-item__body span {
+  flex: 1;
+  word-break: break-word;
+}
+
+.memo-item__delete {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+.memo-item__delete:hover {
+  opacity: 1;
+  color: #e05555;
+}
+
+.memo-item--bookmark {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.memo-item--bookmark:hover {
+  background: color-mix(in srgb, var(--theme-color) 18%, transparent);
 }
 
 .memo-item--auto {
@@ -336,12 +484,15 @@
   flex: 1;
   background: color-mix(in srgb, var(--text-main) 6%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: 12px;
+  padding: 10px 14px;
   color: var(--text-main);
-  font-size: 12px;
+  font-size: 14px;
   outline: none;
   min-width: 0;
+  resize: none;
+  font-family: inherit;
+  line-height: 1.4;
 }
 
 .memo-input::placeholder {
@@ -356,10 +507,11 @@
   background: color-mix(in srgb, var(--theme-color) 45%, transparent);
   border: 1px solid color-mix(in srgb, var(--theme-color) 45%, transparent);
   color: #fff;
-  border-radius: 8px;
-  padding: 6px 10px;
+  border-radius: 12px;
+  padding: 10px 14px;
   cursor: pointer;
   font-size: 16px;
+  line-height: 1;
   flex-shrink: 0;
 }
 
@@ -437,4 +589,31 @@
   font-size: 12px;
   color: var(--text-main);
   padding: 4px 0;
+}
+
+/* ── narration / dialogue 분리 렌더링 ── */
+.bubble__narration {
+  margin: 0 0 8px 0;
+  color: #c8c8d8;
+  font-style: italic;
+  line-height: 1.8;
+}
+
+.bubble__dialogue {
+  margin: 0;
+  color: #ffffff;
+  font-weight: 500;
+  line-height: 1.8;
+}
+
+/* ── 세계관 정보 헤더 (채팅 최초 진입 시) ── */
+.world-info-header {
+  padding: 16px 24px 8px;
+  color: #55556a;
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  text-align: center;
+  letter-spacing: 0.3px;
+  user-select: none;
 }

@@ -213,7 +213,7 @@ def _handle_failure(cand: tuple, exc: Exception, attempt: int) -> str:
 
 
 # ── 공개 API ─────────────────────────────────────────────────────
-async def generate(system_prompt: str, contents: list[dict]) -> str:
+async def generate(system_prompt: str, contents: list[dict], usage_out: list | None = None) -> str:
     """단발 생성. 후보 순회 + 429 분기 + 백오프. 전부 실패 시 마지막 예외 raise."""
     last_exc = None
     for cand in _active_candidates():
@@ -221,7 +221,9 @@ async def generate(system_prompt: str, contents: list[dict]) -> str:
         attempt = 0
         while True:
             try:
-                text, _usage = await asyncio.to_thread(_gen_once, prov, model, key, system_prompt, contents)
+                text, usage = await asyncio.to_thread(_gen_once, prov, model, key, system_prompt, contents)
+                if usage_out is not None:
+                    usage_out.append(usage)
                 return text
             except Exception as e:
                 last_exc = e

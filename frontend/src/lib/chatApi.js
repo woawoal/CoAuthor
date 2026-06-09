@@ -8,13 +8,13 @@ export async function sendMessage(chatId, payload) {
   });
 }
 
-export function connectChatStream(chatId, { content, character_id, mode = "author" }, onToken, onDone) {
-  const params = new URLSearchParams({ content, character_id, mode });
+export function connectChatStream(chatId, { content, character_id, mode = "author", world_context = "" }, onToken, onDone) {
+  const params = new URLSearchParams({ content, character_id, mode, world_context });
   const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream?${params}`);
 
-  es.addEventListener("token", (event) => {
-    const data = JSON.parse(event.data);
-    onToken(data);
+  es.addEventListener("reply", (event) => {
+    const { narration, dialogue } = JSON.parse(event.data);
+    onToken({ narration: narration || "", dialogue: dialogue || "" });
   });
 
   es.addEventListener("done", () => {
