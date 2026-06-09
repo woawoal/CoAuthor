@@ -23,16 +23,16 @@ function Worldview() {
     const [questions, setQuestions] = useState([]);
     const [typedText, setTypedText] = useState('');
 
-    // 2. 등장인물(characters) 테이블 스키마에 맞춘 초기 구조 정의
-    const createNewCharacter = () => ({
+    // 2. 등장인물(characters) 테이블 스키마에 맞춘 초기 구조 정의    
+    const createNewCharacter = (index = 0) => ({
         id: Date.now() + Math.random(), // 임시 고유 키
         name: '',
-        role: 'protagonist', // 기본값 주연        
+        role: index === 0 ? 'protagonist' : 'supporting',
         personality: '',
         system_prompt: ''
     });
 
-    const [characters, setCharacters] = useState([createNewCharacter()]);
+    const [characters, setCharacters] = useState([createNewCharacter(0)]);
     const [selectedAuthor, setSelectedAuthor] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -103,38 +103,9 @@ function Worldview() {
         return () => clearInterval(timer);
     }, [currentDialogue?.text]);
 
-    useEffect(() => {
-        const handleGlobalKeyDown = (e) => {
-            if (e.key === 'Enter') {
-                // 한글 입력 조합 중복 방지
-                if (e.nativeEvent.isComposing) return;
-
-                // 현재 포커스가 textarea에 가 있다면 줄바꿈을 해야 하므로 전역 엔터 동작을 막음
-                if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') {
-                    return;
-                }
-
-                // ref를 통해 항상 최신 상태와 함수를 가져옴
-                const { currentDialogue: activeDialogue, handleNext: nextFn, handleSave: saveFn } = stateRef.current;
-
-                if (activeDialogue?.field === 'confirm') {
-                    saveFn();
-                } else {
-                    e.preventDefault(); // 기본 엔터 동작(폼 제출 등) 방지
-                    nextFn();
-                }
-            }
-        };
-
-        window.addEventListener('keydown', handleGlobalKeyDown);
-        return () => {
-            window.removeEventListener('keydown', handleGlobalKeyDown);
-        };
-    }, []);
-
     // 등장인물 핸들러
     const handleAddCharacter = () => {
-        setCharacters((prev) => [...prev, createNewCharacter()]);
+        setCharacters((prev) => [...prev, createNewCharacter(prev.length)]);
     };
 
     const handleRemoveCharacter = (id) => {
@@ -157,6 +128,14 @@ function Worldview() {
             return false;
         }
 
+        if (currentDialogue?.field === 'characters') {
+            const protagonist = characters[0];
+            if (!protagonist || !protagonist.name.trim()) {
+                alert('주인공의 이름을 반드시 입력해야 합니다.');
+                return false;
+            }
+        }
+
         return true;
     };
 
@@ -177,7 +156,16 @@ function Worldview() {
     const handleSave = async () => {
         if (!title.trim()) {
             alert("세계관 제목을 입력해 주세요!");
-            setCurrentStep(2);
+            const titleStep = questions.find(q => q.field === 'title')?.step || 2;
+            setCurrentStep(titleStep);
+            return;
+        }
+
+        const protagonist = characters[0];
+        if (!protagonist || !protagonist.name.trim()) {
+            alert("주인공의 이름을 반드시 입력해야 세계관을 생성할 수 있습니다.");
+            const characterStep = questions.find(q => q.field === 'characters')?.step || 6;
+            setCurrentStep(characterStep);
             return;
         }
 
@@ -322,12 +310,14 @@ function Worldview() {
                             {characters.map((char, index) => (
                                 <div key={char.id} className="character-card">
                                     <div className="char-card-header">
-                                        <span className="char-index"># {index + 1}번째 인물</span>
+                                        <span className="char-index">
+                                            # {index === 0 ? '주인공' : `${index + 1}번째 인물`}
+                                        </span>
                                         <button
                                             type="button"
                                             className="btn-card-remove"
                                             onClick={() => handleRemoveCharacter(char.id)}
-                                            disabled={characters.length === 1}
+                                            disabled={characters.length === 1 || index === 0}
                                         >
                                             삭제
                                         </button>
@@ -339,7 +329,7 @@ function Worldview() {
                                             <input
                                                 type="text"
                                                 className="form-input"
-                                                placeholder="캐릭터 이름"
+                                                placeholder={index === 0 ? "주인공 이름 (필수)" : "캐릭터 이름"}
                                                 value={char.name}
                                                 onChange={(e) =>
                                                     handleCharacterChange(char.id, 'name', e.target.value)
@@ -365,6 +355,7 @@ function Worldview() {
                                             <select
                                                 className="form-select"
                                                 value={char.role}
+                                                disabled={true}
                                                 onChange={(e) =>
                                                     handleCharacterChange(char.id, 'role', e.target.value)
                                                 }
