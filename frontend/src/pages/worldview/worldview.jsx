@@ -6,6 +6,7 @@ import './worldview.css';
 import { WriteIcon, ExitIcon, ChevronRight } from '../../components/icons';
 import { createWorldview } from '../../lib/worldviewApi';
 import { getAuthor, getQuestions } from '../../lib/authorsApi';
+import { getRandomWorldExamples } from '../../lib/worldExampleApi';
 
 function Worldview() {
     const location = useLocation();
@@ -22,6 +23,8 @@ function Worldview() {
     const [rules, setRules] = useState('');
     const [questions, setQuestions] = useState([]);
     const [typedText, setTypedText] = useState('');
+
+    const [worldExample, setWorldExample] = useState(null);
 
     // 2. 등장인물(characters) 테이블 스키마에 맞춘 초기 구조 정의    
     const createNewCharacter = (index = 0) => ({
@@ -51,6 +54,9 @@ function Worldview() {
                 setQuestions(
                     questionsData.dialogues || questionsData || []
                 );
+
+                const examples = await getRandomWorldExamples(authorId, 1);
+                setWorldExample(examples[0]);
             } catch (error) {
                 console.error("Error fetching data:", error);
                 alert("작가 정보를 불러오지 못했습니다.");
@@ -247,7 +253,9 @@ function Worldview() {
                         <input
                             type="text"
                             className="form-input"
-                            placeholder="예: 무림외전, 네오 서울 2026"
+                            placeholder={worldExample?.title
+                                ? `예: ${worldExample.title}`
+                                : "예: 무림외전, 네오 서울 2026"}
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                         />
@@ -261,7 +269,11 @@ function Worldview() {
                         <input
                             type="text"
                             className="form-input"
-                            placeholder="이 세계관을 관통하는 요약 한 줄을 적어주세요."
+                            placeholder={
+                                worldExample?.description
+                                    ? `예: ${worldExample.description}`
+                                    : "이 세계관을 관통하는 요약 한 줄을 적어주세요."
+                            }
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                         />
@@ -272,10 +284,14 @@ function Worldview() {
                 return (
                     <div className="form-group">
                         <label className="form-label">시대 및 공간 배경</label>
-                        <input
-                            type="text"
-                            className="form-input"
-                            placeholder="가상의 역사, 지리적 특징, 시대 분위기 등을 적어주세요."
+                        <textarea
+                            className="form-textarea"
+                            rows={4}
+                            placeholder={
+                                worldExample?.setting
+                                    ? `예: ${worldExample.setting}`
+                                    : "가상의 역사, 지리적 특징, 시대 분위기 등을 적어주세요."
+                            }
                             value={setting}
                             onChange={(e) => setSetting(e.target.value)}
                         />
@@ -286,10 +302,14 @@ function Worldview() {
                 return (
                     <div className="form-group">
                         <label className="form-label">세계관 특별 규칙</label>
-                        <input
-                            type="text"
-                            className="form-input"
-                            placeholder="개념, 마법 법칙, 사회적 제약 사항 등을 적어주세요."
+                        <textarea
+                            className="form-textarea"
+                            rows={5}
+                            placeholder={
+                                Array.isArray(worldExample?.rules)
+                                    ? `예: ${worldExample.rules.join("\n")}`
+                                    : "개념, 마법 법칙, 사회적 제약 사항 등을 적어주세요."
+                            }
                             value={rules}
                             onChange={(e) => setRules(e.target.value)}
                         />
@@ -329,7 +349,11 @@ function Worldview() {
                                             <input
                                                 type="text"
                                                 className="form-input"
-                                                placeholder={index === 0 ? "주인공 이름 (필수)" : "캐릭터 이름"}
+                                                placeholder={
+                                                    worldExample?.characters?.[index]?.name
+                                                        ? `예: ${worldExample.characters[index].name}`
+                                                        : (index === 0 ? "주인공 이름 (필수)" : "캐릭터 이름")
+                                                }
                                                 value={char.name}
                                                 onChange={(e) =>
                                                     handleCharacterChange(char.id, 'name', e.target.value)
@@ -342,7 +366,11 @@ function Worldview() {
                                             <input
                                                 type="text"
                                                 className="form-input"
-                                                placeholder="예: 냉철함, 츤데레, 다정함"
+                                                placeholder={
+                                                    worldExample?.characters?.[index]?.personality
+                                                        ? `예: ${worldExample.characters[index].personality}`
+                                                        : "예: 냉철함, 츤데레, 다정함"
+                                                }
                                                 value={char.personality}
                                                 onChange={(e) =>
                                                     handleCharacterChange(char.id, 'personality', e.target.value)
@@ -371,7 +399,11 @@ function Worldview() {
                                         <input
                                             type="text"
                                             className="form-input"
-                                            placeholder="AI가 이 역할을 연기할 때 지켜야 할 어조나 규칙"
+                                            placeholder={
+                                                worldExample?.characters?.[index]?.system_prompt
+                                                    ? `예: ${worldExample.characters[index].system_prompt}`
+                                                    : "AI가 이 역할을 연기할 때 지켜야 할 어조나 규칙"
+                                            }
                                             value={char.system_prompt}
                                             onChange={(e) =>
                                                 handleCharacterChange(char.id, 'system_prompt', e.target.value)
