@@ -11,14 +11,25 @@ from app.services import llm  # 엔진 추상화 (Gemini ↔ Groq + 폴백)
 
 logger = logging.getLogger(__name__)
 
-PRIMARY_MODEL  = settings.GEMINI_MODEL          # .env로 교체 가능
-FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
+if settings.LLM_PROVIDER == "openai":
+    PRIMARY_MODEL  = settings.OPENAI_MODEL
+    FALLBACK_MODEL = settings.OPENAI_FALLBACK_MODEL
+elif settings.LLM_PROVIDER == "groq":
+    PRIMARY_MODEL  = settings.GROQ_MODEL
+    FALLBACK_MODEL = settings.GROQ_FALLBACK_MODEL
+else:  # gemini
+    PRIMARY_MODEL  = settings.GEMINI_MODEL
+    FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
 
-# Gemini 2025 기준 1M 토큰당 가격 (USD)
+# 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
     "gemini-2.5-flash":      {"input": 0.15,  "output": 0.60},
     "gemini-2.0-flash":      {"input": 0.10,  "output": 0.40},
     "gemini-2.0-flash-lite": {"input": 0.075, "output": 0.30},
+    "gpt-4o":                {"input": 2.50,  "output": 10.00},
+    "gpt-4o-mini":           {"input": 0.15,  "output": 0.60},
+    "llama-3.3-70b-versatile": {"input": 0.00, "output": 0.00},
+    "llama-3.1-8b-instant":    {"input": 0.00, "output": 0.00},
 }
 
 _COACHING_SUFFIX = (
@@ -54,7 +65,7 @@ def _to_gemini_contents(history: list[dict], user_message: str) -> list[dict]:
 
 
 async def _generate(system_prompt: str, contents: list[dict]) -> str:
-    """단발성 호출 — 엔진(Gemini/Groq) + 폴백은 llm 모듈이 처리."""
+    """단발성 호출 — 엔진/폴백은 llm 모듈이 처리."""
     return await llm.generate(system_prompt, contents)
 
 
@@ -102,7 +113,6 @@ class LLMRouter:
 
         yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
 
-        # 엔드포인트가 수신 후 ApiLog 저장용 (클라이언트에 전달 안 됨)
         if usage_out:
             u = usage_out[0]
             log_payload = json.dumps({
@@ -125,7 +135,7 @@ class LLMRouter:
     ) -> AsyncGenerator[str, None]:
         """
         /api/chats/{id}/stream 에서 호출.
-        캐시 히트 시 즉시 반환, 미스 시 Gemini 스트리밍.
+        캐시 히트 시 즉시 반환, 미스 시 LLM 스트리밍.
         """
         history = history or []
         cache_key = {"persona_id": persona_id, "text": text, "mode": mode}
@@ -246,8 +256,12 @@ class LLMRouter:
         dialogue_history: list[dict],
         world_description: str = "",
         persona_id: str = "",
+        use_style: bool = True,
     ) -> str:
-        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로."""
+        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로.
+
+        use_style=False 면 문체 RAG(few-shot) 주입을 건너뛴다(시연/비교용 대조).
+        """
         if not dialogue_history:
             return ""
 
@@ -258,6 +272,22 @@ class LLMRouter:
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"
             for m in dialogue_history
         )
+
+        # 문체 RAG: 이 작가의 문체 예시 중 장면과 가장 가까운 것을 few-shot으로 주입
+        if persona_id and use_style:
+            try:
+                from app.services import style
+                examples = await style.retrieve_examples(persona_id, block, k=3)
+                if examples:
+                    ex = "\n".join(f"- {e}" for e in examples)
+                    system_prompt += (
+                        "\n\n[이 작가의 문체 예시]\n"
+                        "아래는 어조·리듬·호흡·시선 처리를 보여주는 참고용 문장이다. "
+                        "문장·표현·소재를 베끼지 말고, 목소리만 닮게 이 장면에 맞는 새 문장을 써라.\n"
+                        f"{ex}"
+                    )
+            except Exception as e:
+                logger.warning("문체 예시 검색 실패(건너뜀): %s", e)
         contents = [{
             "role": "user",
             "parts": [{"text": f"아래 대화를 소설 장면으로 변환해주세요:\n\n{block}"}],

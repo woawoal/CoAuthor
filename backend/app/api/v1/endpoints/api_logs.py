@@ -59,6 +59,55 @@ async def get_summary(
     ]
 
 
+@router.get("/by-model")
+async def get_by_model(db: AsyncSession = Depends(get_db)):
+    """모델별 토큰 사용량·비용 집계 (어떤 엔진이 토큰을 얼마나 썼나)."""
+    result = await db.execute(
+        select(
+            ApiLog.model_used.label("model"),
+            func.count(ApiLog.id).label("calls"),
+            func.coalesce(func.sum(ApiLog.prompt_tokens), 0).label("prompt_tokens"),
+            func.coalesce(func.sum(ApiLog.completion_tokens), 0).label("completion_tokens"),
+            func.coalesce(func.sum(ApiLog.total_cost), 0.0).label("cost"),
+        )
+        .group_by(ApiLog.model_used)
+        .order_by(func.sum(ApiLog.total_cost).desc())
+    )
+    return [
+        {
+            "model": row.model or "(unknown)",
+            "calls": row.calls,
+            "prompt_tokens": row.prompt_tokens,
+            "completion_tokens": row.completion_tokens,
+            "total_tokens": row.prompt_tokens + row.completion_tokens,
+            "total_cost_usd": round(row.cost, 6),
+        }
+        for row in result.all()
+    ]
+
+
+@router.get("/session/{session_id}")
+async def get_session_usage(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """세션별 토큰 사용량·비용 집계 (이 소설 하나에 토큰이 얼마나 들었나)."""
+    result = await db.execute(
+        select(
+            func.count(ApiLog.id).label("calls"),
+            func.coalesce(func.sum(ApiLog.prompt_tokens), 0).label("prompt_tokens"),
+            func.coalesce(func.sum(ApiLog.completion_tokens), 0).label("completion_tokens"),
+            func.coalesce(func.sum(ApiLog.total_cost), 0.0).label("cost"),
+        ).where(ApiLog.session_id == session_id)
+    )
+    row = result.one()
+    return {
+        "session_id": str(session_id),
+        "calls": row.calls,
+        "prompt_tokens": row.prompt_tokens,
+        "completion_tokens": row.completion_tokens,
+        "total_tokens": row.prompt_tokens + row.completion_tokens,
+        "total_cost_usd": round(row.cost, 6),
+    }
+
+
 @router.get("/total")
 async def get_total(db: AsyncSession = Depends(get_db)):
     """전체 누적 토큰 사용량 및 비용"""

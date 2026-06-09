@@ -97,7 +97,7 @@ with TestClient(app) as c:
     r = c.post(f"/api/v1/chats/{session_id}/messages", json=payload)
     show(5, "메시지 전송", r, expect=(201,))
 
-    # 6) AI 응답 스트리밍 (Gemini)
+    # 6) AI 응답 (event: reply = narration/dialogue 구조화)
     got = ""
     with c.stream("GET", f"/api/v1/chats/{session_id}/stream", params={
         "content": payload["content"], "character_id": "hanyeoreum",
@@ -107,13 +107,13 @@ with TestClient(app) as c:
             if line and line.startswith("data:"):
                 try:
                     d = json.loads(line[5:].strip())
-                    if "text" in d:
-                        got += d["text"]
+                    # 신 컨트랙트: narration/dialogue (구) 컨트랙트: text 둘 다 수용
+                    got += d.get("narration", "") + d.get("dialogue", "") + d.get("text", "")
                     if "error" in d:
-                        print("    Gemini 오류:", d["error"][:200])
+                        print("    LLM 오류:", d["error"][:200])
                 except Exception:
                     pass
-    print(f"[6] AI 스트리밍: {ok if got else ng} 응답 {len(got)}자")
+    print(f"[6] AI 응답(reply): {ok if got else ng} 응답 {len(got)}자")
     if got:
         print("    앞부분:", got[:100].replace("\n", " "))
 
