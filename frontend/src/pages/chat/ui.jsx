@@ -42,7 +42,7 @@ function formatText(text) {
     .trim();
 }
 
-function Bubble({ msg, persona }) {
+function Bubble({ msg, persona, streaming }) {
   if (msg.role === 'system') {
     return <div className="world-info-header">{msg.text}</div>;
   }
@@ -50,15 +50,19 @@ function Bubble({ msg, persona }) {
   const isUser = msg.role === 'user';
 
   if (!isUser) {
+    const hasContent = msg.narration || msg.dialogue || msg.text;
     return (
       <div className="bubble-row bubble-row--char">
         <img src={persona.image} alt={msg.name} className="bubble-avatar" />
         <div className="bubble-content">
           <span className="badge">{msg.name}</span>
           <div className="bubble bubble--char">
-            {!msg.text
+            {(!hasContent && streaming)
               ? <div className="typing-dots"><span /><span /><span /></div>
-              : formatText(msg.text)
+              : <>
+                  {(msg.narration || msg.text) && <p className="bubble-narration">{formatText(msg.narration || msg.text)}</p>}
+                  {msg.dialogue && <p className="bubble-dialogue">"{msg.dialogue}"</p>}
+                </>
             }
           </div>
         </div>
@@ -162,11 +166,11 @@ export default function Chat() {
     esRef.current = connectChatStream(
       chatId,
       { content: userText, character_id: persona.characterId, mode: 'author', world_context: worldContext },
-      ({ text }) => {
+      ({ narration, dialogue }) => {
         setMessages(prev =>
           prev.map(m =>
             m.id === streamMsgId
-              ? { ...m, text: (m.text || '') + text }
+              ? { ...m, narration, dialogue }
               : m
           )
         );
@@ -216,7 +220,7 @@ export default function Chat() {
         </div>
 
         <div className="chat-messages">
-          {messages.map(msg => <Bubble key={msg.id} msg={msg} persona={persona} />)}
+          {messages.map(msg => <Bubble key={msg.id} msg={msg} persona={persona} streaming={streaming} />)}
           <div ref={bottomRef} />
         </div>
 

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379"
     CACHE_TTL: int = 3600
 
-    # AI 엔진 — .env의 LLM_PROVIDER 로 전환 (gemini | groq)
+    # AI 엔진 — .env의 LLM_PROVIDER 로 전환 (gemini | groq | openai)
     LLM_PROVIDER: str = "gemini"
     AI_API_KEY: str = ""
     AI_API_BASE_URL: str = ""

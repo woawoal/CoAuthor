@@ -11,8 +11,15 @@ from app.services import llm  # 엔진 추상화 (Gemini ↔ Groq + 폴백)
 
 logger = logging.getLogger(__name__)
 
-PRIMARY_MODEL  = settings.GEMINI_MODEL
-FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
+if settings.LLM_PROVIDER == "openai":
+    PRIMARY_MODEL  = settings.OPENAI_MODEL
+    FALLBACK_MODEL = settings.OPENAI_FALLBACK_MODEL
+elif settings.LLM_PROVIDER == "groq":
+    PRIMARY_MODEL  = settings.GROQ_MODEL
+    FALLBACK_MODEL = settings.GROQ_FALLBACK_MODEL
+else:  # gemini
+    PRIMARY_MODEL  = settings.GEMINI_MODEL
+    FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
 
 # 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
