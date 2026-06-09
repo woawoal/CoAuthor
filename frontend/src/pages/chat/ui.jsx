@@ -257,27 +257,6 @@ export default function Chat() {
 
         <div className={`memo-slide ${panelOpen ? 'memo-slide--open' : ''}`}>
           <aside className="memo-panel">
-            <p className="memo-panel__title">작가 메모</p>
-
-            <div className="memo-list">
-              {memos.map(memo => (
-                <div key={memo.id} className={`memo-item memo-item--${memo.type}`}>
-                  {memo.text}
-                </div>
-              ))}
-            </div>
-
-            <div className="memo-add">
-              <input
-                className="memo-input"
-                placeholder="메모 추가..."
-                value={memoInput}
-                onChange={e => setMemoInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddMemo()}
-              />
-              <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
-            </div>
-
             {world && (
               <div className="world-summary">
                 <button
@@ -318,6 +297,27 @@ export default function Chat() {
                   ))
                 : <div className="char-item">● {persona.displayName} (작가 AI)</div>
               }
+            </div>
+
+            <p className="memo-panel__title">작가 메모</p>
+
+            <div className="memo-list">
+              {memos.map(memo => (
+                <div key={memo.id} className={`memo-item memo-item--${memo.type}`}>
+                  {memo.text}
+                </div>
+              ))}
+            </div>
+
+            <div className="memo-add">
+              <input
+                className="memo-input"
+                placeholder="메모 추가..."
+                value={memoInput}
+                onChange={e => setMemoInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddMemo()}
+              />
+              <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
             </div>
           </aside>
         </div>

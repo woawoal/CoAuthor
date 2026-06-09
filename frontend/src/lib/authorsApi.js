@@ -8,7 +8,7 @@ async function fetchFallback(path) {
 
 export async function getAuthors() {
   try {
-    const response = await fetch(`${API_BASE_URL}/authors`);
+    const response = await fetch(`${API_BASE_URL}/authors/`);
     if (!response.ok) throw new Error();
     return response.json();
   } catch {
