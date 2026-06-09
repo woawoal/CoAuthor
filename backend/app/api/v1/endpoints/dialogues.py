@@ -18,6 +18,8 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 llm_router = LLMRouter()
 
+CONTEXT_WINDOW = 10  # LLM에 전달할 최근 대화 턴 수
+
 
 async def _get_active_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
     result = await db.execute(select(Session).where(Session.id == session_id))
@@ -49,7 +51,7 @@ async def stream_dialogue(
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
     """사용자 발화 저장 → 대화 히스토리 조회 → Gemini 스트리밍 → AI 응답 저장"""
-    await _get_active_session(session_id, db)
+    session_obj = await _get_active_session(session_id, db)
 
     char_result = await db.execute(select(Character).where(Character.id == body.character_id))
     character = char_result.scalar_one_or_none()
@@ -61,6 +63,27 @@ async def stream_dialogue(
     )
     turn_count = count_result.scalar()
 
+    # 10턴 초과 시 오래된 대화 요약 (컨텍스트 압축)
+    if turn_count > CONTEXT_WINDOW:
+        old_result = await db.execute(
+            select(Dialogue)
+            .where(Dialogue.session_id == session_id)
+            .order_by(Dialogue.turn_order)
+            .limit(turn_count - CONTEXT_WINDOW)
+        )
+        old_dialogues = old_result.scalars().all()
+        old_history = [
+            {
+                "role": "user" if d.speaker_type == SpeakerType.USER else "assistant",
+                "content": d.content,
+            }
+            for d in old_dialogues
+        ]
+        new_summary = await llm_router.summarize_history(old_history)
+        session_obj.context_summary = new_summary
+        await db.commit()
+        logger.info("[context] 요약 저장 완료 — session=%s turns=%d", session_id, turn_count)
+
     # 사용자 발화 저장
     user_dialogue = Dialogue(
         session_id=session_id,
@@ -71,15 +94,22 @@ async def stream_dialogue(
     db.add(user_dialogue)
     await db.flush()
 
-    # 최근 20개 히스토리 조회
+    # 최근 CONTEXT_WINDOW개 히스토리 조회
     history_result = await db.execute(
         select(Dialogue)
         .where(Dialogue.session_id == session_id)
         .order_by(Dialogue.turn_order.desc())
-        .limit(20)
+        .limit(CONTEXT_WINDOW)
     )
     recent = list(reversed(history_result.scalars().all()))
-    history = [
+
+    # context_summary가 있으면 첫 메시지로 주입
+    history: list[dict] = []
+    if session_obj.context_summary:
+        history.append({"role": "user", "content": f"[이전 대화 요약]\n{session_obj.context_summary}"})
+        history.append({"role": "assistant", "content": "이전 맥락을 이해했습니다. 계속 이야기 나눠요."})
+
+    history += [
         {
             "role": "user" if d.speaker_type == SpeakerType.USER else "assistant",
             "content": d.content,

@@ -2,11 +2,79 @@
 
 ---
 
+## 2026-06-09
+
+### 작업 내용
+
+#### 1. ContextManager 구현 (10턴 초과 시 대화 요약 주입)
+
+**문제**: 대화가 길어질수록 전체 히스토리를 LLM에 그대로 전달해 토큰 낭비 + 컨텍스트 창 초과 위험.
+
+**구현**: 10턴 초과 시 오래된 대화를 LLM으로 요약해 `sessions.context_summary`에 저장, 이후 요청부터 `[요약 + 최근 10턴]`만 LLM에 전달.
+
+**동작 방식**
+
+```
+1~10턴:  그대로 전달 (최근 10턴)
+11턴~:   오래된 턴(전체 - 최근 10) → summarize_history() → context_summary 저장
+         LLM 전달: [이전 대화 요약] + [최근 10턴]
+```
+
+**수정 파일**
+- `services/llm_router.py` — `summarize_history()` 메서드 추가 (Gemini로 3~4문장 요약)
+- `endpoints/dialogues.py` — `turn_count > 10` 시 요약 트리거 + `context_summary` 주입 로직 추가, 히스토리 조회 `limit(20)` → `limit(CONTEXT_WINDOW=10)`
+- `models/session.py` — `context_summary: Text` 컬럼 추가
+- `migrations/versions/a1b2c3d4e5f6_add_context_summary_to_sessions.py` — migration 수동 작성 (Alembic Windows asyncpg 연결 문제 우회)
+
+**Alembic 우회 이유**: asyncpg가 Windows에서 `localhost`를 IPv6(::1)로 먼저 시도 → WinError 1225 ConnectionRefused. Docker exec로 직접 SQL 실행 후 migration 파일 수동 작성.
+
+```sql
+-- Docker exec로 직접 실행
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS context_summary TEXT;
+```
+
+---
+
+### 남은 작업
+
+- [x] ContextManager 구현 (10턴 초과 시 요약)
+- [ ] NovelConverter — `llm_router.generate_novel()` 실제 호출 연결
+- [ ] Guardrail (연령대별 콘텐츠 필터)
+- [ ] DB 시드 데이터 (페르소나 4개 기본 캐릭터)
+
+---
+
 ## 2026-06-08
 
 ### 작업 내용
 
-#### 1. StreamingResponse 내부 DB 저장 버그 수정
+#### 1. 전역 에러 핸들링 미들웨어 추가
+
+**문제**: DB/LLM 에러 발생 시 raw 500 응답이 나가서 프론트에서 원인 파악 불가.
+
+**수정**: `main.py`에 전역 예외 핸들러 4개 추가. 어떤 에러든 항상 구조화된 JSON으로 반환.
+
+| 상황 | error 키 | 상태코드 |
+|---|---|---|
+| 요청 데이터 형식 오류 | `validation_error` | 422 |
+| 404, 400 등 의도된 에러 | `http_error` | 해당 코드 |
+| DB 쿼리/연결 오류 | `database_error` | 500 |
+| 그 외 모든 에러 | `internal_server_error` | 500 |
+
+```python
+# 수정 전
+500 Internal Server Error  ← 원인 모름
+
+# 수정 후
+{"error": "validation_error", "message": "요청 데이터가 올바르지 않습니다.", "detail": [...]}
+```
+
+**수정 파일**
+- `main.py` — `RequestValidationError`, `HTTPException`, `SQLAlchemyError`, `Exception` 핸들러 추가
+
+---
+
+#### 2. StreamingResponse 내부 DB 저장 버그 수정
 
 **문제**: `dialogues/stream` 호출 시 서버 로그에는 저장 성공으로 찍히는데 `api_logs`, `dialogues`(AI 응답)가 DB에 실제로 저장되지 않는 버그.
 
@@ -49,7 +117,7 @@ SELECT model_used, prompt_tokens, completion_tokens, total_cost FROM api_logs;
 ### 남은 작업
 
 - [ ] 컨텍스트 트리밍 (토큰 수 기준 히스토리 잘라내기)
-- [ ] ContextManager 구현 (10턴 초과 시 요약)
+- [x] ContextManager 구현 (10턴 초과 시 요약)
 - [ ] NovelConverter — `llm_router.generate_novel()` 실제 호출 연결
 - [ ] Guardrail (연령대별 콘텐츠 필터)
 - [ ] DB 시드 데이터 (페르소나 4개 기본 캐릭터)

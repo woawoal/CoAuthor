@@ -42,3 +42,9 @@ export async function generateNovel(sessionId) {
   if (!res.ok) throw new Error('소설 저장 실패');
   return res.json();
 }
+
+export async function getNovel(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/novel`);
+  if (!res.ok) throw new Error('소설 조회 실패');
+  return res.json();
+}

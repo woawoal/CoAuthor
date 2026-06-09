@@ -70,7 +70,6 @@ function Intro() {
                                 src={selectedAuthor.video}
                                 className="large-video"
                                 autoPlay
-                                muted
                                 loop
                                 playsInline
                             />
