@@ -1,5 +1,5 @@
 F-QC-02 문법/맞춤법 검사 모듈 — 로컬 테스트 결과
-모듈: backend/spell_checker.py
+모듈: backend/f_qc_02_spell_checker/
 함수: check_korean_grammar(text) -> str
 
 === 테스트 ===

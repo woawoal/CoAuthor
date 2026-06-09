@@ -2,12 +2,12 @@
 F-QC-02: 한국어 맞춤법·문법 검사 독립 모듈
 
 사용:
-    from spell_checker import check_korean_grammar
+    from f_qc_02_spell_checker import check_korean_grammar
 
     corrected = check_korean_grammar("이거슨 테스트 문장 임니다.")
 
 로컬 테스트:
-    python spell_checker.py
+    python -m f_qc_02_spell_checker.checker
 """
 from __future__ import annotations
 
