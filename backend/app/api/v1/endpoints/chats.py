@@ -314,7 +314,7 @@ async def stream_response(
                 for m in messages[1:]
             ]
             usage: list = []
-            raw = await llm.generate(system_prompt, contents, usage_out=usage)
+            raw = await llm.generate(system_prompt, contents, usage_out=usage, json_mode=True)
             prompt_tokens     = usage[0]["prompt_tokens"]     if usage else 0
             completion_tokens = usage[0]["completion_tokens"] if usage else 0
 

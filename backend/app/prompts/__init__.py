@@ -74,16 +74,37 @@ def parse_ai_response(raw: str) -> dict:
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.MULTILINE)
     try:
         data = json.loads(cleaned)
+        # JSON null → None 이 그대로 넘어오면 이후 슬라이싱에서 터지므로 "" 로 강제
         return {
-            "narration":     data.get("narration", ""),
-            "dialogue":      data.get("dialogue", ""),
-            "state_changes": data.get("state_changes", _default_state),
-            "internal_note": data.get("internal_note", ""),
+            "narration":     data.get("narration") or "",
+            "dialogue":      data.get("dialogue") or "",
+            "state_changes": data.get("state_changes") or _default_state,
+            "internal_note": data.get("internal_note") or "",
         }
     except (json.JSONDecodeError, AttributeError):
+        pass
+
+    # 폴백: 깨진 JSON(값에 따옴표 누락 등)에서 narration/dialogue를 정규식으로 추출
+    def _grab(field: str) -> str:
+        m = re.search(
+            rf'"{field}"\s*:\s*"?(.*?)"?\s*'
+            rf'(?=,\s*\n?\s*"(?:narration|dialogue|state_changes|internal_note)"|\n?\s*\}})',
+            cleaned, re.DOTALL,
+        )
+        return m.group(1).strip().strip('"').rstrip(",").strip() if m else ""
+
+    narration, dialogue = _grab("narration"), _grab("dialogue")
+    if narration or dialogue:
         return {
-            "narration":     raw,
-            "dialogue":      "",
+            "narration":     narration,
+            "dialogue":      dialogue,
             "state_changes": _default_state,
             "internal_note": "",
         }
+    # 최후: 원문 전체를 narration으로
+    return {
+        "narration":     raw,
+        "dialogue":      "",
+        "state_changes": _default_state,
+        "internal_note": "",
+    }
