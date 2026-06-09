@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSessions } from '../../lib/worldviewApi';
+import { getSessions, deleteSession } from '../../lib/worldviewApi';
 import './chatlist.css';
 
 const STATUS_LABEL = {
@@ -8,6 +8,23 @@ const STATUS_LABEL = {
   paused: '일시정지',
   completed: '완료',
 };
+
+const AUTHOR_NAME = {
+  1: '백야',
+  2: '차로운',
+  3: '한여름',
+  4: '김도현',
+};
+
+function GenreTags({ genre }) {
+  if (!genre) return null;
+  const tags = genre.split(/[,/]/).map(t => t.trim()).filter(Boolean);
+  return (
+    <div className="chatlist-card__tags">
+      {tags.map(tag => <span key={tag} className="genre-tag">#{tag}</span>)}
+    </div>
+  );
+}
 
 function formatDate(iso) {
   const d = new Date(iso);
@@ -34,8 +51,14 @@ export default function ChatList() {
     navigate(`/read/${session.id}`);
   };
 
-  const handleRead = (session) => {
-    navigate(`/read/${session.id}`);
+  const handleDelete = async (session) => {
+    if (!window.confirm(`"${session.world_title}" 세션을 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) return;
+    try {
+      await deleteSession(session.id);
+      setSessions(prev => prev.filter(s => s.id !== session.id));
+    } catch (err) {
+      alert(`삭제 실패: ${err.message}`);
+    }
   };
 
   return (
@@ -57,10 +80,14 @@ export default function ChatList() {
             <div key={s.id} className="chatlist-card">
               <div className="chatlist-card__body">
                 <h3 className="chatlist-card__title">{s.world_title}</h3>
+                <GenreTags genre={s.world_genre} />
                 <div className="chatlist-card__meta">
                   <span className={`status-badge status-badge--${s.status}`}>
                     {STATUS_LABEL[s.status] ?? s.status}
                   </span>
+                  {s.author_id && (
+                    <span className="chatlist-card__author">✒ {AUTHOR_NAME[s.author_id]}</span>
+                  )}
                   <span className="chatlist-card__date">{formatDate(s.started_at)}</span>
                 </div>
               </div>
@@ -72,6 +99,9 @@ export default function ChatList() {
                 )}
                 <button className="chatlist-card__btn" onClick={() => handleResume(s)}>
                   이어쓰기 →
+                </button>
+                <button className="chatlist-card__btn chatlist-card__btn--delete" onClick={() => handleDelete(s)}>
+                  삭제
                 </button>
               </div>
             </div>

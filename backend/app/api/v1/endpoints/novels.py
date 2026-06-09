@@ -15,6 +15,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 llm_router = LLMRouter()
 
+# 프론트 작가 번호(author_id) → persona 키 (frontend AUTHOR_MAP과 일치)
+_AUTHOR_ID_TO_PERSONA = {1: "baekya", 2: "charoun", 3: "hanyeoreum", 4: "kimdohyeon"}
+
 
 @router.get("/{session_id}/novel", response_model=NovelResponse)
 async def get_novel(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
@@ -39,8 +42,9 @@ async def generate_novel(
         raise HTTPException(status_code=400, detail="완료된 세션만 소설로 변환할 수 있습니다.")
 
     existing = await db.execute(select(Novel).where(Novel.session_id == session_id))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="이미 소설 초안이 존재합니다.")
+    existing_novel = existing.scalar_one_or_none()
+    if existing_novel:
+        return existing_novel
 
     dialogues_result = await db.execute(
         select(Dialogue)
@@ -67,9 +71,12 @@ async def generate_novel(
     if world:
         world_desc = "\n".join(p for p in (world.setting, world.description) if p)
 
+    # 선택한 작가(author_id) → persona → 작가 문체로 변환
+    persona_id = _AUTHOR_ID_TO_PERSONA.get(session.author_id, "")
+
     # LLM 소설 변환 — 실패 시 대화 로그 이어붙이기로 폴백
     try:
-        content = await llm_router.generate_novel(dialogue_history, world_desc)
+        content = await llm_router.generate_novel(dialogue_history, world_desc, persona_id=persona_id)
     except Exception as e:
         logger.error("소설 LLM 변환 실패, 폴백 사용 (session=%s): %s", session_id, e)
         content = ""

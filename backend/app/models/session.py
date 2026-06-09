@@ -24,6 +24,7 @@ class Session(Base):
     status: Mapped[SessionStatus] = mapped_column(SAEnum(SessionStatus), default=SessionStatus.ACTIVE)
     started_at: Mapped[datetime] = mapped_column(default=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    context_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_state: Mapped[str | None] = mapped_column(Text, nullable=True)
     story_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
