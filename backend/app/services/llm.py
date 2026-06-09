@@ -271,3 +271,27 @@ async def stream(system_prompt: str, contents: list[dict], usage_out: list | Non
                     continue
                 break
     raise last_exc or RuntimeError("LLM 스트리밍 실패: 후보 없음")
+
+
+# ── 임베딩(RAG 검색용) ────────────────────────────────────────────
+EMBED_MODEL = "models/gemini-embedding-001"
+
+
+def _embed_sync(key: str, texts: list[str]) -> list[list[float]]:
+    import google.generativeai as genai
+    genai.configure(api_key=key)
+    out = []
+    for t in texts:
+        r = genai.embed_content(model=EMBED_MODEL, content=t)
+        out.append(list(r["embedding"]))
+    return out
+
+
+async def embed(texts: list[str]) -> list[list[float]]:
+    """문장 리스트 → 임베딩 벡터 리스트 (Gemini text-embedding-004)."""
+    if not texts:
+        return []
+    keys = _gemini_keys()
+    if not keys:
+        raise RuntimeError("임베딩용 Gemini 키가 없습니다 (GEMINI_API_KEY).")
+    return await asyncio.to_thread(_embed_sync, keys[0], texts)

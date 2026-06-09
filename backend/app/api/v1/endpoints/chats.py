@@ -152,6 +152,7 @@ def build_messages(
     mode: str,
     context: dict,
     user_input: str,
+    relevant_memories: list[str] | None = None,
 ) -> list[dict]:
     author_rules = get_author_prompt(
         persona_id=persona_id,
@@ -172,6 +173,9 @@ def build_messages(
         context_parts.append(f"[주요 등장인물]\n{context['characters']}")
     if context["summary"]:
         context_parts.append(f"[사건 요약]\n{context['summary']}")
+    if relevant_memories:
+        mem_lines = "\n".join(f"- {m}" for m in relevant_memories)
+        context_parts.append(f"[관련 기억] (과거 대화에서 검색됨, 일관성 유지에 활용)\n{mem_lines}")
     if context["state"]:
         context_parts.append(f"[현재 상태]\n{context['state']}")
 
@@ -286,6 +290,16 @@ async def stream_response(
     if not world_context:
         world_context = await _build_world_context(chat_id, db)
 
+    # RAG: 현재 입력과 관련된 '오래된' 과거 대화를 검색해 보강 (요약이 놓친 구체 사건)
+    relevant_memories: list[str] = []
+    try:
+        relevant_memories = await memory.retrieve_relevant(chat_id, db, content)
+        if relevant_memories:
+            logger.info("관련 기억 %d건 검색 - chat_id=%s: %s",
+                        len(relevant_memories), chat_id, [m[:30] for m in relevant_memories])
+    except Exception as e:
+        logger.warning("기억 검색 실패(보강 생략): %s", e)
+
     async def generate():
         try:
             messages = build_messages(
@@ -294,6 +308,7 @@ async def stream_response(
                 mode=mode,
                 context=context,
                 user_input=content,
+                relevant_memories=relevant_memories,
             )
 
             # ── 전송 프롬프트 로그 ──────────────────────────────────
