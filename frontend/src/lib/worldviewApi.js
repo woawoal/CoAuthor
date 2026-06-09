@@ -113,6 +113,20 @@ export async function getCharacters(worldId) {
 }
 
 /**
+ * 세션 삭제
+ * @param {string} sessionId
+ */
+export async function deleteSession(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`세션 삭제 실패 (${res.status}): ${body.detail ?? res.statusText}`);
+  }
+}
+
+/**
  * 세션의 대화 이력 조회 (이어쓰기 복원용)
  * @param {string} sessionId
  * @returns {Promise<object[]>} DialogueResponse[]

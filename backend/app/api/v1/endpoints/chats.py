@@ -17,17 +17,18 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
 from app.models.world import World
 from app.models.character import Character
-from app.services.llm_router import calc_cost
-from app.services import llm  # 엔진 추상화 (Gemini ↔ Groq + 폴백)
-from app.services import memory  # 대화 기억 (RAG-lite: 누적 요약)
+from app.services.llm_router import calc_cost, PRIMARY_MODEL
+from app.services import llm
+from app.services import memory
+from app.prompts import parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES, WRITER_STYLE_RULE
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
-RECENT_DIALOGUE_LIMIT = 20  # Redis 최근 대화 유지 수
-DB_SYNC_INTERVAL = 5        # N턴마다 DB 동기화
+RECENT_DIALOGUE_LIMIT = 20
+DB_SYNC_INTERVAL = 5
 
 
 # ── Redis 키 규칙 ──────────────────────────────────────────
@@ -47,15 +48,57 @@ def key_turn(chat_id: str) -> str:
     return f"session:{chat_id}:turn"
 
 
-# ── Redis 조회 헬퍼 ────────────────────────────────────────
-async def get_context(chat_id: str) -> dict:
+# ── Redis 조회 헬퍼 (DB fallback 포함) ────────────────────
+async def get_context(chat_id: str, db: AsyncSession) -> dict:
     history_raw = await redis_client.lrange(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
-    history = [json.loads(item) for item in history_raw]
-
-    state      = await redis_client.get(key_state(chat_id)) or ""
+    state      = await redis_client.get(key_state(chat_id))
     characters = await redis_client.get(key_characters(chat_id)) or ""
-    summary    = await redis_client.get(key_summary(chat_id)) or ""
+    summary    = await redis_client.get(key_summary(chat_id))
 
+    if state is None or summary is None:
+        try:
+            session_uuid = uuid.UUID(chat_id)
+            session_result = await db.execute(select(Session).where(Session.id == session_uuid))
+            session = session_result.scalar_one_or_none()
+            if session:
+                if state is None:
+                    state = session.current_state or ""
+                    if state:
+                        await redis_client.set(key_state(chat_id), state)
+                        logger.info("Redis state 복원 - chat_id=%s", chat_id)
+                if summary is None:
+                    summary = session.story_summary or ""
+                    if summary:
+                        await redis_client.set(key_summary(chat_id), summary)
+                        logger.info("Redis summary 복원 - chat_id=%s", chat_id)
+        except (ValueError, Exception) as e:
+            logger.warning("DB fallback 실패 - chat_id=%s: %s", chat_id, e)
+
+    state   = state   or ""
+    summary = summary or ""
+
+    if not history_raw:
+        try:
+            session_uuid = uuid.UUID(chat_id)
+            rows = await db.execute(
+                select(Dialogue)
+                .where(Dialogue.session_id == session_uuid)
+                .order_by(Dialogue.turn_order.desc())
+                .limit(RECENT_DIALOGUE_LIMIT)
+            )
+            dialogues = list(reversed(rows.scalars().all()))
+            if dialogues:
+                for d in dialogues:
+                    role = "user" if d.speaker_type == SpeakerType.USER else "ai"
+                    entry = json.dumps({"role": role, "content": d.content}, ensure_ascii=False)
+                    await redis_client.rpush(key_history(chat_id), entry)
+                await redis_client.ltrim(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
+                history_raw = await redis_client.lrange(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
+                logger.info("Redis history 복원 - chat_id=%s (%d개)", chat_id, len(dialogues))
+        except (ValueError, Exception) as e:
+            logger.warning("history DB fallback 실패 - chat_id=%s: %s", chat_id, e)
+
+    history = [json.loads(item) for item in history_raw]
     return {
         "history":    history,
         "state":      state,
@@ -64,18 +107,11 @@ async def get_context(chat_id: str) -> dict:
     }
 
 
-async def init_context_if_empty(
-    chat_id: str,
-    state: str,
-    characters: str,
-    summary: str,
-):
+async def init_context_if_empty(chat_id: str, state: str, characters: str, summary: str):
     if not await redis_client.exists(key_state(chat_id)) and state:
         await redis_client.set(key_state(chat_id), state)
-
     if not await redis_client.exists(key_characters(chat_id)) and characters:
         await redis_client.set(key_characters(chat_id), characters)
-
     if not await redis_client.exists(key_summary(chat_id)) and summary:
         await redis_client.set(key_summary(chat_id), summary)
 
@@ -93,44 +129,64 @@ async def update_state(chat_id: str, new_state: str):
 
 
 async def sync_to_db(chat_id: str):
-    logger.info("DB 동기화 실행 - chat_id=%s", chat_id)
+    state   = await redis_client.get(key_state(chat_id))   or ""
+    summary = await redis_client.get(key_summary(chat_id)) or ""
+    try:
+        session_uuid = uuid.UUID(chat_id)
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Session).where(Session.id == session_uuid))
+            session = result.scalar_one_or_none()
+            if session:
+                session.current_state = state
+                session.story_summary = summary
+                await db.commit()
+                logger.info("DB 동기화 완료 - chat_id=%s", chat_id)
+    except (ValueError, Exception) as e:
+        logger.error("DB 동기화 실패 - chat_id=%s: %s", chat_id, e)
 
 
-# ── 프롬프트 조립 ─────────────────────────────────────────
-def build_prompt(
+# ── 메시지 빌더 ────────────────────────────────────────────
+def build_messages(
     persona_id: str,
     world_context: str,
     mode: str,
     context: dict,
     user_input: str,
-) -> str:
-    system = get_author_prompt(
+) -> list[dict]:
+    author_rules = get_author_prompt(
         persona_id=persona_id,
         world_context=world_context,
         mode=mode,
     )
+    system = "\n\n".join([
+        CRITICAL_OUTPUT_RULE,
+        OUTPUT_RULES,
+        INPUT_RULES,
+        WRITER_STYLE_RULE,
+        author_rules,
+    ])
+    messages: list[dict] = [{"role": "system", "content": system}]
 
-    parts = [system]
-
+    context_parts = []
     if context["characters"]:
-        parts.append(f"[주요 등장인물]\n{context['characters']}")
-
+        context_parts.append(f"[주요 등장인물]\n{context['characters']}")
     if context["summary"]:
-        parts.append(f"[사건 요약]\n{context['summary']}")
-
+        context_parts.append(f"[사건 요약]\n{context['summary']}")
     if context["state"]:
-        parts.append(f"[현재 상태]\n{context['state']}")
+        context_parts.append(f"[현재 상태]\n{context['state']}")
 
-    if context["history"]:
-        history_text = "\n".join(
-            f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
-            for h in reversed(context["history"])
-        )
-        parts.append(f"[최근 대화]\n{history_text}")
+    for h in reversed(context["history"]):
+        role = "user" if h["role"] == "user" else "assistant"
+        messages.append({"role": role, "content": h["content"]})
 
-    parts.append(f"사용자 입력: {user_input}")
+    prefix = "\n\n".join(context_parts)
+    if prefix:
+        user_content = f"{prefix}\n\n사용자 입력: {user_input}"
+    else:
+        user_content = user_input or "(오프닝 서술을 시작해주세요)"
 
-    return "\n\n".join(parts)
+    messages.append({"role": "user", "content": user_content})
+    return messages
 
 
 # ── API ───────────────────────────────────────────────────
@@ -159,7 +215,6 @@ async def send_message(
 
     turn = await append_history(chat_id, "user", body.content)
 
-    # PostgreSQL에 대화 저장 (chat_id가 유효한 session UUID인 경우)
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     try:
         session_uuid = uuid.UUID(chat_id)
@@ -179,7 +234,7 @@ async def send_message(
             await db.flush()
             message_id = str(dialogue.id)
     except (ValueError, Exception):
-        pass  # chat_id가 UUID가 아니거나 세션이 없으면 Redis만 사용
+        pass
 
     logger.info("메시지 수신 - chat_id=%s turn=%d", chat_id, turn)
     return {"messageId": message_id, "status": "queued", "turn": turn}
@@ -223,15 +278,17 @@ async def stream_response(
     db: AsyncSession = Depends(get_db),
 ):
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
-    context = await get_context(chat_id)
+    context = await get_context(chat_id, db)
+    # send_message가 이미 현재 사용자 메시지를 history에 저장했으므로 제거
+    if context["history"] and context["history"][0].get("role") == "user":
+        context["history"] = context["history"][1:]
     # 프론트가 world_context를 안 보내면 세션에서 세계관·등장인물을 직접 조회해 주입
     if not world_context:
         world_context = await _build_world_context(chat_id, db)
 
     async def generate():
-        full_response = ""
         try:
-            full_prompt = build_prompt(
+            messages = build_messages(
                 persona_id=character_id,
                 world_context=world_context,
                 mode=mode,
@@ -239,28 +296,56 @@ async def stream_response(
                 user_input=content,
             )
 
-            # 엔진(Gemini/Groq) + 폴백은 llm 모듈이 처리. full_prompt를 단일 user 메시지로 전달.
+            # ── 전송 프롬프트 로그 ──────────────────────────────────
+            logger.info("┌─ PROMPT (%d messages) ─────────────────────────────", len(messages))
+            for i, m in enumerate(messages):
+                role = m["role"].upper()
+                body = m["content"]
+                if len(body) > 400:
+                    body = body[:400] + f"\n... (총 {len(m['content'])}자)"
+                logger.info("│ [%d] %s:\n%s", i, role, body)
+            logger.info("└───────────────────────────────────────────────────")
+
+            # llm 모듈이 프로바이더(gemini/groq/openai) 선택, 키 로테이션, 폴백을 처리
+            system_prompt = messages[0]["content"]
+            contents = [
+                {"role": "user" if m["role"] == "user" else "model",
+                 "parts": [{"text": m["content"]}]}
+                for m in messages[1:]
+            ]
             usage: list = []
-            seq = 1
-            async for text in llm.stream(
-                "", [{"role": "user", "parts": [{"text": full_prompt}]}], usage_out=usage
-            ):
-                full_response += text
-                payload = json.dumps(
-                    {"messageId": message_id, "seq": seq, "text": text},
-                    ensure_ascii=False,
-                )
-                yield f"event: token\ndata: {payload}\n\n"
-                seq += 1
-
-            turn = await append_history(chat_id, "ai", full_response)
-
-            # 토큰/모델 — usage_out에서 추출
-            used_model = usage[0]["model"] if usage else settings.GEMINI_MODEL
-            prompt_tokens = usage[0]["prompt_tokens"] if usage else 0
+            raw = await llm.generate(system_prompt, contents, usage_out=usage)
+            prompt_tokens     = usage[0]["prompt_tokens"]     if usage else 0
             completion_tokens = usage[0]["completion_tokens"] if usage else 0
 
-            # PostgreSQL에 AI 응답 + ApiLog 저장 (chat_id가 유효한 session UUID인 경우)
+            # ── 원본 응답 로그 ──────────────────────────────────────
+            logger.info("┌─ RAW RESPONSE (tokens: prompt=%d / completion=%d) ─", prompt_tokens, completion_tokens)
+            logger.info("│ %s", raw)
+            logger.info("└───────────────────────────────────────────────────")
+
+            parsed = parse_ai_response(raw)
+            narration     = parsed["narration"]
+            dialogue      = parsed["dialogue"]
+            state_changes = parsed["state_changes"]
+            internal_note = parsed["internal_note"]
+
+            logger.info(
+                "PARSED │ narration=%s │ dialogue=%s │ state=%s │ note=%s",
+                narration[:60], dialogue[:60], state_changes, internal_note,
+            )
+
+            # 상태 갱신: internal_note를 현재 서사 상태로 저장
+            if internal_note:
+                await update_state(chat_id, internal_note)
+
+            # DB/Redis 저장용 텍스트: narration + 대사 합산
+            parts = [narration] if narration else []
+            if dialogue:
+                parts.append(f'"{dialogue}"')
+            reply_text = "\n\n".join(parts)
+
+            turn = await append_history(chat_id, "ai", reply_text)
+
             try:
                 session_uuid = uuid.UUID(chat_id)
                 async with AsyncSessionLocal() as save_session:
@@ -273,7 +358,7 @@ async def stream_response(
                         ai_dialogue = Dialogue(
                             session_id=session_uuid,
                             speaker_type=SpeakerType.CHARACTER,
-                            content=full_response,
+                            content=reply_text,
                             turn_order=turn_count,
                         )
                         save_session.add(ai_dialogue)
@@ -281,10 +366,10 @@ async def stream_response(
                         api_log = ApiLog(
                             session_id=session_uuid,
                             endpoint=f"GET /chats/{chat_id}/stream",
-                            model_used=used_model,
+                            model_used=PRIMARY_MODEL,
                             prompt_tokens=prompt_tokens,
                             completion_tokens=completion_tokens,
-                            total_cost=calc_cost(used_model, prompt_tokens, completion_tokens),
+                            total_cost=calc_cost(PRIMARY_MODEL, prompt_tokens, completion_tokens),
                         )
                         save_session.add(api_log)
                         await save_session.commit()
@@ -299,7 +384,7 @@ async def stream_response(
             if turn % DB_SYNC_INTERVAL == 0:
                 recent_turns = list(reversed(context["history"])) + [
                     {"role": "user", "content": content},
-                    {"role": "ai", "content": full_response},
+                    {"role": "ai", "content": reply_text},
                 ]
                 try:
                     async with AsyncSessionLocal() as mem_session:
@@ -307,8 +392,14 @@ async def stream_response(
                 except Exception as e:  # 요약 실패는 대화 흐름을 막지 않는다
                     logger.warning("요약 갱신 실패: %s", e)
 
+            reply_payload = json.dumps(
+                {"messageId": message_id, "narration": narration, "dialogue": dialogue},
+                ensure_ascii=False,
+            )
+            yield f"event: reply\ndata: {reply_payload}\n\n"
+
         except Exception as e:
-            logger.error("Gemini API 오류: %s", e)
+            logger.error("OpenAI API 오류: %s", e)
             error_payload = json.dumps({"error": str(e)}, ensure_ascii=False)
             yield f"event: error\ndata: {error_payload}\n\n"
 

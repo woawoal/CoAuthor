@@ -123,6 +123,27 @@
   color: var(--text-muted);
 }
 
+.chatlist-card__author {
+  font-size: 12px;
+  color: #9E8CBE;
+}
+
+.chatlist-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.genre-tag {
+  font-size: 11px;
+  color: #7E6A9A;
+  background: rgba(106, 27, 154, 0.12);
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid rgba(106, 27, 154, 0.2);
+}
+
 .chatlist-card__btn {
   flex-shrink: 0;
   background: none;
@@ -149,4 +170,14 @@
   background: color-mix(in srgb, var(--text-main) 8%, transparent);
   color: var(--text-main);
   border-color: color-mix(in srgb, var(--text-main) 30%, transparent);
+}
+
+.chatlist-card__btn--delete {
+  border-color: rgba(211, 47, 47, 0.4);
+  color: #EF9A9A;
+}
+.chatlist-card__btn--delete:hover {
+  background-color: rgba(211, 47, 47, 0.2);
+  color: #ffffff;
+  border-color: #D32F2F;
 }

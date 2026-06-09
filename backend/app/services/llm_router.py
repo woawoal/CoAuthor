@@ -11,14 +11,25 @@ from app.services import llm  # 엔진 추상화 (Gemini ↔ Groq + 폴백)
 
 logger = logging.getLogger(__name__)
 
-PRIMARY_MODEL  = settings.GEMINI_MODEL          # .env로 교체 가능
-FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
+if settings.LLM_PROVIDER == "openai":
+    PRIMARY_MODEL  = settings.OPENAI_MODEL
+    FALLBACK_MODEL = settings.OPENAI_FALLBACK_MODEL
+elif settings.LLM_PROVIDER == "groq":
+    PRIMARY_MODEL  = settings.GROQ_MODEL
+    FALLBACK_MODEL = settings.GROQ_FALLBACK_MODEL
+else:  # gemini
+    PRIMARY_MODEL  = settings.GEMINI_MODEL
+    FALLBACK_MODEL = settings.GEMINI_FALLBACK_MODEL
 
-# Gemini 2025 기준 1M 토큰당 가격 (USD)
+# 1M 토큰당 가격 (USD)
 _PRICE_PER_M = {
     "gemini-2.5-flash":      {"input": 0.15,  "output": 0.60},
     "gemini-2.0-flash":      {"input": 0.10,  "output": 0.40},
     "gemini-2.0-flash-lite": {"input": 0.075, "output": 0.30},
+    "gpt-4o":                {"input": 2.50,  "output": 10.00},
+    "gpt-4o-mini":           {"input": 0.15,  "output": 0.60},
+    "llama-3.3-70b-versatile": {"input": 0.00, "output": 0.00},
+    "llama-3.1-8b-instant":    {"input": 0.00, "output": 0.00},
 }
 
 _COACHING_SUFFIX = (
@@ -54,7 +65,7 @@ def _to_gemini_contents(history: list[dict], user_message: str) -> list[dict]:
 
 
 async def _generate(system_prompt: str, contents: list[dict]) -> str:
-    """단발성 호출 — 엔진(Gemini/Groq) + 폴백은 llm 모듈이 처리."""
+    """단발성 호출 — 엔진/폴백은 llm 모듈이 처리."""
     return await llm.generate(system_prompt, contents)
 
 
@@ -102,7 +113,6 @@ class LLMRouter:
 
         yield f"data: {json.dumps({'done': True}, ensure_ascii=False)}\n\n"
 
-        # 엔드포인트가 수신 후 ApiLog 저장용 (클라이언트에 전달 안 됨)
         if usage_out:
             u = usage_out[0]
             log_payload = json.dumps({
@@ -125,7 +135,7 @@ class LLMRouter:
     ) -> AsyncGenerator[str, None]:
         """
         /api/chats/{id}/stream 에서 호출.
-        캐시 히트 시 즉시 반환, 미스 시 Gemini 스트리밍.
+        캐시 히트 시 즉시 반환, 미스 시 LLM 스트리밍.
         """
         history = history or []
         cache_key = {"persona_id": persona_id, "text": text, "mode": mode}

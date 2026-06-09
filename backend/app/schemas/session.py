@@ -28,6 +28,7 @@ class SessionListItem(BaseModel):
     id: uuid.UUID
     world_id: uuid.UUID
     world_title: str
+    world_genre: str | None
     author_id: int | None
     status: SessionStatus
     started_at: datetime
