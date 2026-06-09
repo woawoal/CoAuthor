@@ -221,6 +221,24 @@ class LLMRouter:
                 results[pid] = out
         return results
 
+    # 대화 히스토리 요약 (ContextManager용)
+
+    async def summarize_history(self, history: list[dict]) -> str:
+        """오래된 대화 히스토리를 3~4문장으로 요약해 컨텍스트 압축."""
+        if not history:
+            return ""
+        block = "\n".join(
+            f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+            for h in history
+        )
+        system = (
+            "당신은 소설 대화 요약 전문가입니다. "
+            "아래 대화의 핵심 사건, 인물 관계, 감정 흐름을 3~4문장으로 요약하세요. "
+            "이후 이야기 전개에 필요한 맥락이 유지되도록 간결하게 작성하세요."
+        )
+        contents = [{"role": "user", "parts": [{"text": f"다음 대화를 요약해주세요:\n\n{block}"}]}]
+        return await _generate(system, contents)
+
     # 대화 → 소설 변환
 
     async def generate_novel(
