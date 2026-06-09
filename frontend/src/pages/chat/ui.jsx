@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { sendMessage, connectChatStream, completeSession, generateNovel } from '../../lib/chatApi';
+import { sendMessage, connectChatStream, completeSession, generateNovel, getSuggestions } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import './ui.css';
 
@@ -109,6 +109,7 @@ export default function Chat() {
   const [worldOpen, setWorldOpen] = useState(true);
   const [selectedMsgId, setSelectedMsgId] = useState(null);
   const [editingMemoId, setEditingMemoId] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
   const bottomRef = useRef(null);
   const esRef = useRef(null);
   const memoInputRef = useRef(null);
@@ -217,6 +218,13 @@ export default function Chat() {
     }
   }
 
+  async function fetchSuggestions() {
+    if (!chatId || chatId === 'room_001') return;
+    const worldContext = buildWorldContext(world, dbCharacters);
+    const data = await getSuggestions(chatId, { character_id: persona.characterId, world_context: worldContext });
+    setSuggestions(data.suggestions ?? []);
+  }
+
   function getMsgPreview(msgId) {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return '';
@@ -304,7 +312,27 @@ export default function Chat() {
           <div ref={bottomRef} />
         </div>
 
+        {suggestions.length > 0 && !streaming && (
+          <div className="chat-suggestions">
+            {suggestions.map((s, i) => (
+              <button
+                key={i}
+                className="suggestion-chip"
+                onClick={() => { setInput(s); setSuggestions([]); }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="chat-input-bar">
+          <button
+            className="suggest-btn"
+            onClick={fetchSuggestions}
+            disabled={streaming}
+            title="입력 추천"
+          >💡</button>
           <textarea
             className="chat-input"
             placeholder={streaming ? '응답 중...' : '주인공으로 대사 입력...'}

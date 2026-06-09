@@ -421,3 +421,54 @@ async def stream_response(
 async def update_chat_state(chat_id: str, new_state: str):
     await update_state(chat_id, new_state)
     return {"status": "updated"}
+
+
+class SuggestRequest(BaseModel):
+    character_id: str = "baekya"
+    world_context: str = ""
+
+
+@router.post("/{chat_id}/suggestions")
+async def get_suggestions(
+    chat_id: str,
+    body: SuggestRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    context = await get_context(chat_id, db)
+    if not context["history"]:
+        return {"suggestions": ["안녕하세요.", "시작해볼까요?", "어떤 이야기를 쓸까요?"]}
+
+    world_context = body.world_context or await _build_world_context(chat_id, db)
+
+    recent = list(reversed(context["history"]))[-6:]
+    history_text = "\n".join(
+        f"{'주인공' if h['role'] == 'user' else '작가AI'}: {h['content'][:80]}"
+        for h in recent
+    )
+
+    system_prompt = (
+        "당신은 인터랙티브 소설에서 사용자(주인공)가 다음에 할 말이나 행동을 추천해주는 어시스턴트입니다.\n"
+        "반드시 JSON 형식으로만 응답하세요. 다른 텍스트는 절대 포함하지 마세요."
+    )
+    user_prompt = (
+        f"[세계관]\n{world_context}\n\n"
+        f"[최근 대화]\n{history_text}\n\n"
+        "위 대화 흐름을 보고 주인공이 다음에 할 수 있는 말이나 행동 3가지를 추천해주세요.\n"
+        "각 추천은 짧고 자연스러운 한국어 한 문장(20자 이내)이어야 합니다.\n"
+        '{"suggestions": ["추천1", "추천2", "추천3"]}'
+    )
+
+    contents = [{"role": "user", "parts": [{"text": user_prompt}]}]
+    try:
+        raw = await llm.generate(system_prompt, contents)
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = "\n".join(raw.split("\n")[1:-1])
+        data = json.loads(raw)
+        suggestions = data.get("suggestions", [])[:3]
+        if len(suggestions) == 3:
+            return {"suggestions": suggestions}
+    except Exception as e:
+        logger.warning("추천 생성 실패: %s", e)
+
+    return {"suggestions": ["계속해볼까요?", "잠깐 기다려요.", "다른 방법이 있을 것 같아요."]}
