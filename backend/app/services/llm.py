@@ -35,7 +35,9 @@ def _dedup(seq) -> list[str]:
     return out
 
 
-def _gemini_keys() -> list[str]:
+def _gemini_keys() -> list:
+    if settings.USE_VERTEX:
+        return [None]  # Vertex는 ADC 인증 → API 키 없음(후보 1개)
     return _dedup(_csv(settings.GEMINI_API_KEYS) + [settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2])
 
 
@@ -137,7 +139,24 @@ def _oai_client(prov: str, key: str):
     return _oai_clients[ck]
 
 
+_vertex_ready = False
+
+
+def _ensure_vertex():
+    global _vertex_ready
+    if not _vertex_ready:
+        import vertexai
+        vertexai.init(project=settings.GOOGLE_CLOUD_PROJECT, location=settings.GOOGLE_CLOUD_LOCATION)
+        _vertex_ready = True
+        logger.info("Vertex AI init: project=%s location=%s",
+                    settings.GOOGLE_CLOUD_PROJECT, settings.GOOGLE_CLOUD_LOCATION)
+
+
 def _gemini_model(model: str, key: str, system_prompt: str):
+    if settings.USE_VERTEX:
+        _ensure_vertex()
+        from vertexai.generative_models import GenerativeModel as _VxModel
+        return _VxModel(model, system_instruction=system_prompt or None)
     import google.generativeai as genai
     genai.configure(api_key=key)  # 전역 설정 (동시요청 시 드물게 키 경합 가능 — 데모 범위 허용)
     return genai.GenerativeModel(model, system_instruction=system_prompt or None)
@@ -277,7 +296,13 @@ async def stream(system_prompt: str, contents: list[dict], usage_out: list | Non
 EMBED_MODEL = "models/gemini-embedding-001"
 
 
-def _embed_sync(key: str, texts: list[str]) -> list[list[float]]:
+def _embed_sync(key, texts: list[str]) -> list[list[float]]:
+    if settings.USE_VERTEX:
+        _ensure_vertex()
+        from vertexai.language_models import TextEmbeddingModel
+        m = TextEmbeddingModel.from_pretrained("text-multilingual-embedding-002")
+        embs = m.get_embeddings(list(texts))
+        return [list(e.values) for e in embs]
     import google.generativeai as genai
     genai.configure(api_key=key)
     out = []
