@@ -11,10 +11,12 @@ from app.models.novel import Novel, NovelStatus
 from app.schemas.novel import NovelUpdate, NovelResponse
 from app.core.personas import build_novel_system
 from app.services import llm
+from app.services.llm_router import LLMRouter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+llm_router = LLMRouter()
 _AUTHOR_ID_TO_PERSONA = {1: "baekya", 2: "charoun", 3: "hanyeoreum", 4: "kimdohyeon"}
 
 
@@ -62,16 +64,17 @@ async def generate_novel(
         world_desc = "\n".join(p for p in (world.setting, world.description) if p)
 
     persona_id = _AUTHOR_ID_TO_PERSONA.get(session.author_id, "")
-    system_prompt = build_novel_system(persona_id, world_desc)
 
-    block = "\n".join(
-        f"{'사용자' if d.speaker_type == SpeakerType.USER else '작가'}: {d.content}"
+    # 대화 로그 → LLMRouter 입력 형식 (문체 RAG few-shot은 generate_novel 내부에서 주입)
+    dialogue_history = [
+        {"role": "user" if d.speaker_type == SpeakerType.USER else "assistant", "content": d.content}
         for d in dialogues
-    )
-    contents = [{"role": "user", "parts": [{"text": f"아래 대화를 소설 장면으로 변환해주세요:\n\n{block}"}]}]
+    ]
 
     try:
-        content = await llm.generate(system_prompt, contents)
+        content = await llm_router.generate_novel(
+            dialogue_history, world_desc, persona_id=persona_id, use_style=use_style
+        )
     except Exception as e:
         logger.error("소설 LLM 변환 실패, 폴백 사용 (session=%s): %s", session_id, e)
         content = ""

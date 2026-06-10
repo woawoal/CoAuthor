@@ -35,7 +35,9 @@ def _dedup(seq) -> list[str]:
     return out
 
 
-def _gemini_keys() -> list[str]:
+def _gemini_keys() -> list:
+    if settings.USE_VERTEX:
+        return [None]  # Vertex는 ADC 인증 → API 키 없음(후보 1개)
     return _dedup(_csv(settings.GEMINI_API_KEYS) + [settings.GEMINI_API_KEY, settings.GEMINI_API_KEY_2])
 
 
@@ -137,10 +139,37 @@ def _oai_client(prov: str, key: str):
     return _oai_clients[ck]
 
 
+_vertex_ready = False
+
+
+def _ensure_vertex():
+    global _vertex_ready
+    if not _vertex_ready:
+        import vertexai
+        vertexai.init(project=settings.GOOGLE_CLOUD_PROJECT, location=settings.GOOGLE_CLOUD_LOCATION)
+        _vertex_ready = True
+        logger.info("Vertex AI init: project=%s location=%s",
+                    settings.GOOGLE_CLOUD_PROJECT, settings.GOOGLE_CLOUD_LOCATION)
+
+
 def _gemini_model(model: str, key: str, system_prompt: str):
+    if settings.USE_VERTEX:
+        _ensure_vertex()
+        from vertexai.generative_models import GenerativeModel as _VxModel
+        return _VxModel(model, system_instruction=system_prompt or None)
     import google.generativeai as genai
     genai.configure(api_key=key)  # 전역 설정 (동시요청 시 드물게 키 경합 가능 — 데모 범위 허용)
     return genai.GenerativeModel(model, system_instruction=system_prompt or None)
+
+
+def _gemini_gen_config(json_mode: bool):
+    """Gemini generation_config. Vertex면 thinking 끔(응답 속도↑), json_mode면 JSON 강제."""
+    cfg = {}
+    if settings.USE_VERTEX:
+        cfg["thinking_config"] = {"thinking_budget": 0}  # 창작엔 '사고' 불필요 → 지연 크게 감소
+    if json_mode:
+        cfg["response_mime_type"] = "application/json"
+    return cfg or None
 
 
 # ── 단발 호출(동기) ──────────────────────────────────────────────
@@ -157,8 +186,8 @@ def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: lis
                  "completion_tokens": getattr(u, "completion_tokens", 0) or 0}
         return (resp.choices[0].message.content or ""), usage
     # gemini
-    gen_cfg = {"response_mime_type": "application/json"} if json_mode else None
-    resp = _gemini_model(model, key, system_prompt).generate_content(contents, generation_config=gen_cfg)
+    resp = _gemini_model(model, key, system_prompt).generate_content(
+        contents, generation_config=_gemini_gen_config(json_mode))
     meta = getattr(resp, "usage_metadata", None)
     usage = {"model": model,
              "prompt_tokens": getattr(meta, "prompt_token_count", 0) or 0,
@@ -184,7 +213,8 @@ def _stream_once(prov: str, model: str, key: str, system_prompt: str, contents: 
         usage_box.append({"model": model, "prompt_tokens": pt, "completion_tokens": ct})
         return
     # gemini
-    resp = _gemini_model(model, key, system_prompt).generate_content(contents, stream=True)
+    resp = _gemini_model(model, key, system_prompt).generate_content(
+        contents, stream=True, generation_config=_gemini_gen_config(False))
     for chunk in resp:
         if chunk.text:
             yield chunk.text
@@ -277,7 +307,13 @@ async def stream(system_prompt: str, contents: list[dict], usage_out: list | Non
 EMBED_MODEL = "models/gemini-embedding-001"
 
 
-def _embed_sync(key: str, texts: list[str]) -> list[list[float]]:
+def _embed_sync(key, texts: list[str]) -> list[list[float]]:
+    if settings.USE_VERTEX:
+        _ensure_vertex()
+        from vertexai.language_models import TextEmbeddingModel
+        m = TextEmbeddingModel.from_pretrained("text-multilingual-embedding-002")
+        embs = m.get_embeddings(list(texts))
+        return [list(e.values) for e in embs]
     import google.generativeai as genai
     genai.configure(api_key=key)
     out = []

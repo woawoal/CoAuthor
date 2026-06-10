@@ -33,6 +33,45 @@
 
 ## 이슈 기록
 
+## 2026-06-10 — LLM 엔진을 Vertex AI(GCP)로 전환 + 응답속도·언어누수 해결
+
+**배경**: Groq Llama가 한국어에 한자·일본어를 산발적으로 섞음(언어 누수). AI Studio Gemini 키도 문제 → **GCP 크레딧으로 Vertex AI(Gemini 2.5) 전환**.
+
+### ① Gemini API 키 형식 오류
+- **증상**: 채팅 응답 없음 / `[LLM auth] gemini`. RAG 임베딩도 조용히 실패.
+- **원인**: `.env`의 `GEMINI_API_KEY`가 `AQ.Ab8...`(OAuth 토큰 형식). 표준 AI Studio 키는 **`AIzaSy...`**.
+- **해결**: AI Studio(`aistudio.google.com/app/apikey`)에서 `AIzaSy...` 재발급, **또는 Vertex 전환(아래)**.
+
+### ② Vertex 우회 — 조직 정책(SA 키 차단) → ADC 인증
+- **증상**: 서비스 계정 JSON 키 생성이 `iam.disableServiceAccountKeyCreation` 정책으로 차단(조직 계정) + "여러 프로젝트 ToS 위반 가능성" 경고.
+- **해결**: SA 키 없이 **ADC(사용자 인증)** 로 우회 —
+  ```powershell
+  gcloud auth login
+  gcloud config set project <PROJECT_ID>
+  gcloud auth application-default login
+  gcloud auth application-default set-quota-project <PROJECT_ID>
+  ```
+  - `.env`: `USE_VERTEX=true` / `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION=us-central1` (키 불필요)
+  - `pip install google-cloud-aiplatform`
+  - **billing(결제 계정) 연결 필수** — 무료크레딧을 써도 결제 활성화 안 하면 `requires billing to be enabled` 404.
+- **예방**: 조직 계정은 정책·ToS 플래그가 많아 정지 위험 → 여의치 않으면 **개인 Gmail** 또는 **AI Studio 무료 키**.
+
+### ③ Vertex 모델 가용성 — 신규 프로젝트는 2.5만
+- **증상**: `gemini-2.0-flash`·`1.5`·`3.x` 전부 `404 Publisher Model not found`.
+- **원인**: 신규 프로젝트엔 최신 세대만 열림. **Gemini 3.x는 아직 없음(2.5가 최신)**.
+- **해결**: us-central1에서 **`gemini-2.5-flash-lite`(최速) / `gemini-2.5-flash` / `gemini-2.5-pro`** 만 동작. 모델명을 `.env`에 명시.
+
+### ④ 응답 속도 — thinking + flash가 느림(~8s) → ~2s
+- **증상**: 응답 8~11초.
+- **원인**: Gemini 2.5는 기본으로 **'사고(thinking)'** 를 함 + flash는 lite보다 느림.
+- **해결**: `generation_config`에 **`thinking_config.thinking_budget=0`**(창작엔 불필요) + 모델 **`gemini-2.5-flash-lite`** → **~2초**(4~5배↑). 코드: `llm._gemini_gen_config`.
+- **참고**: 리전 `asia-northeast3`(서울)는 오히려 더 느렸음 + flash-lite 미제공 → **us-central1 유지**. 서버 첫 호출은 콜드스타트로 ~5초.
+
+### ⑤ Redis 도커 안 켜질 때
+- **해결**: `.env`의 `REDIS_URL`을 **Upstash 줄로 토글**(주석 교체) → Docker 없이 동작. **서버 재시작 필수**.
+
+---
+
 ## 2026-06-08 — DB 커넥션이 작업 도중 끊김 (ConnectionResetError / ConnectionDoesNotExistError)
 
 **증상**
