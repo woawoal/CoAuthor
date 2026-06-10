@@ -225,6 +225,7 @@ export default function Chat() {
     setSuggestions(data.suggestions ?? []);
   }
 
+
   function getMsgPreview(msgId) {
     const msg = messages.find(m => m.id === msgId);
     if (!msg) return '';

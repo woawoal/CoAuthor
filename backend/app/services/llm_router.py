@@ -256,8 +256,12 @@ class LLMRouter:
         dialogue_history: list[dict],
         world_description: str = "",
         persona_id: str = "",
+        use_style: bool = True,
     ) -> str:
-        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로."""
+        """대화 히스토리를 소설 한 장면으로 변환. persona_id가 있으면 그 작가 문체로.
+
+        use_style=False 면 문체 RAG(few-shot) 주입을 건너뛴다(시연/비교용 대조).
+        """
         if not dialogue_history:
             return ""
 
@@ -268,6 +272,22 @@ class LLMRouter:
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"
             for m in dialogue_history
         )
+
+        # 문체 RAG: 이 작가의 문체 예시 중 장면과 가장 가까운 것을 few-shot으로 주입
+        if persona_id and use_style:
+            try:
+                from app.services import style
+                examples = await style.retrieve_examples(persona_id, block, k=3)
+                if examples:
+                    ex = "\n".join(f"- {e}" for e in examples)
+                    system_prompt += (
+                        "\n\n[이 작가의 문체 예시]\n"
+                        "아래는 어조·리듬·호흡·시선 처리를 보여주는 참고용 문장이다. "
+                        "문장·표현·소재를 베끼지 말고, 목소리만 닮게 이 장면에 맞는 새 문장을 써라.\n"
+                        f"{ex}"
+                    )
+            except Exception as e:
+                logger.warning("문체 예시 검색 실패(건너뜀): %s", e)
         contents = [{
             "role": "user",
             "parts": [{"text": f"아래 대화를 소설 장면으로 변환해주세요:\n\n{block}"}],
