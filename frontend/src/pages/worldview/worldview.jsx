@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import '../../index.css';
 import './worldview.css';
-import { WriteIcon, ExitIcon, ChevronRight } from '../../components/icons';
+import { WriteIcon, ExitIcon, ChevronRight, ShuffleIcon } from '../../components/icons';
 import { createWorldview } from '../../lib/worldviewApi';
 import { getAuthor, getQuestions } from '../../lib/authorsApi';
+import { getRandomWorldExamples } from '../../lib/worldExampleApi';
 
 function Worldview() {
     const location = useLocation();
@@ -22,6 +23,11 @@ function Worldview() {
     const [rules, setRules] = useState('');
     const [questions, setQuestions] = useState([]);
     const [typedText, setTypedText] = useState('');
+
+    const [worldExample, setWorldExample] = useState(null);
+    const [exampleModalOpen, setExampleModalOpen] = useState(false);
+    const [randomExamples, setRandomExamples] = useState([]);
+    const [selectedExample, setSelectedExample] = useState(null);
 
     // 2. 등장인물(characters) 테이블 스키마에 맞춘 초기 구조 정의    
     const createNewCharacter = (index = 0) => ({
@@ -51,6 +57,9 @@ function Worldview() {
                 setQuestions(
                     questionsData.dialogues || questionsData || []
                 );
+
+                const examples = await getRandomWorldExamples(authorId, 1);
+                setWorldExample(examples[0]);
             } catch (error) {
                 console.error("Error fetching data:", error);
                 alert("작가 정보를 불러오지 못했습니다.");
@@ -195,6 +204,45 @@ function Worldview() {
         }
     };
 
+    const handleOpenExampleModal = async () => {
+        try {
+            const examples = await getRandomWorldExamples(authorId, 3);
+            setRandomExamples(examples);
+            setSelectedExample(null);
+            setExampleModalOpen(true);
+        } catch (error) {
+            alert('랜덤 예시를 불러오지 못했습니다.');
+        }
+    };
+
+    const handleApplyExample = () => {
+        if (!selectedExample) return;
+
+        setTitle(selectedExample.title || '');
+        setDescription(selectedExample.description || '');
+        setSetting(selectedExample.setting || '');
+
+        setRules(
+            Array.isArray(selectedExample.rules)
+                ? selectedExample.rules.join('\n')
+                : selectedExample.rules || ''
+        );
+
+        setCharacters(
+            (selectedExample.characters || []).map((char, index) => ({
+                id: Date.now() + Math.random() + index,
+                name: char.name || '',
+                role: index === 0 ? 'protagonist' : 'supporting',
+                personality: char.personality || '',
+                system_prompt: char.system_prompt || ''
+            }))
+        );
+
+        const confirmStep = questions.find(q => q.field === 'confirm')?.step || questions.length;
+        setCurrentStep(confirmStep);
+        setExampleModalOpen(false);
+    };
+
     stateRef.current = { currentDialogue, handleNext, handleSave };
 
     useEffect(() => {
@@ -232,7 +280,12 @@ function Worldview() {
             case 'intro':
                 return (
                     <div className="form-group">
-                        <label className="form-label">안내</label>
+                        <div className="label-header">
+                            <label className="form-label">안내</label>
+                            <button type="button" className="btn-add" onClick={handleOpenExampleModal}>
+                                랜덤예시
+                            </button>
+                        </div>
                         <div className="intro-guide-box">
                             <p>작가와 대화하듯이 세계관을 하나씩 설정합니다.</p>
                             <p>준비되었다면 아래 버튼을 눌러 시작해주세요.</p>
@@ -247,7 +300,9 @@ function Worldview() {
                         <input
                             type="text"
                             className="form-input"
-                            placeholder="예: 무림외전, 네오 서울 2026"
+                            placeholder={worldExample?.title
+                                ? `예: ${worldExample.title}`
+                                : "예: 무림외전, 네오 서울 2026"}
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                         />
@@ -261,7 +316,11 @@ function Worldview() {
                         <input
                             type="text"
                             className="form-input"
-                            placeholder="이 세계관을 관통하는 요약 한 줄을 적어주세요."
+                            placeholder={
+                                worldExample?.description
+                                    ? `예: ${worldExample.description}`
+                                    : "이 세계관을 관통하는 요약 한 줄을 적어주세요."
+                            }
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                         />
@@ -272,10 +331,14 @@ function Worldview() {
                 return (
                     <div className="form-group">
                         <label className="form-label">시대 및 공간 배경</label>
-                        <input
-                            type="text"
-                            className="form-input"
-                            placeholder="가상의 역사, 지리적 특징, 시대 분위기 등을 적어주세요."
+                        <textarea
+                            className="form-textarea"
+                            rows={4}
+                            placeholder={
+                                worldExample?.setting
+                                    ? `예: ${worldExample.setting}`
+                                    : "가상의 역사, 지리적 특징, 시대 분위기 등을 적어주세요."
+                            }
                             value={setting}
                             onChange={(e) => setSetting(e.target.value)}
                         />
@@ -286,10 +349,14 @@ function Worldview() {
                 return (
                     <div className="form-group">
                         <label className="form-label">세계관 특별 규칙</label>
-                        <input
-                            type="text"
-                            className="form-input"
-                            placeholder="개념, 마법 법칙, 사회적 제약 사항 등을 적어주세요."
+                        <textarea
+                            className="form-textarea"
+                            rows={5}
+                            placeholder={
+                                Array.isArray(worldExample?.rules)
+                                    ? `예: ${worldExample.rules.join("\n")}`
+                                    : "개념, 마법 법칙, 사회적 제약 사항 등을 적어주세요."
+                            }
                             value={rules}
                             onChange={(e) => setRules(e.target.value)}
                         />
@@ -329,7 +396,11 @@ function Worldview() {
                                             <input
                                                 type="text"
                                                 className="form-input"
-                                                placeholder={index === 0 ? "주인공 이름 (필수)" : "캐릭터 이름"}
+                                                placeholder={
+                                                    worldExample?.characters?.[index]?.name
+                                                        ? `예: ${worldExample.characters[index].name}`
+                                                        : (index === 0 ? "주인공 이름 (필수)" : "캐릭터 이름")
+                                                }
                                                 value={char.name}
                                                 onChange={(e) =>
                                                     handleCharacterChange(char.id, 'name', e.target.value)
@@ -342,7 +413,11 @@ function Worldview() {
                                             <input
                                                 type="text"
                                                 className="form-input"
-                                                placeholder="예: 냉철함, 츤데레, 다정함"
+                                                placeholder={
+                                                    worldExample?.characters?.[index]?.personality
+                                                        ? `예: ${worldExample.characters[index].personality}`
+                                                        : "예: 냉철함, 츤데레, 다정함"
+                                                }
                                                 value={char.personality}
                                                 onChange={(e) =>
                                                     handleCharacterChange(char.id, 'personality', e.target.value)
@@ -371,7 +446,11 @@ function Worldview() {
                                         <input
                                             type="text"
                                             className="form-input"
-                                            placeholder="AI가 이 역할을 연기할 때 지켜야 할 어조나 규칙"
+                                            placeholder={
+                                                worldExample?.characters?.[index]?.system_prompt
+                                                    ? `예: ${worldExample.characters[index].system_prompt}`
+                                                    : "AI가 이 역할을 연기할 때 지켜야 할 어조나 규칙"
+                                            }
                                             value={char.system_prompt}
                                             onChange={(e) =>
                                                 handleCharacterChange(char.id, 'system_prompt', e.target.value)
@@ -513,6 +592,90 @@ function Worldview() {
                     </div>
                 </div>
             </div>
+
+            {exampleModalOpen && (
+                <div className="example-modal-overlay">
+                    <div className="example-modal">
+                        {!selectedExample ? (
+                            <>
+                                <div className="example-modal-header">
+                                    <div>랜덤 세계관 예시</div>
+
+                                    <button
+                                        type="button"
+                                        className="btn-add"
+                                        onClick={handleOpenExampleModal}
+                                    >
+                                        <ShuffleIcon />
+                                    </button>
+                                </div>
+
+                                <div className="example-title-list">
+                                    {randomExamples.map((example) => (
+                                        <button
+                                            key={example.id || example.title}
+                                            type="button"
+                                            className="example-title-button"
+                                            onClick={() => setSelectedExample(example)}
+                                        >
+                                            제목 : {example.title}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="example-modal-actions">
+                                    <button type="button" className="btn-cancel" onClick={() => setExampleModalOpen(false)}>
+                                        취소
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <h3>{selectedExample.title}</h3>
+
+                                <div className="example-detail-box">
+                                    <p>
+                                        <strong>요약</strong><br />
+                                        - {selectedExample.description}
+                                    </p>
+                                    <p>
+                                        <strong>배경</strong><br />
+                                        - {selectedExample.setting}
+                                    </p>
+                                    <p>
+                                        <strong>규칙</strong><br />
+                                        {Array.isArray(selectedExample.rules)
+                                            ? selectedExample.rules.map((rule, index) => (
+                                                <span key={index}>- {rule}<br /></span>
+                                            ))
+                                            : selectedExample.rules}
+                                    </p>
+                                    <p>
+                                        <strong>등장인물</strong><br />
+                                        {(selectedExample.characters || []).map((char, index) => (
+                                            <div key={index} className="example-character-box">
+                                                - {char.name} ( {char.personality} )
+                                                <div className="example-character-prompt">
+                                                    지시문 : {char.system_prompt}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </p>
+                                </div>
+
+                                <div className="example-modal-actions">
+                                    <button type="button" className="btn-cancel" onClick={() => setSelectedExample(null)}>
+                                        취소
+                                    </button>
+                                    <button type="button" className="btn-save" onClick={handleApplyExample}>
+                                        적용
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
