@@ -2,6 +2,98 @@
 
 ---
 
+## 2026-06-10
+
+### 작업 내용
+
+#### 1. Neon 클라우드 DB 연동 (asyncpg SSL 처리)
+
+**배경**: 팀 DB를 공유 클라우드로 전환. Neon 서버리스 PostgreSQL 사용.
+
+**문제**: Neon URL이 `postgresql://...?sslmode=require` 형식인데 asyncpg는 `sslmode` 쿼리 파라미터를 지원하지 않아 연결 오류 발생.
+
+**수정**: `_prepare_db_url()` 함수 추가 — URL 자동 변환 + SSL 처리.
+
+```python
+# database.py
+def _prepare_db_url(url: str) -> tuple[str, dict]:
+    # postgresql:// → postgresql+asyncpg:// 변환
+    # sslmode=require → connect_args={"ssl": "require"} 로 이동
+```
+
+**수정 파일**
+- `app/database.py` — `_prepare_db_url()` 추가
+- `migrations/env.py` — `_prepare_db_url` import 및 적용 (Alembic도 동일 URL 변환 필요)
+- `requirements.txt` — `psycopg2-binary==2.9.9` 추가 (팀원 `ModuleNotFoundError` 대응)
+- `.env.example` — Neon URL 형식 예시 추가
+
+**alembic upgrade head 결과**: 6개 migration 모두 Neon DB에 적용 완료.
+
+---
+
+#### 2. session.py 머지 충돌 해결
+
+**문제**: `feature/ygy`와 `dev` 브랜치가 동시에 `session.py`를 수정해 충돌 마커(`<<<<<<<`, `=======`, `>>>>>>>`) 잔존 → `SyntaxError: invalid decimal literal`.
+
+**해결**: 두 브랜치 변경사항 모두 살려서 수동 병합.
+
+```python
+# 최종 session.py — 두 브랜치 컬럼 모두 포함
+author_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+context_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+current_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+story_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+```
+
+---
+
+#### 3. Alembic migration 체인 충돌 해결
+
+**문제**: `a1b2c3d4e5f6` migration의 `down_revision`이 `81fac960a2a7`(feature/ygy)와 `e1f2a3b4c5d6`(dev) 두 개를 가리켜 체인 오류.
+
+**해결**: `down_revision = 'e1f2a3b4c5d6'`으로 통일.
+
+최종 migration 체인:
+```
+81fac960a2a7 → d4e5f6a7b8c9 → e1f2a3b4c5d6 → a1b2c3d4e5f6
+```
+
+---
+
+#### 4. personas.py 업데이트 (출력 품질 개선)
+
+동완님 피드백 기반으로 작성한 `personas_applied.py` 내용 반영.
+
+**추가된 것**
+- `_COMMON_STYLE_RULE` — 사용자 말 반복 금지 등 공통 출력 규칙 (9개)
+- `_PERSONA_STYLE_RULES` — 페르소나별 `[금지 예시]` + `[규칙]` + `[예시]` (4개)
+- `load_persona_rule(persona_id, compact=False)` — 공통 + 페르소나 규칙 조합 반환. `compact=True`시 `[예시]` 섹션 제거해 캐릭터 모드 토큰 절약
+- `_RULE_DIR` — 외부 `.txt` 규칙 파일 경로 (jyj RAG 연동 준비용, 없으면 내장 규칙 fallback)
+
+**수정된 것**
+- `hanyeoreum.novel_style` — `[금지 표현]`이 dict 문자열 안에 섞여 있던 것 제거, `_PERSONA_STYLE_RULES`로 이동
+- `hanyeoreum` few-shot — "심장이 한 박자 늦게 뛰었다" → "그가 내 젖은 소매를 먼저 보았다"로 교체 (직접 신체 반응 표현 제거)
+- `get_author_prompt()` — mode="author" 시 `style_rules` 주입, mode="character" 시 `compact_style_rules` 주입
+- `build_novel_system()` — `style_rules` 주입
+
+**남은 개선 포인트**
+- `baekya [규칙]`에 신체 반응 금지 원칙 추가 필요: "신체 반응(심장, 등골, 식은땀, 떨림)도 직접 쓰지 않음. 외부 관찰과 행동으로만 표현함."
+- few-shot User 입력을 실제 사용자 입력 형식(큰따옴표 대사, 별표 서술)으로 교체 필요 (현재 전부 나레이터 서술 형식)
+
+---
+
+### 남은 작업
+
+- [x] Neon 클라우드 DB 연동
+- [x] session.py 머지 충돌 해결
+- [x] personas.py 출력 규칙 개선 적용
+- [ ] personas.py few-shot 사용자 시나리오 기반 수정
+- [ ] F-WD-06 World.tags 컬럼 + Alembic migration (동완님 프롬프트 파일 수령 후 엔드포인트 연결)
+- [ ] F-AS-02/03, F-CH-09, F-QC-01 엔드포인트 (동완님 프롬프트 파일 수령 후 진행)
+- [ ] 서버 배포 보조 (F-SY-08)
+
+---
+
 ## 2026-06-09
 
 ### 작업 내용
