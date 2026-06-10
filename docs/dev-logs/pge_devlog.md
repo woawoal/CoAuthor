@@ -35,6 +35,19 @@
   → SSE event:reply {narration, dialogue}
 ```
 
+**소설 읽기 페이지 — 작가 이름 버그 수정**
+- 증상: `— 끝 —` 카드, 커버 뱃지, 사이드바 "AI 작가" 항목 모두 작가명 대신 **소설 제목(world.title)** 이 표시되었음
+- 원인: `read.jsx`가 session을 state에 저장하지 않아 `session.author_id` 접근 불가 → `world?.title` 로 대체되어 있던 것
+- 수정:
+  - `AUTHOR_NAME` 맵 추가 (`{1:'백야', 2:'차로운', 3:'한여름', 4:'김도현'}`)
+  - `session` 상태 추가 → `setSession(sessionData)` 저장
+  - 3곳 모두 `AUTHOR_NAME[session?.author_id]` 로 교체 (커버 뱃지 / 사이드바 AI 작가 / 끝 카드)
+
+**채팅 말풍선 UI 재설계 (dev 병합 반영)**
+- narration: 말풍선 제거 → 이탤릭 텍스트(`.narration-text`)로 표시
+- dialogue: 캐릭터 이름 badge + `.bubble--char` 말풍선 구조로 변경
+- `.dialogue-block`, `.badge--author` CSS 추가
+
 ### 추후 정리 대상
 - `LLMRouter` 클래스: `.coach()` / `.generate_all_personas()` / `.stream()` 아직 남아있음
   - `.stream()` — 더 이상 사용 안 함 (제거 대상)
