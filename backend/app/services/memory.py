@@ -11,6 +11,7 @@ summary)해 둔다. 이 요약을 프롬프트에 주입하면, 최근 N턴만 �
 부르면 되므로, chats.py가 어느 버전으로 머지되든 충돌하지 않는다.
 """
 import uuid
+import math
 import logging
 
 from sqlalchemy import select
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import llm
 from app.models.session import Session
+from app.models.dialogue import Dialogue
 
 logger = logging.getLogger(__name__)
 
@@ -97,3 +99,72 @@ async def refresh_session_summary(
         await db.commit()
         logger.info("story_summary 갱신 - chat_id=%s len=%d", chat_id, len(new_summary))
     return new_summary
+
+
+# ── 관련 기억 검색 (RAG: 의미적 검색으로 보강) ───────────────────
+# 같은 텍스트를 매번 다시 임베딩하지 않도록 프로세스 메모리에 캐시(데모 범위 충분).
+_emb_cache: dict[str, list[float]] = {}
+
+# 최근 이만큼의 대화는 이미 프롬프트에 들어가므로 검색 후보에서 제외(그 이전 = 장기 기억).
+RETRIEVE_SKIP_RECENT = 8
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+async def _embed_cached(texts: list[str]) -> list[list[float]]:
+    missing = [t for t in texts if t and t not in _emb_cache]
+    if missing:
+        vecs = await llm.embed(missing)
+        for t, v in zip(missing, vecs):
+            _emb_cache[t] = v
+    return [_emb_cache.get(t, []) for t in texts]
+
+
+async def retrieve_relevant(
+    chat_id: str,
+    db: AsyncSession,
+    query: str,
+    k: int = 3,
+    skip_recent: int = RETRIEVE_SKIP_RECENT,
+) -> list[str]:
+    """현재 입력(query)과 의미적으로 가장 가까운 '오래된' 과거 대화 top-K를 반환.
+
+    최근 대화는 이미 프롬프트에 있으므로 제외하고, 그 이전 기억에서만 검색한다.
+    임베딩/검색 실패는 빈 리스트로 흡수(대화 흐름을 막지 않음).
+    """
+    if not query:
+        return []
+    try:
+        sid = uuid.UUID(chat_id)
+    except (ValueError, TypeError):
+        return []
+
+    rows = await db.execute(
+        select(Dialogue).where(Dialogue.session_id == sid).order_by(Dialogue.turn_order)
+    )
+    dialogues = rows.scalars().all()
+    if len(dialogues) <= skip_recent:
+        return []  # 아직 검색할 만한 '오래된' 기억이 없음
+
+    candidates = [d.content for d in dialogues[:-skip_recent] if d.content]
+    if not candidates:
+        return []
+
+    try:
+        qvec = (await _embed_cached([query]))[0]
+        cvecs = await _embed_cached(candidates)
+    except Exception as e:  # noqa: BLE001 - 검색 실패는 보강을 생략할 뿐
+        logger.warning("기억 임베딩 실패(검색 생략): %s", e)
+        return []
+
+    scored = sorted(
+        ((c, _cosine(qvec, v)) for c, v in zip(candidates, cvecs) if v),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    return [c for c, _ in scored[:k]]

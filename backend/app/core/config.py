@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     CACHE_TTL: int = 3600
 
     # AI 엔진 — .env의 LLM_PROVIDER 로 전환 (gemini | groq | openai)
-    LLM_PROVIDER: str = "gemini"
+    LLM_PROVIDER: str = "openai"
     AI_API_KEY: str = ""
     AI_API_BASE_URL: str = ""
     GEMINI_API_KEY: str = ""

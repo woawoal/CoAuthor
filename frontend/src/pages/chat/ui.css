@@ -164,7 +164,34 @@
   color: var(--text-main);
 }
 
-/* AI(작가/등장인물) 말풍선 — 테마색 틴트 */
+/* 작가 배지 */
+.badge--author {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* 나레이션 텍스트 — 말풍선 없이 소설 산문 스타일 */
+.narration-text {
+  font-size: 14px;
+  line-height: 1.85;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  max-width: 480px;
+  opacity: 0.88;
+  font-style: italic;
+  margin: 0;
+}
+
+/* 대사 블록 — 캐릭터 이름 + 말풍선 */
+.dialogue-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* AI(등장인물) 말풍선 — 테마색 틴트 */
 .bubble--char {
   background: color-mix(in srgb, var(--theme-color) 20%, transparent);
   border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
@@ -191,6 +218,30 @@
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 0.9em;
+}
+
+/* ── 입력 추천 칩 ── */
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px 0;
+}
+
+.suggestion-chip {
+  background: color-mix(in srgb, var(--theme-color) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 35%, transparent);
+  color: var(--text-main);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.suggestion-chip:hover {
+  background: color-mix(in srgb, var(--theme-color) 25%, transparent);
 }
 
 /* ── 입력창 ── */
@@ -226,6 +277,22 @@
 
 .chat-input:focus {
   border-color: var(--theme-color);
+}
+
+.suggest-btn {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
+  border-radius: 12px;
+  padding: 10px 10px;
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.suggest-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
 }
 
 .chat-send-btn {
