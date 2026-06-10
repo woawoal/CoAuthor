@@ -5,6 +5,7 @@ import '../../index.css';
 import './main.css';
 import { ExitIcon } from '../../components/icons';
 import { getAuthors } from '../../lib/authorsApi';
+import { authClient, syncCurrentUser } from '../../lib/auth';
 
 const FALLBACK_AUTHORS = [
     { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: "공포는 보여주는 게 아니라 안 보여주는 것이다", image: "/assets/author1/author1.png", video: "/assets/author1/author1.mp4" },
@@ -63,11 +64,40 @@ function HoverVideo({ src }) {
     );
 }
 
+
 function Main() {
     const navigate = useNavigate();
     const [hoveredAuthorId, setHoveredAuthorId] = useState(null);
     const [authors, setAuthors] = useState([]);
+    const [userId, setUserId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const checkLogin = async () => {
+            const session = await authClient.getSession();
+            const authUserId = session.data?.user?.id || null;
+
+            setUserId(authUserId);
+
+            if (authUserId) {
+                try {
+                    const user = await syncCurrentUser();
+                    // console.log("동기화된 사용자:", user);
+                    console.log("로그인됨");
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+        };
+
+        checkLogin();
+    }, []);
+
+    const handleLogout = async () => {
+        await authClient.signOut();
+        setUserId(null);
+        navigate('/');
+    };
 
     useEffect(() => {
         const fetchAuthorsData = async () => {
@@ -94,6 +124,12 @@ function Main() {
     };
 
     const handleAuthorSelect = (authorId) => {
+        if (!userId) {
+            alert('로그인 후 이용 가능합니다.');
+            navigate('/login');
+            return;
+        }
+
         handleAuthorHover(authorId);
         navigate('/intro', { state: { authorId } });
     };
@@ -115,6 +151,18 @@ function Main() {
                 <header className="header">
                     <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />
                     <h1 className="logo">NodeVelture</h1>
+
+                    <div className="header-auth">
+                        {userId ? (
+                            <button className="btn" onClick={handleLogout}>
+                                로그아웃
+                            </button>
+                        ) : (
+                            <button className="btn" onClick={() => navigate('/login')}>
+                                로그인
+                            </button>
+                        )}
+                    </div>
                 </header>
 
                 {/* 메인 타이틀 영역 */}
@@ -158,7 +206,18 @@ function Main() {
                     <div className="speech-text">
                         <span>작가를 선택하세요</span>
                     </div>
-                    <button className="chatlist-btn" onClick={() => navigate('/chatlist')}>
+                    <button
+                        className="chatlist-btn"
+                        onClick={() => {
+                            if (!userId) {
+                                alert('로그인 후 이용 가능합니다.');
+                                navigate('/login');
+                                return;
+                            }
+
+                            navigate('/chatlist');
+                        }}
+                    >
                         내 소설 목록 →
                     </button>
                 </div>

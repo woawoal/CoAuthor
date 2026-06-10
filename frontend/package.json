@@ -11,6 +11,7 @@
     "and": "npm run build && npx cap copy android && npx cap sync android && npx cap open android"
   },
   "dependencies": {
+    "@neondatabase/neon-js": "^0.6.2-beta",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
