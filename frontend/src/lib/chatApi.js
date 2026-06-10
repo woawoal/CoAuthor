@@ -48,3 +48,13 @@ export async function getNovel(sessionId) {
   if (!res.ok) throw new Error('소설 조회 실패');
   return res.json();
 }
+
+export async function getSuggestions(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/suggestions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return { suggestions: [] };
+  return res.json();
+}

@@ -9,13 +9,12 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.world import World
 from app.models.novel import Novel, NovelStatus
 from app.schemas.novel import NovelUpdate, NovelResponse
-from app.services.llm_router import LLMRouter
+from app.core.personas import build_novel_system
+from app.services import llm
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-llm_router = LLMRouter()
 
-# 프론트 작가 번호(author_id) → persona 키 (frontend AUTHOR_MAP과 일치)
 _AUTHOR_ID_TO_PERSONA = {1: "baekya", 2: "charoun", 3: "hanyeoreum", 4: "kimdohyeon"}
 
 
@@ -31,6 +30,7 @@ async def get_novel(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 @router.post("/{session_id}/novel/generate", response_model=NovelResponse, status_code=201)
 async def generate_novel(
     session_id: uuid.UUID,
+    use_style: bool = True,
     db: AsyncSession = Depends(get_db),
 ):
     """세션의 대화 로그를 선택한 작가의 문체로 소설 초안으로 변환한다."""
@@ -55,31 +55,27 @@ async def generate_novel(
     if not dialogues:
         raise HTTPException(status_code=400, detail="대화 내용이 없어 소설로 변환할 수 없습니다.")
 
-    # 대화 로그 → LLMRouter 입력 형식
-    dialogue_history = [
-        {
-            "role": "user" if d.speaker_type == SpeakerType.USER else "assistant",
-            "content": d.content,
-        }
-        for d in dialogues
-    ]
-
-    # 세계관 설명(있으면 변환 프롬프트에 주입)
     world_result = await db.execute(select(World).where(World.id == session.world_id))
     world = world_result.scalar_one_or_none()
     world_desc = ""
     if world:
         world_desc = "\n".join(p for p in (world.setting, world.description) if p)
 
-    # 선택한 작가(author_id) → persona → 작가 문체로 변환
     persona_id = _AUTHOR_ID_TO_PERSONA.get(session.author_id, "")
+    system_prompt = build_novel_system(persona_id, world_desc)
 
-    # LLM 소설 변환 — 실패 시 대화 로그 이어붙이기로 폴백
+    block = "\n".join(
+        f"{'사용자' if d.speaker_type == SpeakerType.USER else '작가'}: {d.content}"
+        for d in dialogues
+    )
+    contents = [{"role": "user", "parts": [{"text": f"아래 대화를 소설 장면으로 변환해주세요:\n\n{block}"}]}]
+
     try:
-        content = await llm_router.generate_novel(dialogue_history, world_desc, persona_id=persona_id)
+        content = await llm.generate(system_prompt, contents)
     except Exception as e:
         logger.error("소설 LLM 변환 실패, 폴백 사용 (session=%s): %s", session_id, e)
         content = ""
+
     if not content:
         content = "\n\n".join(d.content for d in dialogues)
 
