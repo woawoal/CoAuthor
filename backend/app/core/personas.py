@@ -94,7 +94,6 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
     },
 }
 
-
 # ── PERSONA_PROMPTS (chats.py / llm_router.py 호환용) ──────────
 
 PERSONA_PROMPTS: dict[str, str] = {
