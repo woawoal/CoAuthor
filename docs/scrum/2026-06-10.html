@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NodeVelture 중간 진도 점검 (2026-06-10)</title>
+<style>
+  :root{
+    --bg:#0f1117; --card:#161a23; --line:#272d3a; --ink:#e6e9ef; --sub:#9aa3b2;
+    --accent:#7c5cff; --accent2:#22d3ee;
+    --done:#22c55e; --prog:#f59e0b; --plan:#64748b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Pretendard","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+    line-height:1.6; padding:40px 20px;
+  }
+  .wrap{max-width:1080px; margin:0 auto;}
+  header{
+    background:linear-gradient(135deg,#1b1340,#0f1117 60%);
+    border:1px solid var(--line); border-radius:18px; padding:34px 36px; margin-bottom:22px;
+  }
+  header h1{margin:0 0 8px; font-size:28px; letter-spacing:-0.5px;}
+  header h1 .nv{color:var(--accent);}
+  header p{margin:4px 0; color:var(--sub); font-size:14px;}
+  header .meta{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
+  header .meta span{background:#1d2330; border:1px solid var(--line); border-radius:8px; padding:6px 12px; font-size:13px;}
+  header .meta b{color:var(--accent2);}
+
+  .summary{
+    background:linear-gradient(135deg,#15233a,#0f1117); border:1px solid var(--line);
+    border-radius:14px; padding:20px 26px; margin-bottom:26px; font-size:14.5px;
+  }
+  .summary b{color:var(--accent2);}
+
+  .legend{display:flex; gap:14px; flex-wrap:wrap; margin:0 0 26px; font-size:13px; color:var(--sub); align-items:center;}
+  .badge{display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap;}
+  .b-done{background:rgba(34,197,94,.15); color:var(--done); border:1px solid rgba(34,197,94,.35);}
+  .b-prog{background:rgba(245,158,11,.15); color:var(--prog); border:1px solid rgba(245,158,11,.35);}
+  .b-plan{background:rgba(100,116,139,.18); color:#cbd5e1; border:1px solid rgba(100,116,139,.4);}
+
+  .cat{background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; margin-bottom:16px;}
+  .cat-head{
+    padding:14px 18px; font-size:16px; font-weight:700;
+    background:#1a1f2b; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  }
+  .cat-head .num{color:var(--accent); }
+  .cat-head .brief{font-size:12px; color:#cbd5e1; background:rgba(124,92,255,.16); border:1px solid rgba(124,92,255,.4); border-radius:999px; padding:2px 10px; font-weight:600;}
+  .cat-head .demo{font-size:11px; color:var(--accent2); border:1px solid rgba(34,211,238,.4); border-radius:6px; padding:1px 7px;}
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  th,td{padding:10px 14px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line);}
+  th{color:var(--sub); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.4px;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(124,92,255,.05);}
+  td.st{white-space:nowrap; width:74px;}
+  td.item{font-weight:600; white-space:nowrap;}
+  td.note{color:#c8cdd8; font-size:13px;}
+  td.note .rest{color:var(--prog);}
+  code{background:#0c0f16; padding:1px 6px; border-radius:5px; color:#cbd5e1; font-size:12.5px; font-family:ui-monospace,Consolas,monospace;}
+  .fire{color:#ff7a59;}
+  footer{color:var(--sub); font-size:12px; text-align:center; margin-top:26px;}
+  @media print{
+    body{background:#fff; color:#111; padding:0;}
+    .cat,.cat-head,header,.summary{background:#fff !important; border-color:#ddd; color:#111;}
+    th,td{border-color:#ddd;} td.note{color:#333;} header p,.legend{color:#555;}
+    tr:hover td{background:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1><span class="nv">NodeVelture</span> 중간 진도 점검</h1>
+  <p>AI 빙의작가 — 작가 캐릭터와 놀듯 대화하면 진짜 내 소설이 되는 협업 창작 서비스</p>
+  <div class="meta">
+    <span>팀 <b>1팀</b></span>
+    <span>점검일 <b>2026-06-10</b></span>
+    <span>엔진 <b>Vertex AI Gemini 2.5 Flash-lite</b></span>
+    <span>참석 <b>전원</b></span>
+  </div>
+  <div class="meta">
+    <span>브리핑 ③ AI엔진 <b>동완</b> · ④ 백엔드/통합 <b>가연</b> · ⑤ 클라이언트 <b>가은</b></span>
+    <span>전체 시연(한 사이클) <b>가은</b></span>
+  </div>
+</header>
+
+<div class="summary">
+  <b>"작가 선택 → 세계관 작성 → 대화형 창작 → 작가 문체 소설"</b> 전 체인이
+  <b>클라우드 풀스택(Neon DB + Upstash Redis + Vertex Gemini 2.5)에서 E2E 9/9</b>로 동작합니다.
+  차별점인 <b>RAG 3종(세계관 기억 · 일관성 검수 · 작가 문체)</b> 구현 완료.
+  현재는 프론트 신규기능 연결 · 평가 정량화 · 발표 준비 단계.
+</div>
+
+<div class="legend">
+  <span class="badge b-done">완료</span>
+  <span class="badge b-prog">진행중</span>
+  <span class="badge b-plan">미착수</span>
+  <span><span class="rest" style="color:var(--prog)">주황 글씨</span> = 잔여 완료 계획</span>
+</div>
+
+<!-- 1 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">1.</span> 기획 및 페르소나</div>
+  <table>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">페르소나 한 줄 정의</td><td class="note">"사용자가 1인칭 주인공으로 들어가는 무대 — 작가 캐릭터와 놀듯 대화하면 진짜 내 소설이 된다" (ChatGPT=밖에서 지시 / 우리=이야기 안에서 창작)</td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">페르소나 카드</td><td class="note">작가 4인(백야·호러 / 차로운·추리 / 한여름·로맨스 / 김도현·일상) 말투·가치관·문체·금기 정의 (<code>personas.py</code>, <code>persona_cards.md</code>)</td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">타깃 + 핵심 시나리오</td><td class="note">타깃 = 2030 취미 창작러 / ①작가 선택 ②세계관 작성 ③대화형 창작 (<code>사용자_시나리오.md</code>)</td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">차별점</td><td class="note">"캐릭터 놀이 ↔ 진짜 소설"을 잇는 다리 + RAG(기억)·일관성 검수·작가 문체 (character.ai=결과물 없음 / Sudowrite=캐릭터 없음)</td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">결과물·모달리티</td><td class="note">작가 문체 단편 소설(읽기 페이지·txt 내보내기), 모달리티 = 텍스트 (삽화 P2)</td></tr>
+  </table>
+</div>
+
+<!-- 2 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">2.</span> 팀 운영</div>
+  <table>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">역할 분담</td><td class="note">백엔드(윤정·가연) / 프론트(가은·건혁) / AI(동완·프롬프트, 유득·데이터) — <code>업무분담.md</code></td></tr>
+    <tr><td class="st"><span class="badge b-prog">진행중</span></td><td class="item">이슈·일정 관리</td><td class="note">GitHub PR·이슈 + <code>업무분담.md</code>·스크럼 문서로 운영. <span class="rest">잔여: GitHub Projects 보드 도입 검토</span></td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">1일 회고·재조정</td><td class="note">매일 아침 스크럼 + 강사님 스크럼, 업무 수시 재배치(난이도 조정·작업 이관·PR 반영)</td></tr>
+  </table>
+</div>
+
+<!-- 3 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">3.</span> AI 응답 엔진 <span class="brief">브리핑 동완</span> <span class="demo">데모</span></div>
+  <table>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">엔진 선정(근거 문서화)</td><td class="note"><b>Vertex AI Gemini 2.5 Flash-lite</b>. Groq 언어누수 해결 + 응답 <b>8s→2s</b>. 근거·셋업 <code>server-ops.md</code></td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">페르소나 응답 확인</td><td class="note">작가별 문체로 대사/서술 분리 응답(동완), E2E 검증</td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">환경변수 스위칭</td><td class="note"><code>.env</code> 한 줄 Provider 전환 + n키 순환·429 분기·쿨다운·백오프 (<code>llm.py</code>) — 한도 초과 시 자동 대체</td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">파이프라인</td><td class="note">프로바이더 체인 → 모델 → 키 순회 + 에러 분류·폴백 일원화. <span class="rest">진행중: 팀 공통 엔진 표준화(Vertex로 수렴 중)</span></td></tr>
+  </table>
+</div>
+
+<!-- 4 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">4.</span> 백엔드 및 통합 <span class="brief">브리핑 가연</span> <span class="demo">데모</span></div>
+  <table>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">실제 응답 호출(모의 아님)</td><td class="note">FastAPI + 실제 Vertex Gemini 호출, <b>E2E 스모크 9/9</b></td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">대화 저장소·적재</td><td class="note">PostgreSQL = <b>Neon(클라우드 공용, 가연 셋업)</b> + Redis = <b>Upstash</b>. Dialogue/Session/Novel/ApiLog 적재 확인</td></tr>
+    <tr><td class="st"><span class="badge b-prog">진행중</span></td><td class="item">비용·성능 절감(전후 비교)</td><td class="note">증분 요약·컨텍스트 윈도우(10턴)·thinking off(8s→2s)·토큰 분석 API(모델·세션별). <span class="rest">잔여: "맨손 vs 우리" 근거 리포트 정량화</span></td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item"><span class="fire">차별점 · RAG 3종</span></td><td class="note">세계관·줄거리 기억 검색(<code>memory.py</code>) / 설정 일관성 검수(<code>consistency.py</code>) / 작가 문체 few-shot(<code>style.py</code>) + 어시스턴트 <code>/suggest</code>·메모 <code>/memo</code></td></tr>
+  </table>
+</div>
+
+<!-- 5 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">5.</span> 클라이언트 <span class="brief">브리핑 가은</span> <span class="demo">데모</span></div>
+  <table>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">UI ↔ 백엔드 연동</td><td class="note">React+Vite 전 화면 연동, 작가별 테마(새로고침 유지), 세계관 예시(건혁)·채팅 포맷터(가은)</td></tr>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">입력→백엔드→엔진→출력 (E2E)</td><td class="note">작가선택 → 세계관 → 채팅(AI) → 채팅종료 → 소설변환 → 읽기</td></tr>
+    <tr><td class="st"><span class="badge b-prog">진행중</span></td><td class="item">신규기능 연결</td><td class="note">메모 패널 · 다음전개 제안 버튼(백엔드 API 준비됨) · 토큰 대시보드 · <b>로그인(Neon Auth 활용, 건혁)</b></td></tr>
+  </table>
+</div>
+
+<!-- 6 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">6.</span> 평가 설계</div>
+  <table>
+    <tr><td class="st"><span class="badge b-prog">진행중</span></td><td class="item">지표 3~5개 + 가중치</td><td class="note">LLM-as-judge 4축(세계관·캐릭터 일관성, 문체 뚜렷함, 완성도) 1~5점 구현(<code>evaluate.py</code>). <span class="rest">잔여: 가중치 설정·채점 루브릭 확정</span></td></tr>
+    <tr><td class="st"><span class="badge b-prog">진행중</span></td><td class="item">테스트셋 초안</td><td class="note">추리·호러·로맨스 3시나리오(<code>evidence_report.py</code>). <span class="rest">잔여: 카테고리·길이 균형 확대</span></td></tr>
+  </table>
+</div>
+
+<!-- 7 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">7.</span> 멀티모달 <span class="brief" style="background:rgba(100,116,139,.18);border-color:rgba(100,116,139,.4)">선택 채택 팀</span></div>
+  <table>
+    <tr><td class="st"><span class="badge b-plan">미착수</span></td><td class="item">도입 모달리티·담당</td><td class="note">선택 보류 — MVP는 텍스트 중심. 삽화·아바타(PERSO)는 P2. <span class="rest">계획: 여유 시 또는 발표 슬라이드용 샘플로 한정</span></td></tr>
+    <tr><td class="st"><span class="badge b-plan">미착수</span></td><td class="item">통합 작업</td><td class="note">상동 (채택 시 P2 범위로 한정, 최종 주차 이월 없이)</td></tr>
+  </table>
+</div>
+
+<!-- 8 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">8.</span> 리스크 관리</div>
+  <table>
+    <tr><td class="st"><span class="badge b-done">완료</span></td><td class="item">블로커 식별·담당</td><td class="note">(해결) 엔진 언어누수→Vertex 전환 / 머지 회귀(import·문체RAG) 복구 / DB 클라우드 공유=가연. (잔여) 프론트 연결·평가 정량화 — 담당 지정됨</td></tr>
+    <tr><td class="st"><span class="badge b-prog">진행중</span></td><td class="item">일정 지연·대응</td><td class="note">마감 6/19. 핵심(RAG·검수·문체·엔진·DB) 완료. <span class="rest">대응: 프론트 마무리 → 평가/근거 리포트 → 발표 시나리오·시연 영상</span></td></tr>
+  </table>
+</div>
+
+<!-- 서버 -->
+<div class="cat">
+  <div class="cat-head"><span class="num">🖥</span> 서버 / 관리자 운영</div>
+  <table>
+    <tr><td class="st"><span class="badge b-done">운영</span></td><td class="item">서버 운영</td><td class="note">uvicorn + 클라우드(Neon/Upstash/Vertex), <code>/health</code> 헬스체크, ngrok 팀 공유, 운영·트러블슈팅 문서(<code>server-ops.md</code>)</td></tr>
+    <tr><td class="st"><span class="badge b-prog">진행중</span></td><td class="item">관리자 모니터링</td><td class="note">토큰 사용량·비용 집계(<code>/api-logs</code> 모델별·세션별·누적) → 대시보드 화면(건혁)</td></tr>
+  </table>
+</div>
+
+<footer>NodeVelture · 1팀 · 2026-06-10 중간 진도 점검 · 클라우드 풀스택이라 노트북 1대로 전 체인 시연 가능</footer>
+
+</div>
+</body>
+</html>
