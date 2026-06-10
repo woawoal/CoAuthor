@@ -12,13 +12,25 @@ from app.models.character import Character
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.api_log import ApiLog
 from app.schemas.dialogue import DialogueStreamRequest, DialogueResponse
-from app.services.llm_router import LLMRouter
+from app.services import llm
+from app.services.llm_router import calc_cost
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-llm_router = LLMRouter()
 
-CONTEXT_WINDOW = 10  # LLM에 전달할 최근 대화 턴 수
+CONTEXT_WINDOW = 10
+
+
+def _to_contents(history: list[dict], user_message: str) -> list[dict]:
+    contents = [
+        {
+            "role": "user" if m["role"] == "user" else "model",
+            "parts": [{"text": m["content"]}],
+        }
+        for m in history
+    ]
+    contents.append({"role": "user", "parts": [{"text": user_message}]})
+    return contents
 
 
 async def _get_active_session(session_id: uuid.UUID, db: AsyncSession) -> Session:
@@ -50,7 +62,7 @@ async def stream_dialogue(
     body: DialogueStreamRequest,
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
-    """사용자 발화 저장 → 대화 히스토리 조회 → Gemini 스트리밍 → AI 응답 저장"""
+    """사용자 발화 저장 → 대화 히스토리 조회 → AI 전체 응답 → 저장 → 단일 SSE 이벤트"""
     session_obj = await _get_active_session(session_id, db)
 
     char_result = await db.execute(select(Character).where(Character.id == body.character_id))
@@ -72,14 +84,17 @@ async def stream_dialogue(
             .limit(turn_count - CONTEXT_WINDOW)
         )
         old_dialogues = old_result.scalars().all()
-        old_history = [
-            {
-                "role": "user" if d.speaker_type == SpeakerType.USER else "assistant",
-                "content": d.content,
-            }
+        block = "\n".join(
+            f"{'사용자' if d.speaker_type == SpeakerType.USER else 'AI'}: {d.content}"
             for d in old_dialogues
-        ]
-        new_summary = await llm_router.summarize_history(old_history)
+        )
+        sum_system = (
+            "당신은 소설 대화 요약 전문가입니다. "
+            "아래 대화의 핵심 사건, 인물 관계, 감정 흐름을 3~4문장으로 요약하세요. "
+            "이후 이야기 전개에 필요한 맥락이 유지되도록 간결하게 작성하세요."
+        )
+        sum_contents = [{"role": "user", "parts": [{"text": f"다음 대화를 요약해주세요:\n\n{block}"}]}]
+        new_summary = await llm.generate(sum_system, sum_contents)
         session_obj.context_summary = new_summary
         await db.commit()
         logger.info("[context] 요약 저장 완료 — session=%s turns=%d", session_id, turn_count)
@@ -103,7 +118,6 @@ async def stream_dialogue(
     )
     recent = list(reversed(history_result.scalars().all()))
 
-    # context_summary가 있으면 첫 메시지로 주입
     history: list[dict] = []
     if session_obj.context_summary:
         history.append({"role": "user", "content": f"[이전 대화 요약]\n{session_obj.context_summary}"})
@@ -117,65 +131,55 @@ async def stream_dialogue(
         for d in recent
     ]
 
+    # AI 전체 응답
+    system_prompt = character.prompt or ""
+    contents = _to_contents(history[-10:], body.content)
+    usage_out: list = []
+
+    try:
+        ai_text = await llm.generate(system_prompt, contents, usage_out=usage_out)
+    except Exception as e:
+        logger.error("[dialogues] LLM 호출 실패 — session=%s: %s", session_id, e)
+        async def error_gen():
+            yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+        return StreamingResponse(error_gen(), media_type="text/event-stream")
+
+    # AI 응답 + ApiLog 저장
+    ai_dialogue = Dialogue(
+        session_id=session_id,
+        speaker_type=SpeakerType.CHARACTER,
+        character_id=body.character_id,
+        content=ai_text,
+        turn_order=turn_count + 1,
+    )
+    db.add(ai_dialogue)
+
+    if usage_out:
+        u = usage_out[0]
+        api_log = ApiLog(
+            session_id=session_id,
+            endpoint=f"POST /sessions/{session_id}/dialogues/stream",
+            model_used=u["model"],
+            prompt_tokens=u["prompt_tokens"],
+            completion_tokens=u["completion_tokens"],
+            total_cost=calc_cost(u["model"], u["prompt_tokens"], u["completion_tokens"]),
+        )
+        db.add(api_log)
+        logger.info(
+            "[api_log] 저장 — model=%s prompt=%d completion=%d cost=%.8f",
+            u["model"], u["prompt_tokens"], u["completion_tokens"],
+            calc_cost(u["model"], u["prompt_tokens"], u["completion_tokens"]),
+        )
+
+    await db.commit()
+    logger.info("[dialogues] AI 응답 저장 완료 — session=%s turn=%d", session_id, turn_count + 1)
+
+    # 단일 SSE 이벤트로 전달 (프론트에서 타이핑 효과 처리)
     async def generate():
-        ai_chunks: list[str] = []
-        log_usage: dict | None = None
-
-        async for sse_line in llm_router.stream_character_response(
-            character=character,
-            dialogue_history=history,
-            user_message=body.content,
-        ):
-            # event: log 는 클라이언트에 전달하지 않고 나중에 ApiLog 저장에 사용
-            if sse_line.startswith("event: log\n"):
-                try:
-                    data_line = sse_line.strip().split("\n")[1]
-                    log_usage = json.loads(data_line.replace("data: ", "", 1))
-                except Exception as e:
-                    logger.warning("[api_log] 파싱 실패: %s", e)
-                continue
-
-            if sse_line.startswith("data:"):
-                try:
-                    payload = json.loads(sse_line[5:].strip())
-                    if payload.get("text"):
-                        ai_chunks.append(payload["text"])
-                except Exception:
-                    pass
-            yield sse_line
-
-        # 스트리밍 완료 후 독립 세션으로 DB 저장 (StreamingResponse 내부에서는 Depends 세션 commit이 보장 안 됨)
-        if ai_chunks or log_usage:
-            try:
-                async with AsyncSessionLocal() as save_session:
-                    if ai_chunks:
-                        ai_dialogue = Dialogue(
-                            session_id=session_id,
-                            speaker_type=SpeakerType.CHARACTER,
-                            character_id=body.character_id,
-                            content="".join(ai_chunks),
-                            turn_order=turn_count + 1,
-                        )
-                        save_session.add(ai_dialogue)
-                        logger.info("[dialogues] AI 응답 저장 완료 — session=%s turn=%d", session_id, turn_count + 1)
-
-                    if log_usage:
-                        api_log = ApiLog(
-                            session_id=session_id,
-                            endpoint=f"POST /sessions/{session_id}/dialogues/stream",
-                            model_used=log_usage["model"],
-                            prompt_tokens=log_usage["prompt_tokens"],
-                            completion_tokens=log_usage["completion_tokens"],
-                            total_cost=log_usage["cost"],
-                        )
-                        save_session.add(api_log)
-                        logger.info(
-                            "[api_log] 저장 — model=%s prompt=%d completion=%d cost=%.8f",
-                            log_usage["model"], log_usage["prompt_tokens"], log_usage["completion_tokens"], log_usage["cost"],
-                        )
-
-                    await save_session.commit()
-            except Exception as e:
-                logger.error("[dialogues/api_log] 저장 실패: %s", e)
+        payload = json.dumps(
+            {"character": character.name, "text": ai_text, "done": True},
+            ensure_ascii=False,
+        )
+        yield f"data: {payload}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
