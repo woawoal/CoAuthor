@@ -1,0 +1,36 @@
+.login-wrapper {
+    width: calc(100vw - 58px);
+    max-width: 384px;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    margin: auto;
+    gap: 10px;
+}
+
+/* 카드 전체 넓이 */
+.login-wrapper [data-slot="card"] {
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.login-wrapper [data-slot="card-header"] {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center !important;
+}
+
+.login-wrapper [data-slot="card-description"] {
+    margin-top: 8px !important;
+}
+
+.login-wrapper form {
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+.login-wrapper .grid {
+    display: flex !important;
+    flex-direction: column !important;
+}
