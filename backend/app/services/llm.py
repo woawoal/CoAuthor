@@ -162,6 +162,16 @@ def _gemini_model(model: str, key: str, system_prompt: str):
     return genai.GenerativeModel(model, system_instruction=system_prompt or None)
 
 
+def _gemini_gen_config(json_mode: bool):
+    """Gemini generation_config. Vertex면 thinking 끔(응답 속도↑), json_mode면 JSON 강제."""
+    cfg = {}
+    if settings.USE_VERTEX:
+        cfg["thinking_config"] = {"thinking_budget": 0}  # 창작엔 '사고' 불필요 → 지연 크게 감소
+    if json_mode:
+        cfg["response_mime_type"] = "application/json"
+    return cfg or None
+
+
 # ── 단발 호출(동기) ──────────────────────────────────────────────
 def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: list[dict],
               json_mode: bool = False) -> tuple[str, dict]:
@@ -176,8 +186,8 @@ def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: lis
                  "completion_tokens": getattr(u, "completion_tokens", 0) or 0}
         return (resp.choices[0].message.content or ""), usage
     # gemini
-    gen_cfg = {"response_mime_type": "application/json"} if json_mode else None
-    resp = _gemini_model(model, key, system_prompt).generate_content(contents, generation_config=gen_cfg)
+    resp = _gemini_model(model, key, system_prompt).generate_content(
+        contents, generation_config=_gemini_gen_config(json_mode))
     meta = getattr(resp, "usage_metadata", None)
     usage = {"model": model,
              "prompt_tokens": getattr(meta, "prompt_token_count", 0) or 0,
@@ -203,7 +213,8 @@ def _stream_once(prov: str, model: str, key: str, system_prompt: str, contents: 
         usage_box.append({"model": model, "prompt_tokens": pt, "completion_tokens": ct})
         return
     # gemini
-    resp = _gemini_model(model, key, system_prompt).generate_content(contents, stream=True)
+    resp = _gemini_model(model, key, system_prompt).generate_content(
+        contents, stream=True, generation_config=_gemini_gen_config(False))
     for chunk in resp:
         if chunk.text:
             yield chunk.text
