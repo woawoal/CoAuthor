@@ -43,7 +43,7 @@ function formatText(text) {
     .trim();
 }
 
-function Bubble({ msg, persona, streaming, hasBookmark, isSelected, onClick }) {
+function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelected, onClick }) {
   if (msg.role === 'system') {
     return <div className="world-info-header">{msg.text}</div>;
   }
@@ -51,22 +51,37 @@ function Bubble({ msg, persona, streaming, hasBookmark, isSelected, onClick }) {
   const isUser = msg.role === 'user';
 
   if (!isUser) {
-    const hasContent = msg.narration || msg.dialogue || msg.text;
+    const hasNarration = !!(msg.narration || msg.text);
+    const hasDialogue = !!msg.dialogue;
+    const isLoading = !hasNarration && !hasDialogue && streaming;
+    const charName = characterName || msg.name;
+
     return (
       <div id={`bubble-${msg.id}`} className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`} onClick={onClick}>
         <img src={persona.image} alt={msg.name} className="bubble-avatar" />
         <div className="bubble-content">
-          <span className="badge">{msg.name}</span>
-          <div className="bubble bubble--char">
-            {hasBookmark && <span className="bubble-bookmark">🔖</span>}
-            {(!hasContent && streaming)
-              ? <div className="typing-dots"><span /><span /><span /></div>
-              : <>
-                  {(msg.narration || msg.text) && <p className="bubble-narration">{formatText(msg.narration || msg.text)}</p>}
-                  {msg.dialogue && <p className="bubble-dialogue">"{msg.dialogue}"</p>}
-                </>
-            }
-          </div>
+          <span className="badge badge--author">작가 {msg.name}</span>
+
+          {/* 나레이션 — 말풍선 없음 */}
+          {hasNarration && (
+            <p className="narration-text">
+              {hasBookmark && !hasDialogue && <span className="bubble-bookmark">🔖</span>}
+              {formatText(msg.narration || msg.text)}
+            </p>
+          )}
+
+          {isLoading && <div className="typing-dots"><span /><span /><span /></div>}
+
+          {/* 대사 — 말풍선 */}
+          {hasDialogue && (
+            <div className="dialogue-block">
+              <span className="badge">{charName}</span>
+              <div className="bubble bubble--char">
+                {hasBookmark && <span className="bubble-bookmark">🔖</span>}
+                &ldquo;{msg.dialogue}&rdquo;
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -206,16 +221,31 @@ export default function Chat() {
   async function handleEnd() {
     if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
     if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
+
+    // 응답 중이면 스트림 강제 종료
+    if (esRef.current) {
+      esRef.current.close();
+      esRef.current = null;
+    }
+    setStreaming(false);
+
     setEnding(true);
     try {
       await completeSession(chatId);
-      await generateNovel(chatId);
-      navigate('/chatlist');
     } catch (err) {
-      alert(`저장 실패: ${err.message}`);
-    } finally {
+      alert(`세션 종료 실패: ${err.message}`);
       setEnding(false);
+      return;
     }
+
+    // 소설 생성 실패해도 종료는 진행
+    try {
+      await generateNovel(chatId);
+    } catch (err) {
+      console.warn('소설 생성 실패 (무시):', err.message);
+    }
+
+    navigate('/chatlist');
   }
 
   async function fetchSuggestions() {
@@ -304,7 +334,8 @@ export default function Chat() {
               key={msg.id}
               msg={msg}
               persona={persona}
-              streaming={streaming}
+              characterName={dbCharacters.find(c => c.role !== 'protagonist')?.name}
+              streaming={streaming && msg === messages[messages.length - 1]}
               hasBookmark={memos.some(m => m.msgId === msg.id)}
               isSelected={selectedMsgId === msg.id}
               onClick={msg.role !== 'system' ? () => handleBubbleClick(msg.id) : undefined}

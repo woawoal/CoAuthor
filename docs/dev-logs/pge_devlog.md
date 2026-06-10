@@ -2,6 +2,46 @@
 
 ---
 
+## 2026-06-10
+
+### 오늘 한 일
+
+**백엔드 LLM 호출 구조 통일**
+- 스트리밍 방식 결정: 청크 SSE → **전체 응답 받기 → 단일 SSE** 방식으로 통일
+  - 이유: `{narration, dialogue}` JSON 구조는 청크 스트리밍과 충돌 (파싱 불가)
+  - 타이핑 효과는 프론트엔드에서 처리하는 것으로 결정
+- `dialogues.py`: `LLMRouter.stream_character_response()` 제거 → `llm.generate()` 직접 호출
+  - `summarize_history()` 인라인 처리
+  - `AsyncSessionLocal` 내부 제너레이터 제거 → `db` 의존성으로 직접 commit
+  - 단일 SSE 이벤트 `{"character": ..., "text": ..., "done": true}` 로 변경
+- `novels.py`: `LLMRouter.generate_novel()` 제거 → `llm.generate()` + `build_novel_system()` 직접 호출
+
+**프롬프트 모듈 구조 정리**
+- `prompts/__init__.py` 내용 → `prompts/formatter.py` 로 이동 (역할 명확화)
+- `__init__.py`는 re-export만 유지 (기존 import 호환)
+- 역할 분리 확정:
+  - `personas.py` — 작가 정체성 (누가 말하는가, 어떤 말투인가)
+  - `formatter.py` — 응답 구조 + 조립 (어떤 형식으로, 어떻게 조립하는가)
+  - `chats.py` — API 흐름 (언제 호출하고 어디에 저장하는가)
+
+**데이터 흐름 (확정)**
+```
+사용자 입력
+  → formatter.build_messages()
+      → personas.get_author_prompt()  [작가 스타일 주입]
+      → 히스토리 + 컨텍스트 조립
+  → llm.generate()                   [LLM 호출, 폴백/키로테이션 내부 처리]
+  → formatter.parse_ai_response()    [JSON 파싱]
+  → SSE event:reply {narration, dialogue}
+```
+
+### 추후 정리 대상
+- `LLMRouter` 클래스: `.coach()` / `.generate_all_personas()` / `.stream()` 아직 남아있음
+  - `.stream()` — 더 이상 사용 안 함 (제거 대상)
+  - `.coach()` / `.generate_all_personas()` — 코칭/비교 기능 엔드포인트에서 사용 중이면 유지, 아니면 제거
+
+---
+
 ## 2026-06-08
 
 ### 오늘 한 일
