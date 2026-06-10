@@ -5,12 +5,14 @@ import '../../index.css';
 import './intro.css';
 import { ExitIcon, ChevronRight } from '../../components/icons';
 import { getAuthor } from '../../lib/authorsApi';
+import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 
 function Intro() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const authorId = location.state?.authorId;
+    const authorId = resolveAuthorId(location.state?.authorId);
+    useAuthorTheme(authorId);
     const [selectedAuthor, setSelectedAuthor] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
 

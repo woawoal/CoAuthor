@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSessions, deleteSession } from '../../lib/worldviewApi';
+import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import './chatlist.css';
 
 const STATUS_LABEL = {
@@ -35,6 +36,9 @@ export default function ChatList() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // 목록은 작가가 여러 명 — 마지막으로 쓴 작가 테마(localStorage) 유지
+  useAuthorTheme(resolveAuthorId(null));
 
   useEffect(() => {
     getSessions()

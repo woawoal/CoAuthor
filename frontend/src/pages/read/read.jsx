@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getNovel } from '../../lib/chatApi';
 import { getSession, getWorld } from '../../lib/worldviewApi';
+import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import './read.css';
 
 const CHAPTER_SIZE = 5;
@@ -52,6 +53,9 @@ export default function ReadNovel() {
   const [activeChapter, setActiveChapter] = useState(0);
 
   const chapterRefs = useRef([]);
+
+  // 작가별 테마: 세션 로드 전엔 localStorage, 로드 후엔 session.author_id(진짜 값)
+  useAuthorTheme(session?.author_id ?? resolveAuthorId(null));
 
   useEffect(() => {
     async function load() {
