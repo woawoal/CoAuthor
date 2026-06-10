@@ -184,3 +184,60 @@ def parse_ai_response(raw: str) -> dict:
         "state_changes": _default_state,
         "internal_note": "",
     }
+
+MULTI_NPC_SYSTEM = """\
+[조연 다중 반응]
+아래 장면에서 등장한 조연들이 각자의 성격대로 동시에 반응한다.
+
+[규칙]
+- 각 조연은 자신의 성격·말투·관계에 맞게만 반응함
+- 다른 조연의 반응을 따라 하거나 비슷하게 쓰지 않음
+- 반응이 자연스럽게 이어지도록 순서 고려 (먼저 반응할 것 같은 인물 먼저)
+- narration은 전체 장면 묘사, 각 조연 반응은 responses 배열에 분리
+- 대사 없는 조연은 dialogue를 빈 문자열로 둠
+- 반드시 한국어로만 작성
+
+반드시 valid JSON만 출력:
+{
+  "narration": "전체 장면 묘사 (등장인물들의 행동·분위기)",
+  "responses": [
+    {
+      "character_name": "조연 이름",
+      "action": "이 조연의 행동·표정·반응 (짧게)",
+      "dialogue": "이 조연의 대사 (없으면 빈 문자열)"
+    }
+  ],
+  "state_changes": {
+    "trust_delta": 0,
+    "event": null
+  }
+}
+"""
+
+def build_multi_npc_prompt(
+    world_context: str,
+    npcs: list[dict],
+    recent_dialogue: str,
+) -> str:
+    """
+    F-CH-09 조연 다중 반응 프롬프트 조합.
+
+    Args:
+        world_context: 세계관 요약
+        npcs: [{"name": "이름", "personality": "성격", "relationship": "관계"}, ...]
+        recent_dialogue: 직전 대화 상황 (사용자 마지막 입력 포함)
+
+    Returns:
+        완성된 시스템 프롬프트
+    """
+    npc_block = "\n".join(
+        f"- {npc['name']}: {npc.get('personality', '')} / 관계: {npc.get('relationship', '')}"
+        for npc in npcs
+    )
+
+    return (
+        f"{MULTI_NPC_SYSTEM}\n\n"
+        f"[세계관]\n{world_context}\n\n"
+        f"[등장 조연]\n{npc_block}\n\n"
+        f"[현재 장면]\n{recent_dialogue}"
+    )
