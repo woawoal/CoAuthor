@@ -54,7 +54,7 @@ async def sync_me(body: UserSync, db: AsyncSession = Depends(get_db)):
         id=body.id,
         username=body.nickname,
         email=body.email,
-        hashed_password=pwd_context.hash("1234"),
+        hashed_password=pwd_context.hash(secrets.token_hex(16)),
     )
 
     db.add(user)
