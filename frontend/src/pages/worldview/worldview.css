@@ -473,3 +473,86 @@
         padding: 8px;
     }
 }
+
+/* 세계관 예시 모달 */
+.example-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.example-modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.example-modal {
+    width: min(520px, calc(100% - 32px));
+    max-height: 80vh;
+    overflow-y: auto;
+    background: var(--bg-main);
+    border-color: var(--theme-color);
+    border-radius: 16px;
+    padding: 20px;
+    color: var(--text-main);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.example-modal h3 {
+    margin: 0 0 16px 0;
+}
+
+.example-title-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.example-title-button {
+    width: 100%;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid;
+    border-color: var(--theme-color);
+    border-radius: 10px;
+    color: var(--text-main);
+    text-align: left;
+    cursor: pointer;
+}
+
+.example-title-button:hover {
+    background: var(--theme-color);
+}
+
+.example-detail-box {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+    white-space: pre-line;
+}
+
+.example-detail-box strong {
+    color: var(--text-main);
+}
+
+.example-character-box {
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.example-modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.example-character-prompt {
+    margin-left: 9px;
+}

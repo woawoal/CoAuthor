@@ -23,3 +23,11 @@ export const ChevronRight = ({ width = 10, height = 15, color = "#ffffff", class
         <path d="M2 2L8 10L2 18" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
 );
+
+// 랜덤 / 소용돌이 아이콘
+export const ShuffleIcon = ({ size = 20, color = "#ffffff", className = "" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} >
+        <path d="M20 12A8 8 0 1 1 17.5 6.2" stroke={color} strokeWidth="2" strokeLinecap="round" />
+        <path d="M20 4V9H15" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+);
