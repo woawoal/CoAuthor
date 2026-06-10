@@ -63,6 +63,7 @@ html,
 
 /* 상단 헤더 */
 .header {
+  position: relative;
   width: 100%;
   display: flex;
   align-items: center;
@@ -105,4 +106,21 @@ html,
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+}
+
+.btn {
+  padding: 8px;
+  color: var(--text-main);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  background-color: transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+
+.btn:hover {
+  background-color: color-mix(in srgb, var(--theme-color) 18%, transparent);
+  border-color: var(--theme-color);
 }

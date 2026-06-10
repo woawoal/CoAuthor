@@ -1,12 +1,13 @@
 import logging
 import uuid
+import secrets
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from passlib.context import CryptContext
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse, UserSync
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,4 +38,28 @@ async def get_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    return user
+
+@router.post("/me", response_model=UserResponse)
+async def sync_me(body: UserSync, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(User).where(User.id == body.id)
+    )
+    user = result.scalar_one_or_none()
+
+    if user:
+        return user
+
+    user = User(
+        id=body.id,
+        username=body.nickname,
+        email=body.email,
+        hashed_password=pwd_context.hash("1234"),
+    )
+
+    db.add(user)
+    await db.flush()
+    await db.refresh(user)
+
+    logger.info("Neon Auth 유저 동기화: %s", user.email)
     return user

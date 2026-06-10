@@ -1,4 +1,11 @@
 /* src/pages/main/main.css */
+.header-auth {
+    position: absolute;
+    right: 10px;
+    display: flex;
+    gap: 10px;
+}
+
 /* 타이틀 영역 */
 .title-area {
     width: 100%;
