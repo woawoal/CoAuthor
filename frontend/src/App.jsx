@@ -6,6 +6,7 @@ import Intro from './pages/intro/intro';
 import Chat from './pages/chat/ui';
 import ChatList from './pages/chatlist/chatlist';
 import ReadNovel from './pages/read/read';
+import Login from './pages/login/login';
 
 function App() {
   useEffect(() => {
@@ -28,6 +29,8 @@ function App() {
         <Route path="/chat" element={<Chat />} />
         <Route path="/chatlist" element={<ChatList />} />
         <Route path="/read/:storyId" element={<ReadNovel />} />
+        <Route path="/login/*" element={<Login />} />
+        <Route path="/auth/*" element={<Login />} />
       </Routes>
     </Router>
   );
