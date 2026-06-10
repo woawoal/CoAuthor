@@ -1,9 +1,10 @@
+import re
 import json
 import uuid
 import logging
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,7 @@ from sqlalchemy import select, func
 
 from app.core.config import settings
 from app.core.personas import get_author_prompt
+from app.core.reactions import EMOTIONS, pick_reaction
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
@@ -59,6 +61,9 @@ def key_memos(chat_id: str) -> str:
 
 def key_voice_profile(chat_id: str) -> str:
     return f"session:{chat_id}:voice_profile"
+
+def key_last_reaction(chat_id: str) -> str:
+    return f"session:{chat_id}:last_reaction"
 
 
 # ── Redis 조회 헬퍼 (DB fallback 포함) ────────────────────
@@ -806,3 +811,59 @@ async def delete_memo(chat_id: str, index: int):
         target = memos[index]
         await redis_client.lrem(key_memos(chat_id), 1, target)
     return {"memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}
+
+
+# ── 작가 리액션 (F-AS-05) ──────────────────────────────────
+# 사용자 대사 → 작가가 짧게 즉각 반응(말풍선). LLM은 '감정 라벨'만 분류하고,
+# 실제 문장은 reactions.py 풀에서 꺼낸다 → 작가 톤 보장 + 빠르고 저렴.
+REACTION_EMOTION_SYSTEM = (
+    "다음은 인터랙티브 소설에서 사용자(주인공)가 방금 한 말/행동이다. "
+    "이 순간의 감정 분위기를 아래 6개 중 하나로만 분류한다. 새 문장을 짓지 말고 분류만 한다.\n"
+    "- tension: 긴장·위기·갈등\n"
+    "- fear: 공포·불안\n"
+    "- sadness: 슬픔·상실\n"
+    "- joy: 기쁨·설렘·즐거움\n"
+    "- calm: 평온·일상·잔잔함\n"
+    "- resolve: 결심·각오·행동 개시\n"
+    '반드시 JSON만: {"emotion": "tension|fear|sadness|joy|calm|resolve"}'
+)
+
+
+async def classify_emotion(text: str) -> str:
+    """사용자 입력의 감정을 6개 라벨 중 하나로 분류(실패/예상 밖 값이면 calm)."""
+    try:
+        raw = await llm.generate(
+            REACTION_EMOTION_SYSTEM,
+            [{"role": "user", "parts": [{"text": text}]}],
+        )
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.MULTILINE)
+        emotion = json.loads(cleaned).get("emotion", "")
+        return emotion if emotion in EMOTIONS else "calm"
+    except Exception as e:
+        logger.warning("감정 분류 실패 - %s", e)
+        return "calm"
+
+
+class ReactionRequest(BaseModel):
+    content: str
+    character_id: str = "baekya"
+
+
+@router.post("/{chat_id}/reaction")
+async def author_reaction(chat_id: str, body: ReactionRequest):
+    """사용자 대사에 대한 작가의 짧은 리액션 말풍선 (F-AS-05).
+
+    감정을 분류(LLM) → 그 감정 버킷에서 작가 톤 문장을 하나 꺼낸다.
+    직전 리액션(last_reaction)은 피해서 반복을 줄인다.
+    """
+    text = (body.content or "").strip()
+    if not text:
+        return {"reaction": "", "emotion": ""}
+
+    emotion = await classify_emotion(text)
+    last = await redis_client.get(key_last_reaction(chat_id))
+    reaction = pick_reaction(body.character_id, emotion, exclude=last)
+    if reaction:
+        await redis_client.set(key_last_reaction(chat_id), reaction)
+    logger.info("작가 리액션 - chat_id=%s emotion=%s → %s", chat_id, emotion, reaction)
+    return {"reaction": reaction, "emotion": emotion}
