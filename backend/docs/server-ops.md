@@ -33,6 +33,51 @@
 
 ## 이슈 기록
 
+## 2026-06-10 — 백엔드를 Cloud Run으로 배포 (ngrok 대체, 항상 켜진 HTTPS)
+
+**배경**: 그동안 로컬 `uvicorn` + ngrok로 팀에 공유 → 내 PC 꺼지면 끊김·주소 매번 변경. DB(Neon)·Redis(Upstash)·LLM(Vertex)이 이미 클라우드라 **앱(FastAPI)만 올리면** 24시간 고정 HTTPS 주소가 생긴다.
+
+### ⓪ 왜 Cloud Run인가 (Render·Railway 아님)
+- 우리 조직 계정은 **SA 키 생성이 차단**(`iam.disableServiceAccountKeyCreation`)이라 로컬에선 ADC로 우회했음.
+- **Cloud Run은 컨테이너가 attached 서비스 계정 신분으로 실행** → Vertex 인증이 **키 파일 없이 자동 ADC(메타데이터 서버)**. 로컬에서 겪은 인증 문제가 클라우드에선 사라진다.
+- 같은 GCP 프로젝트라 크레딧/지연도 유리. (Render·Railway·Fly는 Vertex에 **SA 키가 필요 → 막힘**. 거기 가려면 LLM을 AI Studio 키/Groq로 바꿔야 함.)
+
+### ① 배포 파일 (`backend/`)
+- `Dockerfile`: `python:3.11-slim` + `pip install -r requirements.txt` + `uvicorn app.main:app --host 0.0.0.0 --port ${PORT}`.
+  - **Cloud Run은 `$PORT`(기본 8080)를 주입** → 고정 포트로 띄우면 안 됨. 반드시 `${PORT}` 바인딩.
+- `.dockerignore`: `.env`·`__pycache__`·`.venv` 등 제외 → **비밀·캐시가 이미지에 안 들어감**.
+
+### ② 비밀값은 Secret Manager (env-var 평문 금지)
+- DB/Redis URL은 콘솔(Secret Manager)에서 `DATABASE_URL`·`REDIS_URL` 시크릿으로 생성(**끝에 줄바꿈 없이** 붙여넣기).
+- API 켜고 런타임 계정에 읽기 권한 부여:
+  ```
+  gcloud services enable secretmanager.googleapis.com run.googleapis.com cloudbuild.googleapis.com
+  gcloud secrets add-iam-policy-binding DATABASE_URL --member="serviceAccount:<프로젝트번호>-compute@developer.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"
+  gcloud secrets add-iam-policy-binding REDIS_URL   --member="serviceAccount:<프로젝트번호>-compute@developer.gserviceaccount.com" --role="roles/secretmanager.secretAccessor"
+  ```
+  - `<프로젝트번호>` = `gcloud projects describe nodevelture-499003 --format="value(projectNumber)"` 로 나온 **12자리 숫자**(꺾쇠째 넣으면 `INVALID_ARGUMENT` 에러).
+
+### ③ 배포 (backend 폴더에서, 한 줄)
+```
+gcloud run deploy nodevelture-api --source . --region us-central1 --allow-unauthenticated --set-env-vars "USE_VERTEX=true,GOOGLE_CLOUD_PROJECT=nodevelture-499003,GOOGLE_CLOUD_LOCATION=us-central1,LLM_PROVIDER=gemini,GEMINI_MODEL=gemini-2.5-flash-lite,GEMINI_FALLBACK_MODEL=gemini-2.5-flash" --set-secrets "DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest"
+```
+- 출력된 `https://nodevelture-api-xxxx.run.app` 가 ngrok 대체. `/health` → `{"status":"ok"}` 확인.
+- **비밀 아닌 설정만 `--set-env-vars`**, DB/Redis URL은 `--set-secrets`로.
+
+### ④ 함정
+- **프로젝트 번호**: 꺾쇠 `<...>` 그대로 넣지 말고 실제 숫자로 치환.
+- **Cloud SDK 창은 cmd** → 줄바꿈은 `^`(PowerShell 백틱 아님). 헷갈리면 **한 줄**로 실행.
+- **`GOOGLE_APPLICATION_CREDENTIALS`·키 파일을 Cloud Run에 넣지 말 것** — 자동 ADC를 덮어써 Vertex가 깨진다.
+- **콜드스타트**: scale-to-zero라 첫 요청 ~5초. 시연 직전 `--min-instances=1` 추가하면 항상 깨어 있음(소량 과금).
+- **Vertex 403** 뜨면 그때만: `gcloud projects add-iam-policy-binding nodevelture-499003 --member="serviceAccount:<프로젝트번호>-compute@developer.gserviceaccount.com" --role="roles/aiplatform.user"`.
+
+**예방/참고**
+- 마이그레이션은 Neon이 이미 `upgrade head`(공용)라 배포 시 추가 작업 없음. 스키마 변경 시 로컬에서 Neon 대상으로 `alembic upgrade head` 한 번.
+- 배포 후 **프론트 API base URL을 `run.app` 주소로** 교체해야 연결됨.
+- 재배포는 같은 `gcloud run deploy ... --source .` 한 줄이면 새 리비전으로 무중단 교체.
+
+---
+
 ## 2026-06-10 — LLM 엔진을 Vertex AI(GCP)로 전환 + 응답속도·언어누수 해결
 
 **배경**: Groq Llama가 한국어에 한자·일본어를 산발적으로 섞음(언어 누수). AI Studio Gemini 키도 문제 → **GCP 크레딧으로 Vertex AI(Gemini 2.5) 전환**.
