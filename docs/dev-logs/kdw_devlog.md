@@ -1,3 +1,46 @@
+# 2025-06-10
+
+## 오늘 한 일
+
+- `data/world_tags.json` 신규 — 세계관 멀티라벨 마스터 태그 사전 (154개, 11개 카테고리)
+
+- `backend/app/services/world_tag_classifier.py` 신규 (F-WD-06)
+  - 1차 키워드 필터로 후보 압축 (120개 → 평균 30~40개) → LLM closed-set 분류
+  - 결과 `World.tags` DB 저장, 사용자 편집 가능한 하이브리드 구조
+  - `classify_world_tags()` + `context_block` 프롬프트/RAG 주입용 블록 반환
+
+- `backend/app/prompts/__init__.py` 4개 상수 추가/교체
+  - `CONSISTENCY_SYSTEM` 교체 (F-QC-01) — 모순 판단 기준 명확화, severity 기준 구체화, suggestion 필드 추가
+  - `SUGGEST_NEXT_SYSTEM` 추가 (F-AS-02) — 창작 유도 선택지 3개
+  - `STUCK_HELP_SYSTEM` 추가 (F-AS-03) — 막힘 도움 힌트 + 격려 톤
+  - `MULTI_NPC_SYSTEM` + `build_multi_npc_prompt()` 추가 (F-CH-09) — 조연 다중 동시 반응, narration + responses[] 구조
+
+- `backend/app/services/evaluate.py` — `EVAL_SYSTEM` 교체 (F-EV-03/06)
+  - 항목별 5점 척도 기준 명시 → 채점 일관성 향상
+  - `style_distinct` 루브릭 강화 — "다른 3명과 혼동 불가" 기준
+  - `style_weakness` 필드 추가 → 문체 튜닝 피드백 루프용
+
+- `backend/scripts/evidence_report.py` 덮어쓰기 (F-EV-06)
+  - 시나리오 1개 → 3개 (추리/호러/로맨스), 3회 평균으로 신뢰도 향상
+  - `BASELINE_SYSTEM` 강화 — 현실적인 ChatGPT 사용자 수준
+  - 결과 JSON 자동 저장 → 발표 자료로 바로 활용 가능
+
+- `backend/app/core/personas.py` — `get_author_prompt(mode="author")` 문구 수정
+  - "한 문단 완성" → narration/dialogue JSON 구조 정합
+
+## 이슈 / 막힌 점
+
+- `world_tag_classifier.py`의 `_TAG_FILE` 경로가 실행 위치에 따라 달라질 수 있음 — 가연님과 경로 확인 필요
+- `evidence_report.py` 시나리오 3개 × 3회 = 총 18회 LLM 호출 — 실행 시 비용/시간 고려 필요 (약 2~3분 소요 예상)
+
+## 내일 할 일
+
+- 페르소나·문체 프롬프트 튜닝 (F-EV-04) — 회의 후 진행
+- `google.generativeai` → `google.genai` 패키지 교체
+- 가연님 백엔드 연동 후 world_tag_classifier E2E 테스트
+- evidence_report.py 실제 실행 후 결과 검토
+
+---
 
 # 2025-06-08
 
