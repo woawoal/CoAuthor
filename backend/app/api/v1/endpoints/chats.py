@@ -23,7 +23,8 @@ from app.services import memory
 from app.services import consistency  # 설정 일관성 검수 (F-QC-01)
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
-    WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM,
+    WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
+    build_multi_npc_prompt,
 )
 
 router = APIRouter()
@@ -580,6 +581,96 @@ async def suggest_next(
         logger.warning("제안 생성 실패 - chat_id=%s: %s", chat_id, e)
         suggestions = []
     return {"suggestions": suggestions}
+
+
+class StuckRequest(BaseModel):
+    world_context: str = ""
+
+
+class NpcInfo(BaseModel):
+    name: str
+    personality: str = ""
+    relationship: str = ""
+
+
+class NpcReactRequest(BaseModel):
+    world_context: str = ""
+    npcs: list[NpcInfo]
+    recent_dialogue: str = ""
+
+
+@router.post("/{chat_id}/stuck")
+async def stuck_help(
+    chat_id: str,
+    body: StuckRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """창작이 막혔을 때 힌트 3개 제공 (F-AS-02)."""
+    context = await get_context(chat_id, db)
+    world_context = body.world_context or await _build_world_context(chat_id, db)
+
+    parts = []
+    if world_context:
+        parts.append(f"[세계관]\n{world_context}")
+    if context["history"]:
+        recent = "\n".join(
+            f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+            for h in reversed(context["history"][:6])
+        )
+        parts.append(f"[최근 대화]\n{recent}")
+    user_msg = "\n\n".join(parts) or "(아직 대화가 없습니다. 도입 상황에서 막혔다고 가정하세요.)"
+
+    try:
+        raw = await llm.generate(
+            STUCK_HELP_SYSTEM,
+            [{"role": "user", "parts": [{"text": user_msg}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        data = json.loads(cleaned)
+        return {"situation": data.get("situation", ""), "hints": data.get("hints", [])}
+    except Exception as e:
+        logger.warning("막힘 도우미 실패 - chat_id=%s: %s", chat_id, e)
+        return {"situation": "", "hints": []}
+
+
+@router.post("/{chat_id}/npc-react")
+async def npc_react(
+    chat_id: str,
+    body: NpcReactRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """조연 NPC들의 다중 반응 생성 (F-CH-09)."""
+    world_context = body.world_context or await _build_world_context(chat_id, db)
+
+    recent_dialogue = body.recent_dialogue
+    if not recent_dialogue:
+        context = await get_context(chat_id, db)
+        if context["history"]:
+            recent_dialogue = "\n".join(
+                f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+                for h in reversed(context["history"][:4])
+            )
+
+    npcs_list = [n.model_dump() for n in body.npcs]
+    system_prompt = build_multi_npc_prompt(world_context, npcs_list, recent_dialogue)
+
+    try:
+        raw = await llm.generate(
+            system_prompt,
+            [{"role": "user", "parts": [{"text": "위 조연들의 반응을 JSON으로 출력하세요."}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        data = json.loads(cleaned)
+        return {
+            "narration": data.get("narration", ""),
+            "responses": data.get("responses", []),
+            "state_changes": data.get("state_changes", {"trust_delta": 0, "event": None}),
+        }
+    except Exception as e:
+        logger.warning("NPC 반응 생성 실패 - chat_id=%s: %s", chat_id, e)
+        return {"narration": "", "responses": [], "state_changes": {"trust_delta": 0, "event": None}}
 
 
 @router.delete("/{chat_id}/memo/{index}")
