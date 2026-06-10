@@ -241,3 +241,7 @@ def build_multi_npc_prompt(
         f"[등장 조연]\n{npc_block}\n\n"
         f"[현재 장면]\n{recent_dialogue}"
     )
+
+# chats.py 호환용 alias
+ASSISTANT_SUGGEST_SYSTEM = SUGGEST_NEXT_SYSTEM
+
