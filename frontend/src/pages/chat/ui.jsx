@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { sendMessage, connectChatStream, completeSession, generateNovel, getSuggestions } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
+import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import './ui.css';
 
 const AUTHOR_MAP = {
@@ -103,8 +104,11 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
 export default function Chat() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { worldId, chatId: chatIdFromState, authorId } = location.state ?? {};
+  const { worldId, chatId: chatIdFromState, authorId: authorIdFromState } = location.state ?? {};
   const chatId = chatIdFromState ?? worldId ?? 'room_001';
+  // authorId: state → localStorage 로 복원하고, 세션 로드 후 session.author_id(진짜 값)로 덮어쓴다
+  const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdFromState));
+  useAuthorTheme(authorId);
   const persona = AUTHOR_MAP[authorId] ?? { characterId: 'baekya', displayName: '백야' };
 
   const MEMO_KEY = `memos_${chatId}`;
@@ -136,13 +140,14 @@ export default function Chat() {
   useEffect(() => {
     if (!chatId || chatId === 'room_001') return;
     getSession(chatId)
-      .then(session =>
-        Promise.all([
+      .then(session => {
+        if (session?.author_id) setAuthorId(session.author_id);  // 진짜 작가 id로 테마 확정
+        return Promise.all([
           getWorld(session.world_id),
           getCharacters(session.world_id),
           getDialogues(chatId),
-        ])
-      )
+        ]);
+      })
       .then(([w, chars, dialogues]) => {
         setWorld(w);
         setDbCharacters(chars);

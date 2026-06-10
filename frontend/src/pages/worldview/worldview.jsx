@@ -7,12 +7,14 @@ import { WriteIcon, ExitIcon, ChevronRight, ShuffleIcon } from '../../components
 import { createWorldview } from '../../lib/worldviewApi';
 import { getAuthor, getQuestions } from '../../lib/authorsApi';
 import { getRandomWorldExamples } from '../../lib/worldExampleApi';
+import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 
 function Worldview() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const authorId = location.state?.authorId;
+    const authorId = resolveAuthorId(location.state?.authorId);
+    useAuthorTheme(authorId);
 
     const [currentStep, setCurrentStep] = useState(1);
     // 1. 세계관(worlds) 테이블 관련 상태

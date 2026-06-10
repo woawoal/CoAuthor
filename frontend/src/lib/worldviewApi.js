@@ -1,4 +1,10 @@
 import { API_BASE_URL } from './apiBase';
+import { authClient } from './auth';
+
+async function getCurrentUserId() {
+  const session = await authClient.getSession();
+  return session.data?.user?.id || null;
+}
 
 // 테스트용 더미 user_id (인증 구현 전까지 고정)
 // PostgreSQL users 테이블에 이 UUID 행이 존재해야 World FK 통과
@@ -10,8 +16,10 @@ const DUMMY_USER_ID = "00000000-0000-0000-0000-000000000001";
  * @returns {Promise<string>} 생성된 world_id (UUID)
  */
 export async function createWorldview({ world, characters, authorId }) {
+  const userId = await getCurrentUserId();
+
   // 1. 세계관 생성
-  const worldRes = await fetch(`${API_BASE_URL}/worlds/?user_id=${DUMMY_USER_ID}`, {
+  const worldRes = await fetch(`${API_BASE_URL}/worlds/?user_id=${userId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(world),
@@ -29,7 +37,7 @@ export async function createWorldview({ world, characters, authorId }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_id: DUMMY_USER_ID,
+        user_id: userId,
         name: char.name,
         role: char.role,
         personality: char.personality,
@@ -55,7 +63,7 @@ export async function createWorldview({ world, characters, authorId }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       world_id: worldId,
-      user_id: DUMMY_USER_ID,
+      user_id: userId,
       protagonist_id: protagonistId,
       author_id: authorId ?? null,
     }),
@@ -85,7 +93,9 @@ export async function getSession(sessionId) {
  * @returns {Promise<object[]>} SessionListItem[]
  */
 export async function getSessions() {
-  const res = await fetch(`${API_BASE_URL}/sessions/?user_id=${DUMMY_USER_ID}`);
+  const userId = await getCurrentUserId();
+
+  const res = await fetch(`${API_BASE_URL}/sessions/?user_id=${userId}`);
   if (!res.ok) throw new Error('세션 목록 조회 실패');
   return res.json();
 }
