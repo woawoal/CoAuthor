@@ -6,6 +6,13 @@ import './read.css';
 
 const CHAPTER_SIZE = 5;
 
+const AUTHOR_NAME = {
+  1: '백야',
+  2: '차로운',
+  3: '한여름',
+  4: '김도현',
+};
+
 function parseChapters(content) {
   if (!content) return [];
   const paragraphs = content.split(/\n\n+/).filter(p => p.trim());
@@ -34,6 +41,7 @@ export default function ReadNovel() {
   const navigate = useNavigate();
 
   const [novel, setNovel] = useState(null);
+  const [session, setSession] = useState(null);
   const [world, setWorld] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -53,6 +61,7 @@ export default function ReadNovel() {
           getSession(storyId),
         ]);
         setNovel(novelData);
+        setSession(sessionData);
         const worldData = await getWorld(sessionData.world_id);
         setWorld(worldData);
       } catch (err) {
@@ -187,7 +196,7 @@ export default function ReadNovel() {
           <div className="read-sidebar__label">작품 정보</div>
           <div className="read-meta-row">
             <span>AI 작가</span>
-            <span className="read-meta-val">{world?.title ?? '—'}</span>
+            <span className="read-meta-val">{AUTHOR_NAME[session?.author_id] ?? '—'}</span>
           </div>
           <div className="read-meta-row">
             <span>장르</span>
@@ -211,7 +220,7 @@ export default function ReadNovel() {
           <div className="read-novel-cover">
             <div className="read-persona-badge">
               <span className="read-persona-badge__dot" />
-              {world?.title ?? 'AI'} 작가
+              AI 빙의작가 {AUTHOR_NAME[session?.author_id] ?? 'AI'}
             </div>
             <h1 className="read-novel-title">{novel.title}</h1>
             {world?.description && (
@@ -256,7 +265,7 @@ export default function ReadNovel() {
           <div className="read-end-card">
             <div className="read-end-symbol">— 끝 —</div>
             <p className="read-end-text">
-              이 소설은 AI 빙의작가 <strong>{world?.title ?? 'AI'}</strong>와 함께 작성되었습니다.
+              이 소설은 AI 빙의작가 <strong>{AUTHOR_NAME[session?.author_id] ?? 'AI'}</strong>와 함께 작성되었습니다.
             </p>
             <div className="read-end-actions">
               <button
