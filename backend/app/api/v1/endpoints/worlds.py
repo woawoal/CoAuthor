@@ -1,11 +1,13 @@
 import logging
 import uuid
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.models.world import World
 from app.schemas.world import WorldCreate, WorldUpdate, WorldResponse
+from app.services.world_tag_classifier import classify_world_tags
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -65,3 +67,38 @@ async def delete_world(world_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     if not world:
         raise HTTPException(status_code=404, detail="세계관을 찾을 수 없습니다.")
     await db.delete(world)
+
+
+@router.post("/{world_id}/tags/classify", response_model=WorldResponse)
+async def classify_tags(world_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(World).where(World.id == world_id))
+    world = result.scalar_one_or_none()
+    if not world:
+        raise HTTPException(status_code=404, detail="세계관을 찾을 수 없습니다.")
+
+    world_text = " ".join(filter(None, [
+        world.title, world.description, world.setting, world.rules,
+    ]))
+    tag_result = await classify_world_tags(world_text)
+    world.tags = tag_result.tags
+    await db.flush()
+    await db.refresh(world)
+    logger.info("태그 자동분류 완료: world=%s, tags=%d개", world_id, len(tag_result.tags))
+    return world
+
+
+class TagsUpdate(BaseModel):
+    tags: list[str]
+
+
+@router.patch("/{world_id}/tags", response_model=WorldResponse)
+async def update_tags(world_id: uuid.UUID, body: TagsUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(World).where(World.id == world_id))
+    world = result.scalar_one_or_none()
+    if not world:
+        raise HTTPException(status_code=404, detail="세계관을 찾을 수 없습니다.")
+
+    world.tags = body.tags
+    await db.flush()
+    await db.refresh(world)
+    return world
