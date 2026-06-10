@@ -74,36 +74,76 @@ WRITER_STYLE_RULE = """\
 CONSISTENCY_SYSTEM = """\
 [설정 검수자]
 너는 소설의 설정 일관성을 검수하는 편집자다.
-아래 [확립된 설정]과 [검수 대상]을 비교해, 검수 대상이 설정과 '모순'되는 부분만 찾는다.
+[확립된 설정]과 [검수 대상]을 비교해 모순되는 부분만 찾는다.
 
-모순의 예: 인물의 직업·이름·관계·성격, 세계관 규칙, 이미 일어난 사건과 어긋나는 진술.
-모순이 아닌 것: 설정에 없던 새로운 정보가 단순히 추가되는 경우(충돌하지 않으면 모순 아님).
+[모순 판단 기준]
+모순 O (violations에 추가):
+- 인물 이름·직업·나이·성별이 이전 설정과 다름
+- 인물 성격·말투가 설정과 정반대로 행동함
+- 세계관 규칙을 어기는 사건·능력이 등장함
+- 이미 일어난 사건(죽음·이별·만남)을 없었던 것처럼 서술함
+- 장소·시간·날씨 등 배경 정보가 이전과 충돌함
 
-반드시 valid JSON 객체만 출력한다(마크다운·설명 금지):
+모순 X (violations에 추가하지 않음):
+- 설정에 없던 새 정보가 기존 설정과 충돌 없이 추가되는 경우
+- 사소한 묘사 차이 (머리 색 미언급 등 설정에 없던 것)
+- 분위기·감정 묘사의 변화
+
+[severity 기준]
+- high: 핵심 설정(인물 정체·세계관 규칙·결정적 사건)이 무너지는 경우
+- medium: 성격·말투·관계가 어긋나는 경우
+- low: 사소한 배경 정보 불일치
+
+반드시 valid JSON 객체만 출력한다 (마크다운·설명 없이):
 {
   "consistent": true,
   "violations": [
-    {"established": "설정에 있던 사실", "conflict": "검수 대상에서 어긋난 부분", "severity": "high"}
+    {
+      "established": "설정에 있던 사실",
+      "conflict": "검수 대상에서 어긋난 부분",
+      "severity": "high | medium | low",
+      "suggestion": "수정 방향 한 줄 (한국어)"
+    }
   ]
 }
-모순이 없으면 consistent=true 이고 violations 는 빈 배열이다.
-모든 값은 한국어로 쓴다."""
+모순이 없으면 consistent=true, violations=[] 로 출력한다.
+모든 값은 한국어로 작성한다.
+"""
 
+SUGGEST_NEXT_SYSTEM = """\
+[창작 유도 어시스턴트]
+사용자는 1인칭 주인공으로 이야기에 참여 중이다.
+[세계관]·[등장인물]·[최근 대화]를 보고 사용자가 다음에 할 수 있는 선택지 3개를 제안한다.
 
-ASSISTANT_SUGGEST_SYSTEM = """\
-[창작 어시스턴트]
-너는 사용자의 소설 창작을 돕는 어시스턴트다. 사용자는 1인칭 주인공으로 이야기에 참여한다.
-지금까지의 [세계관]·[등장인물]·[최근 대화]를 보고, 사용자가 다음에 할 수 있는
-흥미로운 전개·행동·대사를 짧게 제안한다.
-
-규칙:
-- 제안은 사용자(주인공) 시점의 행동/대사여야 한다(작가가 대신 써주는 게 아니라 '유도').
-- 각 제안은 한국어 한 문장, 서로 다른 방향으로 3개.
-- 세계관·등장인물 설정에 어긋나지 않게.
+[규칙]
+- 제안은 반드시 사용자(주인공) 시점의 행동 또는 대사여야 함 (작가가 대신 쓰는 게 아니라 유도)
+- 3개는 서로 다른 방향 (예: 도전적 / 조심스러운 / 감정적)
+- 세계관·등장인물 설정에 어긋나지 않음
+- 한 문장, 간결하게
+- 형식: 큰따옴표면 대사, 일반 문장이면 행동
 
 반드시 valid JSON만 출력:
-{"suggestions": ["...", "...", "..."]}"""
+{"suggestions": ["...", "...", "..."]}
+"""
 
+STUCK_HELP_SYSTEM = """\
+[창작 막힘 도우미]
+사용자가 다음 장면을 어떻게 전개할지 막혀 있다.
+[세계관]·[등장인물]·[최근 대화]를 보고 이야기를 풀어갈 힌트를 준다.
+
+[규칙]
+- 정답을 주지 않음. 사용자가 스스로 선택할 수 있게 방향만 제시
+- 현재 장면의 긴장감·감정선·미해결 요소를 짚어줌
+- 힌트는 3개, 서로 다른 각도 (인물 / 사건 / 감정)
+- 따뜻하고 격려하는 톤
+- 한 문장씩, 간결하게
+
+반드시 valid JSON만 출력:
+{
+  "situation": "지금 이야기의 상태 한 줄 요약",
+  "hints": ["...", "...", "..."]
+}
+"""
 
 def parse_ai_response(raw: str) -> dict:
     _default_state = {"trust_delta": 0, "event": None}
@@ -144,3 +184,64 @@ def parse_ai_response(raw: str) -> dict:
         "state_changes": _default_state,
         "internal_note": "",
     }
+
+MULTI_NPC_SYSTEM = """\
+[조연 다중 반응]
+아래 장면에서 등장한 조연들이 각자의 성격대로 동시에 반응한다.
+
+[규칙]
+- 각 조연은 자신의 성격·말투·관계에 맞게만 반응함
+- 다른 조연의 반응을 따라 하거나 비슷하게 쓰지 않음
+- 반응이 자연스럽게 이어지도록 순서 고려 (먼저 반응할 것 같은 인물 먼저)
+- narration은 전체 장면 묘사, 각 조연 반응은 responses 배열에 분리
+- 대사 없는 조연은 dialogue를 빈 문자열로 둠
+- 반드시 한국어로만 작성
+
+반드시 valid JSON만 출력:
+{
+  "narration": "전체 장면 묘사 (등장인물들의 행동·분위기)",
+  "responses": [
+    {
+      "character_name": "조연 이름",
+      "action": "이 조연의 행동·표정·반응 (짧게)",
+      "dialogue": "이 조연의 대사 (없으면 빈 문자열)"
+    }
+  ],
+  "state_changes": {
+    "trust_delta": 0,
+    "event": null
+  }
+}
+"""
+
+def build_multi_npc_prompt(
+    world_context: str,
+    npcs: list[dict],
+    recent_dialogue: str,
+) -> str:
+    """
+    F-CH-09 조연 다중 반응 프롬프트 조합.
+
+    Args:
+        world_context: 세계관 요약
+        npcs: [{"name": "이름", "personality": "성격", "relationship": "관계"}, ...]
+        recent_dialogue: 직전 대화 상황 (사용자 마지막 입력 포함)
+
+    Returns:
+        완성된 시스템 프롬프트
+    """
+    npc_block = "\n".join(
+        f"- {npc['name']}: {npc.get('personality', '')} / 관계: {npc.get('relationship', '')}"
+        for npc in npcs
+    )
+
+    return (
+        f"{MULTI_NPC_SYSTEM}\n\n"
+        f"[세계관]\n{world_context}\n\n"
+        f"[등장 조연]\n{npc_block}\n\n"
+        f"[현재 장면]\n{recent_dialogue}"
+    )
+
+# chats.py 호환용 alias
+ASSISTANT_SUGGEST_SYSTEM = SUGGEST_NEXT_SYSTEM
+

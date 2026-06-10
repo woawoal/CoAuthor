@@ -97,7 +97,6 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
     },
 }
 
-
 # ── PERSONA_PROMPTS (chats.py / llm_router.py 호환용) ──────────
 
 PERSONA_PROMPTS: dict[str, str] = {
@@ -390,7 +389,9 @@ def get_author_prompt(
             f"{base}\n\n"
             f"[세계관 정보]\n{world_context}\n\n"
             f"[추가 출력 규칙]\n{style_rules}\n\n"
-            "사용자가 입력한 이벤트를 위 세계관에 맞게 소설 문체로 한 문단 완성해주세요. "
+            "사용자 입력에 맞게 장면을 이어간다.\n"
+            "narration에 장면 묘사·행동·감정 서술을, dialogue에 등장인물 대사를 분리해서 출력한다.\n"
+            "대사가 없으면 dialogue는 빈 문자열로 둔다.\n"
             "사용자 문장을 그대로 반복하지 말고, 의미만 유지해 장면으로 변환해주세요."
         )
 
