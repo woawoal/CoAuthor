@@ -20,6 +20,7 @@ from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
 from app.services import consistency  # 설정 일관성 검수 (F-QC-01)
+from app.core.personas import get_author_prompt
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
     WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM,
