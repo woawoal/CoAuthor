@@ -8,6 +8,7 @@ import Editor from './pages/editor/ui';
 import StoryList from './pages/storylist/storylist';
 import ReadNovel from './pages/read/read';
 import Login from './pages/login/login';
+import TokenDashboard from './pages/tokenDashboard/tokenDashboard';
 
 function App() {
   useEffect(() => {
@@ -33,6 +34,7 @@ function App() {
         <Route path="/read/:storyId" element={<ReadNovel />} />
         <Route path="/login/*" element={<Login />} />
         <Route path="/auth/*" element={<Login />} />
+        <Route path="/tokenDashboard" element={<TokenDashboard />} />
       </Routes>
     </Router>
   );
