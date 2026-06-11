@@ -202,7 +202,7 @@ export default function Chat() {
 
   // ── 오른쪽 패널 상태 ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(true);
-  const [panelWidth, setPanelWidth] = useState(400);    // 작가 패널 너비(드래그로 조절, px)
+  const [panelWidth, setPanelWidth] = useState(760);    // 작가 패널 기본 너비 = 드래그 최대값(px)
   const [isResizing, setIsResizing] = useState(false);
   const [panelView, setPanelView] = useState('author'); // 'author' | 'memo'
   const [authorMessages, setAuthorMessages] = useState([]);
