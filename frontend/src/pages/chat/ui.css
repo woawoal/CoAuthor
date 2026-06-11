@@ -1,3 +1,13 @@
+/* 자막 폰트: 마루부리(MaruBuri, 네이버 무료 상업용 바탕체) — 로컬 파일이라 오프라인 동작.
+   파일: frontend/public/fonts/MaruBuri-Bold.ttf */
+@font-face {
+  font-family: 'MaruBuri';
+  src: url('/fonts/MaruBuri-SemiBold.ttf') format('truetype');
+  font-weight: 400 700;   /* Bold 파일 1개로 모든 굵기 커버 (faux-bold 방지) */
+  font-style: normal;
+  font-display: swap;
+}
+
 /* 작가별 테마 풀 적용: 배경/표면/글자/강조 모두 테마 변수.
    라이트 테마(한여름·김도현)에서도 글자가 잘 보이도록 --text-main/--text-muted 사용. */
 .chat-layout {
@@ -92,9 +102,9 @@
   background: none;
   border: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 5px 12px;
+  padding: 7px 16px;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s;
@@ -115,9 +125,9 @@
   background: none;
   border: 1px solid var(--theme-color);
   color: var(--theme-color);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 6px 14px;
+  padding: 8px 18px;
   border-radius: 8px;
   cursor: pointer;
   transition: background-color 0.2s, color 0.2s;
@@ -172,7 +182,7 @@
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 16px;
+  padding: 20px 80px;     /* 좌우 여백 — 작가 답변이 화면 왼쪽에 붙지 않게 */
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -241,12 +251,15 @@
 }
 
 .bubble {
-  max-width: 65%;
+  max-width: 100%;
+  width: fit-content;
   padding: 10px 14px;
   border-radius: 16px;
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
+  word-break: keep-all;       /* 한글을 글자 단위로 쪼개지 말고 어절 단위로 줄바꿈 */
+  overflow-wrap: anywhere;    /* 띄어쓰기 없는 아주 긴 문자열만 분리 */
   color: var(--text-main);
 }
 
@@ -263,6 +276,8 @@
   line-height: 1.85;
   color: var(--text-main);
   white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
   max-width: 480px;
   opacity: 0.88;
   font-style: italic;
@@ -386,8 +401,8 @@
   color: #fff;
   border: none;
   border-radius: 12px;
-  padding: 10px 18px;
-  font-size: 14px;
+  padding: 12px 24px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -430,8 +445,8 @@
   40%            { transform: translateY(-6px); opacity: 1; }
 }
 
-/* ── 작가 패널 래퍼 ── */
-.author-panel-wrapper {
+/* ── 작가 패널 래퍼 (.chat-layout 스코프: main.css의 동명 클래스와 충돌 차단) ── */
+.chat-layout .author-panel-wrapper {
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -463,20 +478,36 @@
   color: var(--theme-color);
 }
 
-/* ── 슬라이드 컨테이너 ── */
-.author-panel-slide {
+/* ── 패널 너비 드래그 핸들 ── */
+.author-panel-resizer {
+  flex-shrink: 0;
+  width: 6px;
+  align-self: stretch;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.author-panel-resizer:hover,
+.author-panel-resizer--active {
+  background: color-mix(in srgb, var(--theme-color) 45%, transparent);
+}
+
+/* ── 슬라이드 컨테이너 (.chat-layout 스코프 + flex:none 으로 main.css의 flex:0 0 400px 무력화) ── */
+.chat-layout .author-panel-slide {
+  flex: none;
   width: 0;
   overflow: hidden;
   transition: width 0.3s ease;
 }
 
-.author-panel-slide--open {
-  width: 400px;
+.chat-layout .author-panel-slide--open {
+  width: 100%;
 }
 
 /* ── 작가 패널 ── */
-.author-panel {
-  width: 400px;
+.chat-layout .author-panel {
+  width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -576,28 +607,60 @@
 /* ── 작가 이미지 ── */
 .author-panel__image {
   flex-shrink: 0;
-  height: 280px;
+  width: 90%;                 /* 패널보다 조금 작게 (이 % 값으로 크기 조절) */
+  align-self: center;         /* 가운데 정렬 */
+  margin-top: 10px;
+  aspect-ratio: 16 / 9;       /* 1920×1080(16:9) 비율 유지 — 높이는 자동 */
   overflow: hidden;
   background: var(--bg-main);
   position: relative;
 }
 
-.author-panel__image img {
+.author-panel__image img,
+.author-panel__image video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center top;
+  object-fit: contain;        /* 전체가 다 보이게 — 16:9 영상은 꽉 차고, 세로 사진은 좌우 여백 */
+  object-position: center;
 }
 
 .author-panel__switcher-overlay {
   position: absolute;
   top: 10px;
   left: 10px;
-  background: color-mix(in srgb, var(--bg-main) 60%, transparent);
+  background: color-mix(in srgb, var(--bg-main) 50%, transparent);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
   border-radius: 8px;
   padding: 2px 6px;
+}
+
+/* F-AS-05 작가 리액션 — 사진/영상 위 영화 자막 스타일(흰 글씨 + 그림자) */
+.author-reaction-subtitle {
+  position: absolute;
+  left: 12px;            /* 사진 양옆 12px 안쪽 = 사진 폭에 맞춤 */
+  right: 12px;
+  bottom: 16px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.8);
+  /* 폰트: 마루부리(로컬 @font-face). 다른 폰트로 바꾸려면 위 @font-face + 이 줄 교체 */
+  font-family: 'MaruBuri', 'Nanum Myeongjo', serif;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;          /* 글자(받침·부호) 안 잘리게 충분한 줄 높이 */
+  letter-spacing: 0.02em;
+  word-break: keep-all;      /* 한국어는 띄어쓰기 단위로만 끊기 */
+  overflow-wrap: break-word; /* 띄어쓰기 없는 긴 문자열도 칸 안에서 처리 */
+  text-wrap: balance;        /* 두 줄이 되면 줄 길이를 균형있게 — 어정쩡한 줄바꿈 방지 */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  animation: reaction-in 0.2s ease-out;
+}
+
+/* 사진 위에 바로 표시(아래서 위로 올라오는 이동 없이 페이드만) */
+@keyframes reaction-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 /* ── 빠른 질문 태그 바 ── */
@@ -1154,4 +1217,119 @@
   text-align: center;
   letter-spacing: 0.3px;
   user-select: none;
+}
+
+/* ── 작가 아바타 (협업 반응: 생각중·기억·일관성·메모) ───── */
+.author-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
+}
+
+/* 말풍선 자리를 미리 잡아 아바타가 튀지 않게 */
+.author-avatar__bubble-wrap {
+  min-height: 42px;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.author-avatar__bubble {
+  position: relative;
+  max-width: 92%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-main);
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 35%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  animation: avatar-pop 0.25s ease;
+}
+
+/* 말풍선 꼬리 (아래 중앙 → 아바타를 가리킴) */
+.author-avatar__bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-right: inherit;
+  border-bottom: inherit;
+}
+
+.author-avatar__text { word-break: break-word; }
+
+/* 종류별 색 */
+.author-avatar__bubble--memory {
+  border-color: color-mix(in srgb, var(--theme-color) 50%, transparent);
+}
+.author-avatar__bubble--consistency {
+  border-color: #e0a23a;
+  background: color-mix(in srgb, #e0a23a 14%, var(--card-main));
+}
+.author-avatar__bubble--memo {
+  border-color: #4caf7d;
+  background: color-mix(in srgb, #4caf7d 14%, var(--card-main));
+}
+.author-avatar__bubble--thinking {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.author-avatar__figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  transition: transform 0.2s ease;
+}
+.author-avatar__figure.is-reacting { transform: translateY(-1px) scale(1.02); }
+
+.author-avatar__img {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid color-mix(in srgb, var(--theme-color) 60%, transparent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-color) 45%, transparent);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.author-avatar__figure.is-reacting .author-avatar__img {
+  border-color: var(--theme-color);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-color) 28%, transparent);
+}
+.author-avatar__img--ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--theme-color);
+  background: color-mix(in srgb, var(--theme-color) 18%, transparent);
+}
+.author-avatar__name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--theme-color);
+}
+
+/* 인라인(작은) 타이핑 점 — 아바타 '쓰는 중' 말풍선용 */
+.typing-dots--inline { gap: 3px; padding: 0; }
+.typing-dots--inline span { width: 5px; height: 5px; }
+
+@keyframes avatar-pop {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }

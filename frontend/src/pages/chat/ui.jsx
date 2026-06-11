@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
-  getSuggestions, sendAuthorMessage, getMemos, saveMemos,
+  getSuggestions, sendAuthorMessage, getMemos, saveMemos, getAuthorReaction,
 } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
@@ -62,7 +62,57 @@ function formatText(text) {
     .trim();
 }
 
-function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelected, onContextMenu }) {
+// 받은 텍스트를 타자기처럼 한 글자씩 표시(백엔드는 통째로 보내고 화면 노출만 점진적 → 응답 '마' 제거)
+function TypedText({ text, speed = 30, step = 1, onType, onDone }) {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    setCount(0);
+    if (!text) { onDone?.(); return; }
+    let i = 0;
+    const id = setInterval(() => {
+      i = Math.min(text.length, i + step);
+      setCount(i);
+      onType?.();
+      if (i >= text.length) { clearInterval(id); onDone?.(); }
+    }, speed);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+  return text.slice(0, count);
+}
+
+// 작가 AI 메시지 — 라이브 응답이면 나레이션→대사 순으로 타이핑, 복원된 기록은 즉시 표시
+function CharMessage({ msg, characterName, hasBookmark, onType }) {
+  const live = !!msg.narration;                       // 스트림 응답만 타이핑(복원 기록 X)
+  const narration = formatText(msg.narration || msg.text || '');
+  const hasDialogue = !!msg.dialogue;
+  const charName = characterName || msg.name;
+  const [narrDone, setNarrDone] = useState(!live || !narration);
+
+  return (
+    <div className="bubble-content">
+      {narration && (
+        <p className="narration-text">
+          {hasBookmark && !hasDialogue && <span className="bubble-bookmark">🔖</span>}
+          {live
+            ? <TypedText text={narration} onType={onType} onDone={() => setNarrDone(true)} />
+            : narration}
+        </p>
+      )}
+      {hasDialogue && narrDone && (
+        <div className="dialogue-block">
+          <span className="badge">{charName}</span>
+          <div className="bubble bubble--char">
+            {hasBookmark && <span className="bubble-bookmark">🔖</span>}
+            &ldquo;{live ? <TypedText text={msg.dialogue} onType={onType} /> : msg.dialogue}&rdquo;
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelected, onContextMenu, onType }) {
   if (msg.role === 'system') {
     return <div className="world-info-header">{msg.text}</div>;
   }
@@ -70,10 +120,8 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
   const isUser = msg.role === 'user';
 
   if (!isUser) {
-    const hasNarration = !!(msg.narration || msg.text);
-    const hasDialogue = !!msg.dialogue;
-    const isLoading = !hasNarration && !hasDialogue && streaming;
-    const charName = characterName || msg.name;
+    const hasContent = !!(msg.narration || msg.text || msg.dialogue);
+    const isLoading = !hasContent && streaming;
 
     return (
       <div
@@ -81,24 +129,13 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
         className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`}
         onContextMenu={onContextMenu}
       >
-        <div className="bubble-content">
-          {hasNarration && (
-            <p className="narration-text">
-              {hasBookmark && !hasDialogue && <span className="bubble-bookmark">🔖</span>}
-              {formatText(msg.narration || msg.text)}
-            </p>
-          )}
-          {isLoading && <div className="typing-dots"><span /><span /><span /></div>}
-          {hasDialogue && (
-            <div className="dialogue-block">
-              <span className="badge">{charName}</span>
-              <div className="bubble bubble--char">
-                {hasBookmark && <span className="bubble-bookmark">🔖</span>}
-                &ldquo;{msg.dialogue}&rdquo;
-              </div>
-            </div>
-          )}
-        </div>
+        {isLoading ? (
+          <div className="bubble-content">
+            <div className="typing-dots"><span /><span /><span /></div>
+          </div>
+        ) : (
+          <CharMessage msg={msg} characterName={characterName} hasBookmark={hasBookmark} onType={onType} />
+        )}
       </div>
     );
   }
@@ -150,6 +187,8 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
+  const [reaction, setReaction] = useState('');     // F-AS-05 작가 리액션 자막
+  const reactionTimerRef = useRef(null);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
   const [ending, setEnding] = useState(false);
@@ -163,6 +202,8 @@ export default function Chat() {
 
   // ── 오른쪽 패널 상태 ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(true);
+  const [panelWidth, setPanelWidth] = useState(400);    // 작가 패널 너비(드래그로 조절, px)
+  const [isResizing, setIsResizing] = useState(false);
   const [panelView, setPanelView] = useState('author'); // 'author' | 'memo'
   const [authorMessages, setAuthorMessages] = useState([]);
   const [authorInput, setAuthorInput] = useState('');
@@ -274,6 +315,22 @@ export default function Chat() {
     return () => document.removeEventListener('click', close);
   }, []);
 
+  // ── 작가 패널 너비 드래그 리사이즈 ───────────────────────
+  useEffect(() => {
+    if (!isResizing) return;
+    function onMove(e) {
+      // 패널은 화면 오른쪽에 도킹 → 너비 = 화면폭 - 마우스X (320~760px로 제한)
+      setPanelWidth(Math.min(760, Math.max(320, window.innerWidth - e.clientX)));
+    }
+    function onUp() { setIsResizing(false); }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isResizing]);
+
   // ── 세계관/등장인물 카드 토글 ────────────────────────────
   const [showWorldInfo, setShowWorldInfo] = useState(false);
   const [showCharInfo, setShowCharInfo] = useState(false);
@@ -337,11 +394,12 @@ export default function Chat() {
   }
 
   // ── 작가 AI 채팅 ─────────────────────────────────────────
-  async function handleSendAuthorMessage(overrideText) {
+  async function handleSendAuthorMessage(overrideText, opts = {}) {
     const text = (overrideText ?? authorInput).trim();
     if (!text || authorLoading) return;
     if (!overrideText) setAuthorInput('');
-    setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
+    // 피드백 요청처럼 원문을 패널에 노출하기 싫을 땐 opts.hideUser 로 사용자 말풍선 생략
+    if (!opts.hideUser) setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
     setAuthorLoading(true);
 
     const isNarrationReq = awaitingRecommendRef.current &&
@@ -390,6 +448,13 @@ export default function Chat() {
   }
 
   // ── 스토리 채팅 ──────────────────────────────────────────
+  // F-AS-05: 사용자 대사 → 작가 리액션 자막(아바타 위)을 잠깐 표시
+  function showReaction(text) {
+    setReaction(text);
+    if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
+    reactionTimerRef.current = setTimeout(() => setReaction(''), 15000);
+  }
+
   async function handleSend() {
     if (!input.trim() || streaming) return;
     const userText = input.trim();
@@ -397,6 +462,11 @@ export default function Chat() {
 
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
+
+    // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
+    getAuthorReaction(chatId, { content: userText, character_id: currentAuthor.characterId })
+      .then(r => { if (r.reaction) showReaction(r.reaction); })
+      .catch(() => {});
 
     await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
 
@@ -446,7 +516,7 @@ export default function Chat() {
     }).join('\n\n');
     const prompt = `다음 대화 장면을 읽고 작가로서 피드백을 줘:\n\n---\n${excerpt}\n---`;
     setPanelView('author');
-    handleSendAuthorMessage(prompt);
+    handleSendAuthorMessage(prompt, { hideUser: true });   // 원문(사용자 채팅)은 패널에 출력하지 않음
   }
 
   async function handleSaveSentence(msgId, content) {
@@ -517,6 +587,7 @@ export default function Chat() {
               streaming={streaming && msg === messages[messages.length - 1]}
               hasBookmark={memos.some(m => m.msgId === msg.id)}
               isSelected={selectedMsgId === msg.id}
+              onType={() => bottomRef.current?.scrollIntoView({ block: 'end' })}
               onContextMenu={msg.role !== 'system'
                 ? e => handleBubbleContextMenu(e, msg.id)
                 : undefined}
@@ -549,7 +620,7 @@ export default function Chat() {
             rows={1}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); }
             }}
           />
           <button className="chat-send-btn" onClick={handleSend} disabled={streaming}>전송</button>
@@ -566,14 +637,28 @@ export default function Chat() {
           {panelOpen ? '>' : '<'}
         </button>
 
-        <div className={`author-panel-slide${panelOpen ? ' author-panel-slide--open' : ''}`}>
-          <div className="author-panel">
+        {panelOpen && (
+          <div
+            className={`author-panel-resizer${isResizing ? ' author-panel-resizer--active' : ''}`}
+            onMouseDown={e => { e.preventDefault(); setIsResizing(true); }}
+            title="드래그하여 패널 너비 조절"
+          />
+        )}
+
+        <div
+          className="author-panel-slide"
+          style={{ width: panelOpen ? panelWidth : 0, transition: isResizing ? 'none' : 'width 0.3s ease' }}
+        >
+          <div className="author-panel" style={{ width: panelWidth }}>
 
             {panelView === 'author' ? (
               <>
                 {/* 작가 이미지 + 스위처 오버레이 */}
                 <div className="author-panel__image">
                   <img src={currentAuthor.image} alt={currentAuthor.displayName} />
+                  {reaction && (
+                    <div className="author-reaction-subtitle" key={reaction}>- {reaction}</div>
+                  )}
                   <div className="author-switcher author-panel__switcher-overlay">
                     <button className="author-switch-btn" onClick={prevAuthor}>‹</button>
                     <span className="author-name-badge">{currentAuthor.displayName}</span>
@@ -688,7 +773,7 @@ export default function Chat() {
                       disabled={authorLoading}
                       onChange={e => setAuthorInput(e.target.value)}
                       onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAuthorMessage(); }
+                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSendAuthorMessage(); }
                       }}
                     />
                     <button
@@ -720,7 +805,7 @@ export default function Chat() {
                       rows={3}
                       onChange={e => setMemoInput(e.target.value)}
                       onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddMemo(); }
+                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddMemo(); }
                       }}
                     />
                     <button className="memo-context__save" onClick={handleAddMemo}>
@@ -760,7 +845,7 @@ export default function Chat() {
                       rows={2}
                       onChange={e => setMemoInput(e.target.value)}
                       onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddMemo(); }
+                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddMemo(); }
                       }}
                     />
                     <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
