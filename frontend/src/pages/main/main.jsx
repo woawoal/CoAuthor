@@ -65,12 +65,32 @@ function HoverVideo({ src }) {
 }
 
 
+function VoicePopup({ onClose, onGo }) {
+    return (
+        <div className="popup-overlay" onClick={onClose}>
+            <div className="popup-card" onClick={e => e.stopPropagation()}>
+                <p className="popup-emoji">✨</p>
+                <h2 className="popup-title">더 실감나는 장면을 위해</h2>
+                <p className="popup-desc">
+                    나만의 문체를 설정하면 소설 속 대사를
+                    <br />내 말투에 맞게 추천받을 수 있어요.
+                </p>
+                <div className="popup-actions">
+                    <button className="popup-btn-secondary" onClick={onClose}>나중에</button>
+                    <button className="popup-btn-primary" onClick={onGo}>말투 설정하러 가기</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function Main() {
     const navigate = useNavigate();
     const [hoveredAuthorId, setHoveredAuthorId] = useState(null);
     const [authors, setAuthors] = useState([]);
     const [userId, setUserId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [showVoicePopup, setShowVoicePopup] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
 
     useEffect(() => {
@@ -84,16 +104,32 @@ function Main() {
                 try {
                     const user = await syncCurrentUser();
                     setIsAdmin(user.is_admin);
-                    // console.log("동기화된 사용자:", user);
                     console.log("로그인됨");
                 } catch (error) {
                     console.error(error);
+                }
+
+                const popupKey = `voice_popup_seen_${authUserId}`;
+                if (!localStorage.getItem(popupKey)) {
+                    setShowVoicePopup(true);
                 }
             }
         };
 
         checkLogin();
     }, []);
+
+    const handleClosePopup = () => {
+        setShowVoicePopup(false);
+        if (userId) {
+            localStorage.setItem(`voice_popup_seen_${userId}`, '1');
+        }
+    };
+
+    const handleGoVoice = () => {
+        handleClosePopup();
+        navigate('/voice-profile');
+    };
 
     const handleLogout = async () => {
         await authClient.signOut();
@@ -148,6 +184,9 @@ function Main() {
 
     return (
         <div className="app-container">
+            {showVoicePopup && (
+                <VoicePopup onClose={handleClosePopup} onGo={handleGoVoice} />
+            )}
             <div className="app-wrapper">
                 {/* 상단 헤더 */}
                 <header className="header">
