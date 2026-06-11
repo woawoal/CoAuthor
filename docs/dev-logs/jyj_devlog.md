@@ -3,6 +3,56 @@
 
 ---
 
+## 2026-06-10
+
+> Vertex AI 전환으로 **속도(8s→2s)·언어누수 동시 해결** + 데모 안정화. 작가 리액션(F-AS-05) 구현, 개인화 경계 설계 확정, 팀 PR 6건 리뷰·머지·충돌 해결.
+
+### 작업 내역
+
+#### 1. LLM 엔진 Vertex AI 전환 (#58 — 가장 큰 건)
+
+- **Vertex AI(ADC) 지원** — `USE_VERTEX=true` 시 Gemini 2.5 Flash + 임베딩을 Vertex로(`services/llm.py`). `USE_VERTEX=false`면 기존 폴백(Groq/Gemini) **그대로**(하위호환)
+- **응답 8s→2s** — Gemini thinking off + flash-lite
+- **언어누수 해결** — Groq Llama 한자/일본어 산발 → Vertex Gemini로 **한국어 깨끗**(E2E 소설 출력 검증, `私の` 사라짐)
+- 신규 GCP 프로젝트라 Vertex는 **gemini-2.5 계열만** 가용(2.0/1.5/3.x 404). ADC(`gcloud auth application-default login`)·키 형식·모델·Redis 이슈 → `server-ops.md` 기록
+- **`persona_eval.py`** — 작가 4명 블라인드 분류 정확도·stylometry 정량 평가(강사님 "분류 모델 돌려봐라" 대응)
+
+#### 2. 문체 RAG 복구 + 채팅 회귀 수정 (#58)
+
+- 머지로 빠졌던 **`novels.py` `use_style` 문체 RAG 연결 복구**
+- `chats.py` `get_author_prompt` import 복구 — **채팅 크래시 회귀** 수정
+
+#### 3. 프론트 — 작가 테마 새로고침 유지 (#58)
+
+- `useAuthorTheme` 훅 + 전 페이지(chat·chatlist·intro·read·worldview) 적용. chat/read는 `session.author_id` 기준
+
+#### 4. F-AS-05 작가 리액션 (신규)
+
+- `core/reactions.py` — 작가별 × 감정 6종(tension·fear·sadness·joy·calm·resolve) 리액션 풀 + `pick_reaction`(작가/감정 폴백·직전 리액션 회피)
+- `chats.py` — `classify_emotion`(LLM closed-set JSON) + `POST /{id}/reaction`. **LLM은 감정만 분류, 문장은 작가 톤 풀에서 추출** → 작가 문체 100% 보장 + 빠르고 저렴
+- 문장 내용 확장은 동완(F-CH-16) 담당
+
+#### 5. 배포 — Cloud Run 구성
+
+- `Dockerfile` + `.dockerignore` + `server-ops.md` 배포 기록
+
+#### 6. 기획·설계 결정
+
+- **개인화 경계 확정** — 개인화는 **코치/추천 층에만**, 소설 출력 문체엔 개인 정체성(MBTI·말투) **주입 금지**(문체는 작가 페르소나가 책임). 강사님 "personal 반영"을 *창작 취향*으로 해석 → F-PR-03로 정리
+- 06-10 아침 스크럼·14:00 강사님 스크럼·중간점검 체크리스트 반영, 팀 회의(15:00) **채팅 페이지 고도화 분담**, F-AV-04(감정→아바타 자막) 동기화
+
+#### 7. 팀 PR 리뷰·머지·충돌 해결
+
+- **#53**(syd 모델 가중치 840MB 재유입 정리 — #31 regression 차단) · **#57**(ygy personas 충돌 union 해결) · #56·#58·#59·#60 리뷰·머지 조율
+- 마이그레이션 **multiple-head 점검**(#43·#60 단일 head 확인), import/컨트랙트 정합 검증
+
+### 검증
+
+- **E2E 스모크 9/9** (Neon + Upstash + **Vertex**) — author_id 저장·스트리밍(`reply`)·소설 변환까지 전 체인, 소설 한국어 깨끗
+- 작가 리액션 `pick_reaction` 동작 확인(작가/감정별 출력)
+
+---
+
 ## 2026-06-09
 
 > 강사님 피드백("LLM 활용이 핵심" → 16:00 "RAG 없으면 차별점 없다") 대응에 집중한 날.
