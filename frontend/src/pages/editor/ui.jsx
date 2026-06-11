@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { sendAuthorMessage, getMemos, saveMemos } from '../../lib/chatApi';
+import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -61,6 +61,7 @@ export default function Editor() {
   const [authorLoading, setAuthorLoading] = useState(false);
   const [showWorldInfo, setShowWorldInfo] = useState(false);
   const [showCharInfo, setShowCharInfo] = useState(false);
+  const [recContextMenu, setRecContextMenu] = useState({ visible: false, x: 0, y: 0, content: '' });
 
   // ── 메모 상태 ────────────────────────────────────────────
   const [memos, setMemos] = useState([]);
@@ -118,6 +119,14 @@ export default function Editor() {
     if (chatId) localStorage.setItem(`session_mode_${chatId}`, 'editor');
   }, [chatId]);
 
+  // ── 추천 컨텍스트 메뉴 외부 클릭 닫기 ──────────────────
+  useEffect(() => {
+    if (!recContextMenu.visible) return;
+    const close = () => setRecContextMenu(m => ({ ...m, visible: false }));
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [recContextMenu.visible]);
+
   // ── 자동 저장 (2초 debounce) ─────────────────────────────
   useEffect(() => {
     if (!chatId || content === '') return;
@@ -169,17 +178,34 @@ export default function Editor() {
   function handleFeedback() {
     if (!content.trim() || authorLoading) return;
     const excerpt = content.length > 800 ? content.slice(-800) : content;
-    const prompt = `다음 원고를 읽고 작가로서 피드백을 줘:\n\n---\n${excerpt}\n---`;
     setPanelView('author');
-    handleSendAuthorMessage(prompt);
+    handleSendAuthorMessage(excerpt, { mode: 'feedback' });
   }
 
   // ── 작가 페르소나 전환 ───────────────────────────────────
   function prevAuthor() { setCurrentAuthorIdx(prev => (prev - 1 + AUTHOR_IDS.length) % AUTHOR_IDS.length); }
   function nextAuthor() { setCurrentAuthorIdx(prev => (prev + 1) % AUTHOR_IDS.length); }
 
+  // ── 추천 문장 자동 요청 ──────────────────────────────────
+  async function fetchRecommendation(aiMsgId, authorCharacterId, userText, aiFeedback) {
+    const recId = `rec_${aiMsgId}`;
+    setAuthorMessages(prev => [...prev, { id: recId, role: 'ai', type: 'recommend', content: '', loading: true }]);
+    try {
+      const data = await generateAuthorRewrite(chatId, {
+        original: userText,
+        feedback: aiFeedback,
+        author_id: authorCharacterId,
+      });
+      setAuthorMessages(prev => prev.map(m =>
+        m.id === recId ? { ...m, content: data.content, loading: false } : m
+      ));
+    } catch {
+      setAuthorMessages(prev => prev.filter(m => m.id !== recId));
+    }
+  }
+
   // ── 작가 AI 채팅 ─────────────────────────────────────────
-  async function handleSendAuthorMessage(overrideText) {
+  async function handleSendAuthorMessage(overrideText, { skipRecommend = false, mode = 'chat' } = {}) {
     const text = (overrideText ?? authorInput).trim();
     if (!text || authorLoading) return;
     if (!overrideText) setAuthorInput('');
@@ -194,8 +220,10 @@ export default function Editor() {
       const data = await sendAuthorMessage(chatId, {
         content: text,
         author_id: currentAuthor.characterId,
+        mode,
       });
-      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', content: data.content }]);
+      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', type: 'feedback', content: data.content }]);
+      if (!skipRecommend) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
@@ -351,8 +379,32 @@ export default function Editor() {
                         {currentAuthor.displayName}에게<br />원고 피드백을 받아보세요
                       </p>
                     )}
-                    {authorMessages.map(msg => (
-                      msg.role === 'ai' ? (
+                    {authorMessages.map(msg => {
+                      if (msg.role === 'user') return (
+                        <div key={msg.id} className="author-msg author-msg--user">{msg.content}</div>
+                      );
+                      if (msg.type === 'recommend') return (
+                        <div key={msg.id} className="author-msg-group">
+                          <span className="author-msg__name author-msg__name--rec">💡 제 추천은 이래요</span>
+                          {msg.loading ? (
+                            <div className="author-msg author-msg--recommend">
+                              <div className="typing-dots"><span /><span /><span /></div>
+                            </div>
+                          ) : (
+                            <div
+                              className="author-msg author-msg--recommend"
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                setRecContextMenu({ visible: true, x: e.clientX, y: e.clientY, content: msg.content });
+                              }}
+                              title="우클릭 → 적용하기"
+                            >
+                              {msg.content}
+                            </div>
+                          )}
+                        </div>
+                      );
+                      return (
                         <div key={msg.id} className="author-msg-group">
                           <div className="author-msg-group__top">
                             <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
@@ -366,10 +418,8 @@ export default function Editor() {
                           </div>
                           <div className="author-msg author-msg--ai">{msg.content}</div>
                         </div>
-                      ) : (
-                        <div key={msg.id} className="author-msg author-msg--user">{msg.content}</div>
-                      )
-                    ))}
+                      );
+                    })}
                     {authorLoading && (
                       <div className="author-msg-group">
                         <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
@@ -446,6 +496,21 @@ export default function Editor() {
           </div>
         </div>
       </div>
+
+      {recContextMenu.visible && (
+        <div
+          className="rec-context-menu"
+          style={{ top: recContextMenu.y, left: recContextMenu.x }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button className="rec-context-menu__item" onClick={() => {
+            setContent(prev => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + recContextMenu.content);
+            setRecContextMenu(m => ({ ...m, visible: false }));
+          }}>
+            적용하기
+          </button>
+        </div>
+      )}
     </div>
   );
 }

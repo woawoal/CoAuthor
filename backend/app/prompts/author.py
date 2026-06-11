@@ -1,5 +1,5 @@
 """작가 AI 채팅 전용 프롬프트"""
-from app.core.personas import PERSONA_PROMPTS, _AUTHOR_PERSONALITY
+from app.core.personas import PERSONA_PROMPTS, _AUTHOR_PERSONALITY, load_persona_rule
 
 
 def build_author_system(
@@ -38,6 +38,9 @@ def build_author_system(
         q_lines = "\n".join(f"- {q}" for q in prev_questions)
         prev_section = f"\n\n[이전 작가와 나눈 대화 맥락 — 사용자가 논의한 주요 질문들]\n{q_lines}"
 
+    style_rules = load_persona_rule(author_id, compact=True)
+    style_section = f"\n\n[스타일 규칙]\n{style_rules}" if style_rules else ""
+
     return f"""\
 {base}
 
@@ -54,7 +57,7 @@ def build_author_system(
 
 말투는 위의 작가 페르소나({author['name']}) 그대로 유지한다.
 한국어로만 답한다.
-{world_section}{story_section}{memos_section}{prev_section}"""
+{world_section}{story_section}{memos_section}{prev_section}{style_section}"""
 
 
 def build_author_messages(

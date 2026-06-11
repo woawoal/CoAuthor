@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
-  getSuggestions, sendAuthorMessage, getMemos, saveMemos,
+  getSuggestions, sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos,
 } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
@@ -176,7 +176,7 @@ export default function Chat() {
   const memosLoadedRef = useRef(false);
 
   // ── 컨텍스트 메뉴 ─────────────────────────────────────────
-  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null });
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null, recContent: null });
 
   // ── 자동 피드백 상태 ─────────────────────────────────────
   const [autoFeedback, setAutoFeedback] = useState(false);
@@ -337,7 +337,25 @@ export default function Chat() {
   }
 
   // ── 작가 AI 채팅 ─────────────────────────────────────────
-  async function handleSendAuthorMessage(overrideText) {
+  // ── 추천 문장 자동 요청 ──────────────────────────────────
+  async function fetchRecommendation(aiMsgId, authorCharacterId, userText, aiFeedback) {
+    const recId = `rec_${aiMsgId}`;
+    setAuthorMessages(prev => [...prev, { id: recId, role: 'ai', type: 'recommend', content: '', loading: true }]);
+    try {
+      const data = await generateAuthorRewrite(chatId, {
+        original: userText,
+        feedback: aiFeedback,
+        author_id: authorCharacterId,
+      });
+      setAuthorMessages(prev => prev.map(m =>
+        m.id === recId ? { ...m, content: data.content, loading: false } : m
+      ));
+    } catch {
+      setAuthorMessages(prev => prev.filter(m => m.id !== recId));
+    }
+  }
+
+  async function handleSendAuthorMessage(overrideText, { skipRecommend = false, mode = 'chat' } = {}) {
     const text = (overrideText ?? authorInput).trim();
     if (!text || authorLoading) return;
     if (!overrideText) setAuthorInput('');
@@ -352,9 +370,11 @@ export default function Chat() {
       const data = await sendAuthorMessage(chatId, {
         content: text,
         author_id: currentAuthor.characterId,
+        mode,
       });
-      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', content: data.content }]);
+      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', type: 'feedback', content: data.content }]);
       if (isNarrationReq) fetchSuggestions();
+      if (!skipRecommend) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
@@ -444,9 +464,8 @@ export default function Chat() {
       if (m.dialogue) parts.push(`"${m.dialogue}"`);
       return parts.join('\n');
     }).join('\n\n');
-    const prompt = `다음 대화 장면을 읽고 작가로서 피드백을 줘:\n\n---\n${excerpt}\n---`;
     setPanelView('author');
-    handleSendAuthorMessage(prompt);
+    handleSendAuthorMessage(excerpt, { mode: 'feedback' });
   }
 
   async function handleSaveSentence(msgId, content) {
@@ -650,8 +669,32 @@ export default function Chat() {
                         {currentAuthor.displayName}에게<br />소설에 대해 물어보세요
                       </p>
                     )}
-                    {authorMessages.map(msg => (
-                      msg.role === 'ai' ? (
+                    {authorMessages.map(msg => {
+                      if (msg.role === 'user') return (
+                        <div key={msg.id} className="author-msg author-msg--user">{msg.content}</div>
+                      );
+                      if (msg.type === 'recommend') return (
+                        <div key={msg.id} className="author-msg-group">
+                          <span className="author-msg__name author-msg__name--rec">💡 제 추천은 이래요</span>
+                          {msg.loading ? (
+                            <div className="author-msg author-msg--recommend">
+                              <div className="typing-dots"><span /><span /><span /></div>
+                            </div>
+                          ) : (
+                            <div
+                              className="author-msg author-msg--recommend"
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                setContextMenu({ visible: true, x: e.clientX, y: e.clientY, msgId: null, recContent: msg.content });
+                              }}
+                              title="우클릭 → 적용하기"
+                            >
+                              {msg.content}
+                            </div>
+                          )}
+                        </div>
+                      );
+                      return (
                         <div key={msg.id} className="author-msg-group">
                           <div className="author-msg-group__top">
                             <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
@@ -665,10 +708,8 @@ export default function Chat() {
                           </div>
                           <div className="author-msg author-msg--ai">{msg.content}</div>
                         </div>
-                      ) : (
-                        <div key={msg.id} className="author-msg author-msg--user">{msg.content}</div>
-                      )
-                    ))}
+                      );
+                    })}
                     {authorLoading && (
                       <div className="author-msg-group">
                         <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
@@ -779,15 +820,26 @@ export default function Chat() {
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={e => e.stopPropagation()}
         >
-          <button className="context-menu__item" onClick={() => handleMemoFromContext(contextMenu.msgId)}>
-            메모
-          </button>
-          <button
-            className="context-menu__item context-menu__item--danger"
-            onClick={() => handleDeleteMsg(contextMenu.msgId)}
-          >
-            삭제
-          </button>
+          {contextMenu.recContent ? (
+            <button className="context-menu__item" onClick={() => {
+              setInput(contextMenu.recContent);
+              setContextMenu(m => ({ ...m, visible: false }));
+            }}>
+              적용하기
+            </button>
+          ) : (
+            <>
+              <button className="context-menu__item" onClick={() => handleMemoFromContext(contextMenu.msgId)}>
+                메모
+              </button>
+              <button
+                className="context-menu__item context-menu__item--danger"
+                onClick={() => handleDeleteMsg(contextMenu.msgId)}
+              >
+                삭제
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

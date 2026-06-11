@@ -75,6 +75,46 @@
 
 ---
 
+## 오른쪽 패널 personas.py 연동
+
+### personas.py 대규모 업데이트
+- `_AUTHOR_PERSONALITY` 에 `feedback_lens`, `rewrite_rule` 필드 추가 (작가별 피드백 관점 + 추천문장 작성 지침)
+- `_WORLD_PERSONA` 신설 — 세계관 구축 단계 전용 톤/퓨샷
+- `PERSONA_PROMPTS` 에 `[피드백 FEW-SHOT]` 섹션 추가
+- `build_feedback_prompt(persona_id, world_context)` 신규 — `feedback_lens` 기반 단발성 피드백
+- `build_rewrite_prompt(persona_id, original, feedback, world_context)` 신규 — `original + feedback` 구조 입력, `rewrite_rule + novel_style + load_persona_rule` 전부 적용
+- `build_story_prompt()` 신규 — 경량 줄거리 이어쓰기 (피드백 없음)
+
+### backend `author_chat.py`
+- `AuthorMessageRequest` 에 `mode: str = 'chat'` 필드 추가 (`'chat'` | `'feedback'`)
+- `mode='feedback'` 분기: `build_feedback_prompt()` 사용, RAG/히스토리 없이 단발성 평가
+- `POST /{chat_id}/author/rewrite` 엔드포인트 신설 — `original + feedback` 받아 `build_rewrite_prompt()` 호출, 히스토리 저장 안 함
+
+### backend `prompts/author.py`
+- `load_persona_rule(author_id, compact=True)` 임포트 추가
+- `build_author_system()` 에 `[스타일 규칙]` 섹션 주입 — compact 모드(예시 제외, 금지항목 + 규칙만)
+
+### frontend `chatApi.js`
+- `generateAuthorRewrite(chatId, payload)` 함수 추가 → `POST /author/rewrite` 호출
+
+### frontend `chat/ui.jsx`, `editor/ui.jsx`
+- `handleFeedback()`: excerpt만 추출해 `{ mode: 'feedback' }` 으로 전송 (기존 일반 채팅 분기 → 피드백 전용 프롬프트)
+- `fetchRecommendation(aiMsgId, authorId, userText, aiFeedback)`: 시그니처 변경, `generateAuthorRewrite({ original, feedback })` 호출로 교체
+- `handleSendAuthorMessage(overrideText, { skipRecommend, mode })`: `mode` 파라미터 추가, `data.content` 를 `fetchRecommendation` 에 전달
+
+### 프롬프트 흐름 정리
+```
+피드백 받기 버튼 → build_feedback_prompt()          (feedback_lens, 단발성)
+추천 문장 자동생성 → build_rewrite_prompt()          (original + feedback, 전체 스타일 규칙 적용)
+작가 직접 채팅    → build_author_messages()          (히스토리 유지, 메타 레벨 대화)
+```
+
+### chat/ui.css
+- `.author-msg--recommend` 스타일 추가 — 점선 테마 컬러 테두리, hover 강조
+- `.rec-context-menu` / `.rec-context-menu__item` 추가 — 추천문장 우클릭 컨텍스트 메뉴
+
+---
+
 ## dev 머지 충돌 해결 내역
 
 - `chat_context.py`: `PROMPT_HISTORY_LIMIT` 10 / `DB_SYNC_INTERVAL` 5 (dev 값) 적용, 작가별 분리 히스토리 기능 유지

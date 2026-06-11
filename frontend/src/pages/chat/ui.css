@@ -860,6 +860,53 @@
   padding-left: 2px;
 }
 
+.author-msg__name--rec {
+  color: #a0a0b8;
+  font-style: italic;
+}
+
+.author-msg--recommend {
+  background: color-mix(in srgb, var(--theme-color) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--theme-color) 40%, transparent);
+  align-self: flex-start;
+  color: var(--text-main);
+  cursor: context-menu;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.author-msg--recommend:hover {
+  border-color: color-mix(in srgb, var(--theme-color) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-color) 14%, transparent);
+}
+
+.rec-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--card-main, #1e1e2e);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.rec-context-menu__item {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  background: none;
+  border: none;
+  color: var(--theme-color);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.rec-context-menu__item:hover {
+  background: color-mix(in srgb, var(--theme-color) 15%, transparent);
+}
+
 .author-chat__input-bar {
   display: flex;
   gap: 6px;

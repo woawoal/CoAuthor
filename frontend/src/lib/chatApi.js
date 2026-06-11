@@ -85,6 +85,16 @@ export async function sendAuthorMessage(chatId, payload) {
   return res.json();
 }
 
+export async function generateAuthorRewrite(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/author/rewrite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('추천 문장 생성 실패');
+  return res.json();
+}
+
 export async function getMemos(chatId) {
   const res = await fetch(`${API_BASE_URL}/chats/${chatId}/memos`);
   if (!res.ok) return { memos: [] };
