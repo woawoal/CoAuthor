@@ -60,6 +60,35 @@
   color: var(--text-muted);
 }
 
+.chat-header__btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mode-switch-btn {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mode-switch-btn:hover:not(:disabled) {
+  border-color: var(--theme-color);
+  color: var(--theme-color);
+}
+
+.mode-switch-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .chat-end-btn {
   flex-shrink: 0;
   background: none;
@@ -81,6 +110,42 @@
 .chat-end-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.narration-import-block {
+  background: color-mix(in srgb, var(--theme-color) 6%, var(--bg-main));
+  border: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 8px;
+}
+
+.narration-import-block__label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--theme-color);
+  opacity: 0.7;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.narration-import-block__text {
+  font-family: 'Noto Serif KR', 'Georgia', serif;
+  font-size: 14px;
+  line-height: 2;
+  color: var(--text-main);
+  white-space: pre-wrap;
+  opacity: 0.85;
+}
+
+.narration-import-block__divider {
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  opacity: 0.6;
 }
 
 .chat-messages {
@@ -344,8 +409,8 @@
   40%            { transform: translateY(-6px); opacity: 1; }
 }
 
-/* ── 메모 래퍼 ── */
-.memo-wrapper {
+/* ── 작가 패널 래퍼 ── */
+.author-panel-wrapper {
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -378,53 +443,463 @@
 }
 
 /* ── 슬라이드 컨테이너 ── */
-.memo-slide {
+.author-panel-slide {
   width: 0;
   overflow: hidden;
   transition: width 0.3s ease;
 }
 
-.memo-slide--open {
-  width: 340px;
+.author-panel-slide--open {
+  width: 400px;
 }
 
-/* ── 메모 패널 내용 ── */
-.memo-panel {
-  width: 340px;
+/* ── 작가 패널 ── */
+.author-panel {
+  width: 400px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   border-left: 1px solid color-mix(in srgb, var(--theme-color) 28%, transparent);
   background: var(--card-main);
-  padding: 16px 14px 14px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
-.memo-panel__title {
+/* 메모 뷰 상단 헤더 */
+.memo-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  flex-shrink: 0;
+}
+
+.memo-view__back {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.memo-view__back:hover {
+  color: var(--theme-color);
+}
+
+/* 페르소나 전환 */
+.author-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.author-switch-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.author-switch-btn:hover {
+  color: var(--theme-color);
+}
+
+.author-name-badge {
   font-size: 13px;
   font-weight: 700;
   color: var(--theme-color);
-  margin: 0;
-  border-top: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
-  padding-top: 12px;
+  min-width: 44px;
+  text-align: center;
 }
 
-.memo-list {
+/* 메모 뷰 토글 버튼 */
+.memo-view-btn {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--text-main) 20%, transparent);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 4px 8px;
+  cursor: pointer;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.memo-view-btn:hover,
+.memo-view-btn--active {
+  border-color: var(--theme-color);
+  color: var(--theme-color);
+}
+
+.memo-count {
+  background: var(--theme-color);
+  color: #fff;
+  border-radius: 99px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* ── 작가 이미지 ── */
+.author-panel__image {
+  flex-shrink: 0;
+  height: 280px;
+  overflow: hidden;
+  background: var(--bg-main);
+  position: relative;
+}
+
+.author-panel__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.author-panel__switcher-overlay {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: color-mix(in srgb, var(--bg-main) 60%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-radius: 8px;
+  padding: 2px 6px;
+}
+
+/* ── 빠른 질문 태그 바 ── */
+.author-tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.author-tag-bar__memo {
+  margin-left: auto;
+}
+
+.author-tag {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--theme-color) 45%, transparent);
+  border-radius: 99px;
+  color: var(--theme-color);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.author-tag:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-color) 20%, transparent);
+}
+
+.author-tag:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.author-tag--active {
+  background: color-mix(in srgb, var(--theme-color) 25%, transparent);
+  border-color: var(--theme-color);
+}
+
+/* ── 자동 피드백 바 ── */
+.auto-feedback-bar {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  flex: 1;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 15%, transparent);
+  flex-shrink: 0;
+}
+
+.auto-feedback-bar__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.auto-feedback-toggle {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--text-main) 25%, transparent);
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 10px;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.auto-feedback-toggle--on {
+  background: color-mix(in srgb, var(--theme-color) 20%, transparent);
+  border-color: var(--theme-color);
+  color: var(--theme-color);
+}
+
+.feedback-btn {
+  background: color-mix(in srgb, var(--theme-color) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+  border-radius: 6px;
+  color: var(--theme-color);
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: auto;
+}
+
+.feedback-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-color) 25%, transparent);
+}
+
+.feedback-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── 세계관 카드 ── */
+.world-info-card {
+  margin: 0 12px 8px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--theme-color) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--theme-color) 25%, transparent);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-main);
+  max-height: 220px;
   overflow-y: auto;
 }
 
-/* ── 메모 컨텍스트 (말풍선 선택 시) ── */
+.world-info-card__row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.world-info-card__label {
+  flex-shrink: 0;
+  width: 30px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  padding-top: 1px;
+}
+
+.world-info-card__chars {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.world-info-card__chars > .world-info-card__label {
+  margin-bottom: 2px;
+}
+
+.world-info-card__char {
+  padding-left: 6px;
+  font-size: 0.76rem;
+  color: var(--text-main);
+}
+
+.world-info-card__char-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 12%, transparent);
+}
+
+.world-info-card__char-row:last-child {
+  border-bottom: none;
+}
+
+.world-info-card__char-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.world-info-card__char-role {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 35%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.world-info-card__char-desc {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ── 작가 AI 채팅 ── */
+.author-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.author-chat__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-bar, rgba(255,255,255,0.15)) transparent;
+}
+
+.author-chat__empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  margin: auto;
+  line-height: 1.7;
+}
+
+.author-msg {
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 8px 11px;
+  border-radius: 10px;
+  max-width: 92%;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.author-msg--user {
+  background: color-mix(in srgb, var(--text-main) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
+  align-self: flex-end;
+  color: var(--text-main);
+}
+
+.author-msg--ai {
+  background: color-mix(in srgb, var(--theme-color) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
+  align-self: flex-start;
+  color: var(--text-main);
+}
+
+.author-msg-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.author-msg__name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--theme-color);
+  opacity: 0.85;
+  padding-left: 2px;
+}
+
+.author-chat__input-bar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
+  flex-shrink: 0;
+}
+
+.author-chat__input {
+  flex: 1;
+  background: color-mix(in srgb, var(--text-main) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text-main);
+  font-size: 13px;
+  outline: none;
+  resize: none;
+  line-height: 1.4;
+  font-family: inherit;
+}
+
+.author-chat__input:focus {
+  border-color: var(--theme-color);
+}
+
+.author-chat__input::placeholder {
+  color: var(--text-muted);
+}
+
+.author-chat__input:disabled {
+  opacity: 0.4;
+}
+
+.author-chat__send {
+  background: var(--theme-color);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 15px;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: flex-end;
+  transition: opacity 0.15s;
+}
+
+.author-chat__send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── 메모 뷰 ── */
+.memo-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 10px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.memo-view__list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+
+/* ── 메모 컨텍스트 (책갈피 연결) ── */
 .memo-context {
   background: color-mix(in srgb, var(--theme-color) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--theme-color) 35%, transparent);
   border-radius: 8px;
   padding: 8px 10px;
-  margin-bottom: 8px;
+  flex-shrink: 0;
 }
 
 .memo-context__header {
@@ -474,6 +949,7 @@
   background: color-mix(in srgb, var(--theme-color) 85%, #fff);
 }
 
+/* ── 메모 아이템 ── */
 .memo-item {
   font-size: 12px;
   line-height: 1.5;
@@ -545,16 +1021,17 @@
 .memo-add {
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 .memo-input {
   flex: 1;
   background: color-mix(in srgb, var(--text-main) 6%, transparent);
   border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
-  border-radius: 12px;
-  padding: 10px 14px;
+  border-radius: 10px;
+  padding: 8px 12px;
   color: var(--text-main);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   min-width: 0;
   resize: none;
@@ -562,100 +1039,55 @@
   line-height: 1.4;
 }
 
-.memo-input::placeholder {
-  color: var(--text-muted);
-}
-
-.memo-input:focus {
-  border-color: var(--theme-color);
-}
+.memo-input::placeholder { color: var(--text-muted); }
+.memo-input:focus { border-color: var(--theme-color); }
 
 .memo-add-btn {
   background: color-mix(in srgb, var(--theme-color) 45%, transparent);
   border: 1px solid color-mix(in srgb, var(--theme-color) 45%, transparent);
   color: #fff;
-  border-radius: 12px;
-  padding: 10px 14px;
+  border-radius: 10px;
+  padding: 8px 12px;
   cursor: pointer;
   font-size: 16px;
   line-height: 1;
   flex-shrink: 0;
+  align-self: flex-end;
 }
 
-/* ── 세계관 요약 ── */
-.world-summary {
-  padding-top: 2px;
+/* ── 컨텍스트 메뉴 ── */
+.context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  min-width: 100px;
 }
 
-.world-summary__toggle {
+.context-menu__item {
+  display: block;
+  width: 100%;
+  padding: 9px 16px;
   background: none;
   border: none;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  width: 100%;
+  color: var(--text-main);
+  font-size: 13px;
   text-align: left;
-  margin-bottom: 8px;
-  transition: color 0.2s;
+  cursor: pointer;
+  transition: background 0.1s;
 }
 
-.world-summary__toggle:hover {
-  color: var(--theme-color);
+.context-menu__item:hover {
+  background: color-mix(in srgb, var(--theme-color) 18%, transparent);
 }
 
-.world-summary__body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.context-menu__item--danger { color: #e05555; }
 
-.world-summary__desc {
-  font-size: 12px;
-  color: var(--text-main);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.world-summary__field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.world-summary__label {
-  font-size: 10px;
-  color: var(--theme-color);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.world-summary__text {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.5;
-  max-height: 80px;
-  overflow-y: auto;
-}
-
-.char-list {
-  border-top: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
-  padding-top: 10px;
-}
-
-.char-list__title {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin: 0 0 6px 0;
-}
-
-.char-item {
-  font-size: 12px;
-  color: var(--text-main);
-  padding: 4px 0;
+.context-menu__item--danger:hover {
+  background: rgba(220, 53, 69, 0.15);
 }
 
 /* ── narration / dialogue 분리 렌더링 ── */

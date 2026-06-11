@@ -18,7 +18,16 @@ import re
 from openai import AsyncOpenAI
 from app.core.config import settings
 
-_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+_client = None
+
+
+def _get_client():
+    """OpenAI 클라이언트 lazy 초기화. 키 없으면 None(=TTS 스킵).
+    모듈 import 시 클라이언트를 만들지 않아야 키 미설정 환경(CI·타엔진 팀원)에서도 앱이 뜬다."""
+    global _client
+    if _client is None and settings.OPENAI_API_KEY:
+        _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    return _client
 
 # 작가별 음성 매핑
 _VOICE_MAP = {
@@ -62,10 +71,14 @@ async def synthesize(text: str, author_id: int) -> bytes:
     Returns:
         mp3 bytes
     """
+    client = _get_client()
+    if client is None:
+        return b""  # OPENAI_API_KEY 미설정 → 음성 없이 진행
+
     persona_id = _AUTHOR_ID_MAP.get(author_id, "")
     voice = _VOICE_MAP.get(persona_id, DEFAULT_VOICE)
 
-    response = await _client.audio.speech.create(
+    response = await client.audio.speech.create(
         model="tts-1",
         voice=voice,
         input=text,

@@ -9,12 +9,16 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
-        '/api': {
+        '/api/v1': {
           target: apiTarget,
           changeOrigin: true,
           headers: {
             'ngrok-skip-browser-warning': 'true',
           },
+        },
+        '/health': {
+          target: apiTarget,
+          changeOrigin: true,
         },
       },
     },
