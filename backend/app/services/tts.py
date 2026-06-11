@@ -15,7 +15,6 @@ F-AV-02 첫 문장 낭독 — OpenAI TTS 연동.
 """
 
 import re
-from openai import AsyncOpenAI
 from app.core.config import settings
 
 _client = None
@@ -23,10 +22,14 @@ _client = None
 
 def _get_client():
     """OpenAI 클라이언트 lazy 초기화. 키 없으면 None(=TTS 스킵).
-    모듈 import 시 클라이언트를 만들지 않아야 키 미설정 환경(CI·타엔진 팀원)에서도 앱이 뜬다."""
+    openai 패키지 미설치 환경(CI·타엔진 팀원)에서도 앱이 뜨도록 import를 지연."""
     global _client
     if _client is None and settings.OPENAI_API_KEY:
-        _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        try:
+            from openai import AsyncOpenAI
+            _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        except ImportError:
+            return None
     return _client
 
 # 작가별 음성 매핑

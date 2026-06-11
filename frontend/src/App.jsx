@@ -7,6 +7,7 @@ import Chat from './pages/chat/ui';
 import ChatList from './pages/chatlist/chatlist';
 import ReadNovel from './pages/read/read';
 import Login from './pages/login/login';
+import VoiceProfile from './pages/voice/voice';
 
 function App() {
   useEffect(() => {
@@ -31,6 +32,7 @@ function App() {
         <Route path="/read/:storyId" element={<ReadNovel />} />
         <Route path="/login/*" element={<Login />} />
         <Route path="/auth/*" element={<Login />} />
+        <Route path="/voice-profile" element={<VoiceProfile />} />
       </Routes>
     </Router>
   );
