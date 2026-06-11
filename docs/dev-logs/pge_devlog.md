@@ -2,6 +2,75 @@
 
 ---
 
+## 2026-06-11
+
+### 오늘 한 일
+
+**작가 패널 UI 재설계**
+- 패널 기본 열림 상태로 변경
+- 태그 바 구성: `#세계관`, `#등장인물`, `#에피소드`, `#추천`
+- `< 작가명 >` 헤더 바 제거 → 이미지 위 좌측 상단 오버레이로 이동 (테두리 없음)
+- 메모 버튼 태그 바 오른쪽 끝으로 이동 (`margin-left: auto`), `#메모` 태그 제거
+- `#세계관` / `#등장인물`: AI 채팅 대신 인라인 카드로 토글 표시 (상호 배타적)
+- `#추천` 플로우: 작가별 인사말 → 사용자 자유 입력 → 지문/씬 등 키워드 감지 시 왼쪽 채팅 패널 추천 칩 자동 생성
+- 주인공/작가 이름 뱃지를 나래이션 말풍선에서 제거
+- AI 답변 말풍선 위에 `작가 [이름]` 레이블 표시
+- 세계관 요약 메시지 메인 채팅에서 제거
+
+**chatlist → storylist 전체 리네임**
+- `pages/chatlist/` → `pages/storylist/` (파일명·클래스명 모두 `storylist-*`로 변경)
+- `App.jsx` import·라우트, `chat/ui.jsx`, `read/read.jsx`, `editor/ui.jsx`, `main/main.jsx`, `main/main.css` 참조 전부 업데이트
+
+**에디터 페이지 신규 구현 (`/editor`)**
+- 왼쪽: 원고 textarea (serif 폰트, `padding: 32px 10%`, `line-height: 1.9`)
+  - 자동 저장 2초 debounce → `PUT /api/v1/sessions/{id}/novel/draft`
+  - 글자 수 표시, 저장 상태 표시 (`저장됨 / 저장 중... / 저장 안됨`)
+- 오른쪽: 채팅 패널과 동일한 작가 AI 패널 재사용
+- 자동 피드백 ON/OFF 토글 — ON 시 타이핑 3초 후 자동으로 최근 800자 원고 작가 AI에 전달
+- `worldview.jsx` 집필 시작 → `/chat` 대신 `/editor`로 이동
+- 백엔드 `novels.py`에 `PUT /{session_id}/novel/draft` upsert 엔드포인트 추가
+
+**참여형 ↔ 집필형 모드 전환**
+- **집필형 → 참여형**: 에디터 헤더 `← 참여형` 버튼 → 현재 원고를 `manuscriptContent`로 `/chat`에 전달 → 채팅 상단 serif 지문 블록으로 표시 + 구분선 아래 대화 이어가기
+- **참여형 → 집필형**: 채팅 헤더 `집필형 →` 버튼 → `POST /sessions/{id}/novel/convert` 호출(LLM 변환) → `/editor` 이동
+- `novels.py`에 `/convert` 엔드포인트 추가 — 세션 상태 제한 없음, 기존 draft upsert
+
+**오른쪽 패널 chat/editor 동기화**
+- 채팅 페이지에 자동 피드백 ON/OFF 토글 추가
+- `handleFeedback`: 최근 대화 6개를 작가 AI에 전달
+- 스트리밍 종료 후 2초 debounce로 자동 트리거 (ON 상태일 때)
+- `.auto-feedback-bar` 등 CSS를 `chat/ui.css`로 이동 — editor가 chat CSS를 import하므로 한 곳에서 관리
+
+**신규 백엔드 파일**
+- `endpoints/author_chat.py`: 작가 AI 채팅 전용 엔드포인트
+- `prompts/author.py`, `prompts/story.py`: 작가/스토리 프롬프트 분리
+- `services/chat_context.py`: Redis 헬퍼 서비스 분리 (`get_context`, `append_history`, `update_state`, `key_*`)
+- `chatApi.js`: `event: audio` SSE 핸들러 추가 (base64 → Blob → Audio 재생)
+
+**작가 AI 채팅 — 작가 전환 시 스타일 격리**
+- 문제: 히스토리 키가 `session:{id}:author_history` 하나로 공유 → 백야→차로운 전환 시 백야 답변 턴이 그대로 차로운 conversation에 포함돼 스타일 혼재
+- 해결: 히스토리 키를 작가별 분리 `session:{id}:author_history:{author_id}`
+- 작가 전환(첫 대화) 시 `get_prev_user_questions()` — 다른 작가들과 나눈 **사용자 메시지만** 추출(최근 5개) → 새 작가 시스템 프롬프트 `[이전 작가와 나눈 대화 맥락]` 섹션에 주입
+- 결과: 이전 상황(무엇을 논의했는지)은 전달되고, 이전 작가 답변 스타일은 차단
+
+**토큰 사용량 최적화**
+- 구조 파악: verbatim 히스토리(PROMPT_HISTORY_LIMIT) + rolling summary(SUMMARY_CHAR_BUDGET) + RAG 3-layer 구조
+- 요약 주기(DB_SYNC_INTERVAL): 5턴 → **3턴** — 오래된 대화가 더 빨리 요약으로 빠짐
+- verbatim 창(PROMPT_HISTORY_LIMIT): 10턴 → **6턴** — 턴당 ~40% 절감
+- 요약 상한(SUMMARY_CHAR_BUDGET): 800자 → **600자** — 요약 섹션 자체 압축
+- 변경 파일: `services/chat_context.py`, `services/memory.py` (chats.py는 import 구조라 무수정)
+
+**dev 머지 및 충돌 해결**
+- `origin/dev #63` (Feature/ygy — ContextManager, voice profile, world tags 등) 머지
+- `chats.py` 충돌: dev가 Redis 헬퍼를 inline 재정의했으나 우리 브랜치에서 `chat_context.py`로 분리했으므로 inline 정의 제거, `HTTPException` import만 추가 반영
+- `feature/pge` → origin 푸시 완료
+
+### 이슈 / 막힌 점
+- `작가 정보를 불러오지 못했습니다` 오류 → 원인: `http://localhost:8000`(FastAPI 직접)으로 접속, `http://localhost:5173`(Vite 프록시)으로 접속해야 함
+- dev `#63` 머지 시 `chats.py` 충돌 — Redis 헬퍼 중복 정의 제거로 해결
+
+---
+
 ## 2026-06-10
 
 ### 오늘 한 일
