@@ -147,6 +147,7 @@
 
 /* 하단 스타일 */
 .speech-text,
+.dashboard-btn,
 .chatlist-btn {
     padding: 18px;
     color: var(--text-main);
@@ -164,10 +165,12 @@
     letter-spacing: 0.5px;
 }
 
+.dashboard-btn,
 .chatlist-btn {
     cursor: pointer;
 }
 
+.dashboard-btn:hover,
 .chatlist-btn:hover {
     background-color: color-mix(in srgb, var(--theme-color) 18%, transparent);
     border-color: var(--theme-color);
