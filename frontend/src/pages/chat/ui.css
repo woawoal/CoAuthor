@@ -67,6 +67,27 @@
   flex-shrink: 0;
 }
 
+.editor-save-btn {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--theme-color) 60%, transparent);
+  color: var(--theme-color);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.editor-save-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-color) 15%, transparent);
+}
+
+.editor-save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .mode-switch-btn {
   background: none;
   border: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
@@ -812,6 +833,24 @@
   align-items: flex-start;
   gap: 3px;
 }
+
+.author-msg-group__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.save-sentence-btn {
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0.35;
+  padding: 0 2px;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+.save-sentence-btn:hover { opacity: 1; }
+.save-sentence-btn--saved { opacity: 1; color: var(--theme-color); }
 
 .author-msg__name {
   font-size: 0.68rem;

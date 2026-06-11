@@ -97,6 +97,14 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
     },
 }
 
+# ── 작가 int ID ↔ persona_id 문자열 매핑 (한 곳에서만 관리) ────
+AUTHOR_ID_MAP: dict[int, str] = {
+    1: "baekya",
+    2: "charoun",
+    3: "hanyeoreum",
+    4: "kimdohyeon",
+}
+
 # ── PERSONA_PROMPTS (chats.py / llm_router.py 호환용) ──────────
 
 PERSONA_PROMPTS: dict[str, str] = {

@@ -156,9 +156,14 @@ function Main() {
 
                     <div className="header-auth">
                         {userId ? (
-                            <button className="btn" onClick={handleLogout}>
-                                로그아웃
-                            </button>
+                            <>
+                                <button className="btn btn--secondary" onClick={() => navigate('/mypage')}>
+                                    내 서재
+                                </button>
+                                <button className="btn" onClick={handleLogout}>
+                                    로그아웃
+                                </button>
+                            </>
                         ) : (
                             <button className="btn" onClick={() => navigate('/login')}>
                                 로그인
