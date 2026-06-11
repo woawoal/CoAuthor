@@ -207,3 +207,84 @@
     flex-direction: column;
     gap: 8px;
 }
+
+/* 말투 설정 팝업 */
+.popup-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+}
+
+.popup-card {
+    background-color: var(--card-main, #1c1c1e);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 28px 24px;
+    max-width: 340px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.popup-emoji {
+    font-size: 36px;
+    margin: 0;
+}
+
+.popup-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-main, #fff);
+    margin: 0;
+}
+
+.popup-desc {
+    font-size: 13px;
+    color: var(--text-muted, #aaa);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.popup-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.popup-btn-secondary {
+    flex: 1;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    color: var(--text-muted, #aaa);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.popup-btn-primary {
+    flex: 2;
+    padding: 12px;
+    background-color: var(--theme-color, #555);
+    border: none;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.popup-btn-primary:hover {
+    opacity: 0.85;
+}
