@@ -1,4 +1,3 @@
-import re
 import json
 import uuid
 import logging
@@ -12,7 +11,6 @@ from sqlalchemy import select, func
 
 from app.core.config import settings
 from app.core.personas import get_author_prompt
-from app.core.reactions import EMOTIONS, pick_reaction
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
@@ -24,6 +22,8 @@ from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
 from app.services import consistency  # 설정 일관성 검수 (F-QC-01)
+from app.services.tts import synthesize, extract_first_sentence
+import base64
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
     WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
@@ -64,7 +64,6 @@ def key_voice_profile(chat_id: str) -> str:
 
 def key_last_reaction(chat_id: str) -> str:
     return f"session:{chat_id}:last_reaction"
-
 
 # ── Redis 조회 헬퍼 (DB fallback 포함) ────────────────────
 async def get_context(chat_id: str, db: AsyncSession) -> dict:
@@ -448,12 +447,31 @@ async def stream_response(
                 except Exception as e:  # 요약 실패는 대화 흐름을 막지 않는다
                     logger.warning("요약 갱신 실패: %s", e)
 
+            # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
             reply_payload = json.dumps(
                 {"messageId": message_id, "narration": narration, "dialogue": dialogue,
                  "memories": relevant_memories, "consistency": consistency_result},
                 ensure_ascii=False,
             )
             yield f"event: reply\ndata: {reply_payload}\n\n"
+
+            # F-AV-02: TTS — narration 첫 문장을 음성으로 변환해 별도 event:audio로 전달
+            # 텍스트는 위에서 이미 나갔으므로 음성 변환(1~2s) 지연이 텍스트를 막지 않는다.
+            try:
+                first_sentence = extract_first_sentence(narration)
+                if first_sentence:
+                    # author_id: character_id(str) → int 변환
+                    _id_map = {"baekya": 1, "charoun": 2, "hanyeoreum": 3, "kimdohyeon": 4}
+                    author_id = _id_map.get(character_id, 1)
+                    audio_bytes = await synthesize(first_sentence, author_id)
+                    if audio_bytes:  # 키 없거나 빈 결과면 음성 스킵
+                        audio_payload = json.dumps(
+                            {"messageId": message_id, "audio": base64.b64encode(audio_bytes).decode()},
+                            ensure_ascii=False,
+                        )
+                        yield f"event: audio\ndata: {audio_payload}\n\n"
+            except Exception as e:
+                logger.warning("TTS 변환 실패 (음성 없이 진행): %s", e)
 
         except Exception as e:
             logger.error("OpenAI API 오류: %s", e)
@@ -811,59 +829,3 @@ async def delete_memo(chat_id: str, index: int):
         target = memos[index]
         await redis_client.lrem(key_memos(chat_id), 1, target)
     return {"memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}
-
-
-# ── 작가 리액션 (F-AS-05) ──────────────────────────────────
-# 사용자 대사 → 작가가 짧게 즉각 반응(말풍선). LLM은 '감정 라벨'만 분류하고,
-# 실제 문장은 reactions.py 풀에서 꺼낸다 → 작가 톤 보장 + 빠르고 저렴.
-REACTION_EMOTION_SYSTEM = (
-    "다음은 인터랙티브 소설에서 사용자(주인공)가 방금 한 말/행동이다. "
-    "이 순간의 감정 분위기를 아래 6개 중 하나로만 분류한다. 새 문장을 짓지 말고 분류만 한다.\n"
-    "- tension: 긴장·위기·갈등\n"
-    "- fear: 공포·불안\n"
-    "- sadness: 슬픔·상실\n"
-    "- joy: 기쁨·설렘·즐거움\n"
-    "- calm: 평온·일상·잔잔함\n"
-    "- resolve: 결심·각오·행동 개시\n"
-    '반드시 JSON만: {"emotion": "tension|fear|sadness|joy|calm|resolve"}'
-)
-
-
-async def classify_emotion(text: str) -> str:
-    """사용자 입력의 감정을 6개 라벨 중 하나로 분류(실패/예상 밖 값이면 calm)."""
-    try:
-        raw = await llm.generate(
-            REACTION_EMOTION_SYSTEM,
-            [{"role": "user", "parts": [{"text": text}]}],
-        )
-        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.MULTILINE)
-        emotion = json.loads(cleaned).get("emotion", "")
-        return emotion if emotion in EMOTIONS else "calm"
-    except Exception as e:
-        logger.warning("감정 분류 실패 - %s", e)
-        return "calm"
-
-
-class ReactionRequest(BaseModel):
-    content: str
-    character_id: str = "baekya"
-
-
-@router.post("/{chat_id}/reaction")
-async def author_reaction(chat_id: str, body: ReactionRequest):
-    """사용자 대사에 대한 작가의 짧은 리액션 말풍선 (F-AS-05).
-
-    감정을 분류(LLM) → 그 감정 버킷에서 작가 톤 문장을 하나 꺼낸다.
-    직전 리액션(last_reaction)은 피해서 반복을 줄인다.
-    """
-    text = (body.content or "").strip()
-    if not text:
-        return {"reaction": "", "emotion": ""}
-
-    emotion = await classify_emotion(text)
-    last = await redis_client.get(key_last_reaction(chat_id))
-    reaction = pick_reaction(body.character_id, emotion, exclude=last)
-    if reaction:
-        await redis_client.set(key_last_reaction(chat_id), reaction)
-    logger.info("작가 리액션 - chat_id=%s emotion=%s → %s", chat_id, emotion, reaction)
-    return {"reaction": reaction, "emotion": emotion}
