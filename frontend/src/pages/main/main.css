@@ -208,6 +208,11 @@
     gap: 8px;
 }
 
+/* 로그아웃 버튼: 오른쪽 패널 맨 아래로 밀착 */
+.main-logout-btn {
+    margin-top: auto;
+}
+
 /* 말투 설정 팝업 */
 .popup-overlay {
     position: fixed;
