@@ -92,6 +92,8 @@ function Main() {
     const [isLoading, setIsLoading] = useState(true);
     const [showVoicePopup, setShowVoicePopup] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+    const panelRef = useRef(null);
 
     useEffect(() => {
         const checkLogin = async () => {
@@ -134,6 +136,7 @@ function Main() {
     const handleLogout = async () => {
         await authClient.signOut();
         setUserId(null);
+        setIsAdmin(false);
         navigate('/');
     };
 
@@ -153,6 +156,38 @@ function Main() {
 
         fetchAuthorsData();
     }, []);
+
+    const handleMouseMove = (e) => {
+        const nextWidth = Math.min(
+            1440,
+            Math.max(0, window.innerWidth - e.clientX)
+        );
+
+        if (panelRef.current) {
+            panelRef.current.style.flexBasis = `${nextWidth}px`;
+        }
+    };
+
+    const handleMouseUp = () => {
+        setIsDraggingPanel(false);
+    };
+
+    const handlePanelDragStart = (e) => {
+        e.preventDefault();
+        setIsDraggingPanel(true);
+    };
+
+    useEffect(() => {
+        if (!isDraggingPanel) return;
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isDraggingPanel]);
 
     // 작가 카드 마우스 호버 시 실행되는 함수
     const handleAuthorHover = (authorId) => {
@@ -196,9 +231,6 @@ function Main() {
                     <div className="header-auth">
                         {userId ? (
                             <>
-                                <button className="btn btn--secondary" onClick={() => navigate('/mypage')}>
-                                    내 서재
-                                </button>
                                 <button className="btn" onClick={handleLogout}>
                                     로그아웃
                                 </button>
@@ -252,16 +284,37 @@ function Main() {
                     <div className="speech-text">
                         <span>작가를 선택하세요</span>
                     </div>
-                    {isAdmin && (
-                        <button
-                            className="dashboard-btn"
-                            onClick={() => navigate('/tokendashboard')}
-                        >
-                            토큰 대시보드 →
-                        </button>
-                    )}
+
+                </div>
+            </div>
+
+            <div
+                className="panel-resize-handle"
+                onMouseDown={handlePanelDragStart}
+            >
+                <span className="panel-resize-icon">⋮</span>
+            </div>
+
+            <div
+                ref={panelRef}
+                className="author-panel-slide"
+            >
+                <div className="author-panel">
                     <button
-                        className="storylist-btn"
+                        className="btn"
+                        onClick={() => {
+                            if (!userId) {
+                                alert('로그인 후 이용 가능합니다.');
+                                navigate('/login');
+                                return;
+                            }
+
+                            navigate('/mypage');
+                        }}>
+                        내 서재
+                    </button>
+                    <button
+                        className="btn"
                         onClick={() => {
                             if (!userId) {
                                 alert('로그인 후 이용 가능합니다.');
@@ -272,8 +325,16 @@ function Main() {
                             navigate('/storylist');
                         }}
                     >
-                        내 소설 목록 →
+                        내 소설 목록
                     </button>
+                    {isAdmin && (
+                        <button
+                            className="btn"
+                            onClick={() => navigate('/tokendashboard')}
+                        >
+                            토큰 대시보드
+                        </button>
+                    )}
                 </div>
             </div>
         </div>
