@@ -3,7 +3,7 @@ import uuid
 import logging
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,15 +15,19 @@ from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
+from app.models.user import User
 from app.models.world import World
 from app.models.character import Character
 from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
 from app.services import consistency  # 설정 일관성 검수 (F-QC-01)
+from app.services.tts import synthesize, extract_first_sentence
+import base64
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
-    WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM,
+    WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
+    build_multi_npc_prompt, VOICE_PROFILE_SYSTEM, build_voice_suggest_prompt,
 )
 
 router = APIRouter()
@@ -55,6 +59,11 @@ def key_turn(chat_id: str) -> str:
 def key_memos(chat_id: str) -> str:
     return f"session:{chat_id}:memos"
 
+def key_voice_profile(chat_id: str) -> str:
+    return f"session:{chat_id}:voice_profile"
+
+def key_last_reaction(chat_id: str) -> str:
+    return f"session:{chat_id}:last_reaction"
 
 # ── Redis 조회 헬퍼 (DB fallback 포함) ────────────────────
 async def get_context(chat_id: str, db: AsyncSession) -> dict:
@@ -438,12 +447,31 @@ async def stream_response(
                 except Exception as e:  # 요약 실패는 대화 흐름을 막지 않는다
                     logger.warning("요약 갱신 실패: %s", e)
 
+            # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
             reply_payload = json.dumps(
                 {"messageId": message_id, "narration": narration, "dialogue": dialogue,
                  "memories": relevant_memories, "consistency": consistency_result},
                 ensure_ascii=False,
             )
             yield f"event: reply\ndata: {reply_payload}\n\n"
+
+            # F-AV-02: TTS — narration 첫 문장을 음성으로 변환해 별도 event:audio로 전달
+            # 텍스트는 위에서 이미 나갔으므로 음성 변환(1~2s) 지연이 텍스트를 막지 않는다.
+            try:
+                first_sentence = extract_first_sentence(narration)
+                if first_sentence:
+                    # author_id: character_id(str) → int 변환
+                    _id_map = {"baekya": 1, "charoun": 2, "hanyeoreum": 3, "kimdohyeon": 4}
+                    author_id = _id_map.get(character_id, 1)
+                    audio_bytes = await synthesize(first_sentence, author_id)
+                    if audio_bytes:  # 키 없거나 빈 결과면 음성 스킵
+                        audio_payload = json.dumps(
+                            {"messageId": message_id, "audio": base64.b64encode(audio_bytes).decode()},
+                            ensure_ascii=False,
+                        )
+                        yield f"event: audio\ndata: {audio_payload}\n\n"
+            except Exception as e:
+                logger.warning("TTS 변환 실패 (음성 없이 진행): %s", e)
 
         except Exception as e:
             logger.error("OpenAI API 오류: %s", e)
@@ -580,6 +608,217 @@ async def suggest_next(
         logger.warning("제안 생성 실패 - chat_id=%s: %s", chat_id, e)
         suggestions = []
     return {"suggestions": suggestions}
+
+
+class StuckRequest(BaseModel):
+    world_context: str = ""
+
+
+class NpcInfo(BaseModel):
+    name: str
+    personality: str = ""
+    relationship: str = ""
+
+
+class NpcReactRequest(BaseModel):
+    world_context: str = ""
+    npcs: list[NpcInfo]
+    recent_dialogue: str = ""
+
+
+@router.post("/{chat_id}/stuck")
+async def stuck_help(
+    chat_id: str,
+    body: StuckRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """창작이 막혔을 때 힌트 3개 제공 (F-AS-02)."""
+    context = await get_context(chat_id, db)
+    world_context = body.world_context or await _build_world_context(chat_id, db)
+
+    parts = []
+    if world_context:
+        parts.append(f"[세계관]\n{world_context}")
+    if context["history"]:
+        recent = "\n".join(
+            f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+            for h in reversed(context["history"][:6])
+        )
+        parts.append(f"[최근 대화]\n{recent}")
+    user_msg = "\n\n".join(parts) or "(아직 대화가 없습니다. 도입 상황에서 막혔다고 가정하세요.)"
+
+    try:
+        raw = await llm.generate(
+            STUCK_HELP_SYSTEM,
+            [{"role": "user", "parts": [{"text": user_msg}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        data = json.loads(cleaned)
+        return {"situation": data.get("situation", ""), "hints": data.get("hints", [])}
+    except Exception as e:
+        logger.warning("막힘 도우미 실패 - chat_id=%s: %s", chat_id, e)
+        return {"situation": "", "hints": []}
+
+
+@router.post("/{chat_id}/npc-react")
+async def npc_react(
+    chat_id: str,
+    body: NpcReactRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """조연 NPC들의 다중 반응 생성 (F-CH-09)."""
+    world_context = body.world_context or await _build_world_context(chat_id, db)
+
+    recent_dialogue = body.recent_dialogue
+    if not recent_dialogue:
+        context = await get_context(chat_id, db)
+        if context["history"]:
+            recent_dialogue = "\n".join(
+                f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+                for h in reversed(context["history"][:4])
+            )
+
+    npcs_list = [n.model_dump() for n in body.npcs]
+    system_prompt = build_multi_npc_prompt(world_context, npcs_list, recent_dialogue)
+
+    try:
+        raw = await llm.generate(
+            system_prompt,
+            [{"role": "user", "parts": [{"text": "위 조연들의 반응을 JSON으로 출력하세요."}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        data = json.loads(cleaned)
+        return {
+            "narration": data.get("narration", ""),
+            "responses": data.get("responses", []),
+            "state_changes": data.get("state_changes", {"trust_delta": 0, "event": None}),
+        }
+    except Exception as e:
+        logger.warning("NPC 반응 생성 실패 - chat_id=%s: %s", chat_id, e)
+        return {"narration": "", "responses": [], "state_changes": {"trust_delta": 0, "event": None}}
+
+
+class VoiceProfileRequest(BaseModel):
+    user_samples: list[str] = []      # 자유 입력 문장
+    guide_answers: list[str] = []     # 가이드 문장에 대한 사용자 답변
+    optional_context: str = ""        # 원하는 말투 방향 (선택)
+
+
+class VoiceSuggestRequest(BaseModel):
+    npc_dialogue: str
+    scene_summary: str = ""
+    genre: str = ""
+    relationship_summary: str = ""    # 사용자-등장인물 관계
+    character_profile: str = ""       # 상대 등장인물 정보
+    user_intent: str = ""             # 사용자가 원하는 반응 방향
+    user_emotion: str = ""            # 사용자의 현재 감정
+    constraints: str = ""             # 서비스 정책 또는 장면 제한
+
+
+@router.post("/{chat_id}/voice-profile")
+async def analyze_voice_profile(
+    chat_id: str,
+    body: VoiceProfileRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """사용자 샘플 문장 → 말투 프로파일 JSON 생성 후 User DB 저장 (Voice Mirroring)."""
+    if not body.user_samples and not body.guide_answers:
+        raise HTTPException(status_code=422, detail="user_samples 또는 guide_answers를 1개 이상 입력하세요.")
+
+    # chat_id(=session_id)로 user_id 조회
+    session_result = await db.execute(select(Session).where(Session.id == uuid.UUID(chat_id)))
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    parts = []
+    if body.user_samples:
+        parts.append("[자유 입력 문장]\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(body.user_samples)))
+    if body.guide_answers:
+        parts.append("[가이드 문장 답변]\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(body.guide_answers)))
+    if body.optional_context:
+        parts.append(f"[원하는 말투 방향]\n{body.optional_context}")
+    user_msg = "\n\n".join(parts)
+
+    try:
+        raw = await llm.generate(
+            VOICE_PROFILE_SYSTEM,
+            [{"role": "user", "parts": [{"text": user_msg}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        profile = json.loads(cleaned)
+    except Exception as e:
+        logger.warning("말투 분석 실패 - chat_id=%s: %s", chat_id, e)
+        raise HTTPException(status_code=500, detail="말투 분석 중 오류가 발생했습니다.")
+
+    # User 테이블에 영구 저장
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    user.voice_profile = profile
+    await db.flush()
+
+    logger.info("말투 프로파일 저장 - user_id=%s", session.user_id)
+    return {"voice_profile": profile}
+
+
+@router.post("/{chat_id}/voice-suggest")
+async def voice_suggest(
+    chat_id: str,
+    body: VoiceSuggestRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """저장된 말투 프로파일 기반으로 사용자 다음 대사 5개 추천 (Voice Mirroring)."""
+    # chat_id(=session_id)로 user_id 조회 → User.voice_profile 로드
+    session_result = await db.execute(select(Session).where(Session.id == uuid.UUID(chat_id)))
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user or not user.voice_profile:
+        raise HTTPException(status_code=404, detail="말투 프로파일이 없습니다. /voice-profile을 먼저 호출하세요.")
+
+    voice_profile = user.voice_profile
+
+    scene_summary = body.scene_summary
+    if not scene_summary:
+        context = await get_context(chat_id, db)
+        if context["history"]:
+            scene_summary = "\n".join(
+                f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+                for h in reversed(context["history"][:4])
+            )
+
+    system_prompt = build_voice_suggest_prompt(
+        voice_profile=voice_profile,
+        scene_summary=scene_summary,
+        npc_dialogue=body.npc_dialogue,
+        genre=body.genre,
+        relationship_summary=body.relationship_summary,
+        character_profile=body.character_profile,
+        user_intent=body.user_intent,
+        user_emotion=body.user_emotion,
+        constraints=body.constraints,
+    )
+
+    try:
+        raw = await llm.generate(
+            system_prompt,
+            [{"role": "user", "parts": [{"text": "위 상황에서 사용자 대사 후보 5개를 JSON으로 출력하세요."}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        data = json.loads(cleaned)
+        return {"suggestions": data.get("suggestions", [])}
+    except Exception as e:
+        logger.warning("대사 추천 실패 - chat_id=%s: %s", chat_id, e)
+        return {"suggestions": []}
 
 
 @router.delete("/{chat_id}/memo/{index}")

@@ -27,6 +27,7 @@ class WorldResponse(BaseModel):
     genre: str
     setting: str
     rules: str | None
+    tags: list[str] | None = None
     created_at: datetime
     updated_at: datetime
 
