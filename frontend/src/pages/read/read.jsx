@@ -121,7 +121,7 @@ export default function ReadNovel() {
       <div className="read-page">
         <div className="read-empty">
           <p>{error ?? '소설을 찾을 수 없습니다.'}</p>
-          <button onClick={() => navigate('/chatlist')}>목록으로</button>
+          <button onClick={() => navigate('/storylist')}>목록으로</button>
         </div>
       </div>
     );
@@ -135,7 +135,7 @@ export default function ReadNovel() {
     <div className="read-page" onClick={() => setFontPanelOpen(false)}>
       <div className="read-top-bar">
         <div className="read-top-bar__left">
-          <button className="read-back-btn" onClick={() => navigate('/chatlist')}>
+          <button className="read-back-btn" onClick={() => navigate('/storylist')}>
             ← 돌아가기
           </button>
           <span className="read-doc-title">{novel.title}</span>

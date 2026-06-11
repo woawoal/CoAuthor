@@ -1,5 +1,5 @@
 /* 작가별 테마 적용 (data-author). 배경/글자/강조 모두 테마 변수. */
-.chatlist-container {
+.storylist-container {
   min-height: 100vh;
   background: var(--bg-main);
   color: var(--text-main);
@@ -9,7 +9,7 @@
   box-sizing: border-box;
 }
 
-.chatlist-wrapper {
+.storylist-wrapper {
   width: 100%;
   max-width: 720px;
   display: flex;
@@ -17,7 +17,7 @@
   gap: 24px;
 }
 
-.chatlist-header {
+.storylist-header {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -39,14 +39,14 @@
   border-color: var(--theme-color);
 }
 
-.chatlist-title {
+.storylist-title {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
   color: var(--text-main);
 }
 
-.chatlist-empty {
+.storylist-empty {
   text-align: center;
   color: var(--text-muted);
   font-size: 14px;
@@ -54,13 +54,13 @@
   margin-top: 60px;
 }
 
-.chatlist-grid {
+.storylist-grid {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.chatlist-card {
+.storylist-card {
   background: var(--card-main);
   border: 1px solid color-mix(in srgb, var(--text-main) 8%, transparent);
   border-radius: 16px;
@@ -72,25 +72,25 @@
   transition: border-color 0.2s, background-color 0.2s;
 }
 
-.chatlist-card:hover {
+.storylist-card:hover {
   border-color: var(--theme-color);
   background: color-mix(in srgb, var(--theme-color) 10%, var(--card-main));
 }
 
-.chatlist-card__body {
+.storylist-card__body {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.chatlist-card__title {
+.storylist-card__title {
   margin: 0;
   font-size: 16px;
   font-weight: 700;
   color: var(--text-main);
 }
 
-.chatlist-card__meta {
+.storylist-card__meta {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -118,17 +118,17 @@
   color: #4CAF50;
 }
 
-.chatlist-card__date {
+.storylist-card__date {
   font-size: 12px;
   color: var(--text-muted);
 }
 
-.chatlist-card__author {
+.storylist-card__author {
   font-size: 12px;
   color: #9E8CBE;
 }
 
-.chatlist-card__tags {
+.storylist-card__tags {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -144,7 +144,7 @@
   border: 1px solid rgba(106, 27, 154, 0.2);
 }
 
-.chatlist-card__btn {
+.storylist-card__btn {
   flex-shrink: 0;
   background: none;
   border: 1px solid var(--theme-color);
@@ -157,26 +157,26 @@
   transition: background-color 0.2s, color 0.2s;
 }
 
-.chatlist-card__btn:hover {
+.storylist-card__btn:hover {
   background-color: var(--theme-color);
   color: #fff;
 }
 
-.chatlist-card__btn--read {
+.storylist-card__btn--read {
   border-color: color-mix(in srgb, var(--text-main) 20%, transparent);
   color: var(--text-muted);
 }
-.chatlist-card__btn--read:hover {
+.storylist-card__btn--read:hover {
   background: color-mix(in srgb, var(--text-main) 8%, transparent);
   color: var(--text-main);
   border-color: color-mix(in srgb, var(--text-main) 30%, transparent);
 }
 
-.chatlist-card__btn--delete {
+.storylist-card__btn--delete {
   border-color: rgba(211, 47, 47, 0.4);
   color: #EF9A9A;
 }
-.chatlist-card__btn--delete:hover {
+.storylist-card__btn--delete:hover {
   background-color: rgba(211, 47, 47, 0.2);
   color: #ffffff;
   border-color: #D32F2F;
