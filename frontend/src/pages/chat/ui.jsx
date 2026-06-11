@@ -1,10 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { sendMessage, connectChatStream, completeSession, generateNovel, getSuggestions } from '../../lib/chatApi';
+import {
+  sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
+  getSuggestions, sendAuthorMessage, getMemos, saveMemos,
+} from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import './ui.css';
+
+const AUTHOR_IDS = [1, 2, 3, 4];
+
+const AUTHOR_TAGS = [
+  { label: '#세계관',   prompt: null },
+  { label: '#등장인물', prompt: null },
+  { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
+  { label: '#추천',     prompt: null },
+];
+
+const AUTHOR_RECOMMEND_GREETING = {
+  baekya:      '...어떤 추천이 필요한가요.',
+  charoun:     '어떤 방향의 추천을 드릴까요?',
+  hanyeoreum:  '어떤 거 추천해드릴까요~?',
+  kimdohyeon:  '어떤 추천이 필요해요?',
+};
+
+const NARRATION_KEYWORDS = ['지문', '대사', '문장', '씬', '장면', '선택지', '다음', '행동', '추천'];
 
 const AUTHOR_MAP = {
   1: { characterId: 'baekya',      displayName: '백야',   image: '/assets/author1/author1.png' },
@@ -12,11 +33,6 @@ const AUTHOR_MAP = {
   3: { characterId: 'hanyeoreum', displayName: '한여름', image: '/assets/author3/author3.png' },
   4: { characterId: 'kimdohyeon', displayName: '김도현', image: '/assets/author4/author4.png' },
 };
-
-const MOCK_MEMOS = [
-  { id: 1, type: 'auto', text: '복선 — 깜빡이는 가로등은 불안정한 현실을 암시' },
-  { id: 2, type: 'auto', text: '방향 제안 — 골목 끝에 익숙한 실루엣을 등장시킬 것' },
-];
 
 function buildWorldContext(world, characters) {
   if (!world) return '';
@@ -44,7 +60,7 @@ function formatText(text) {
     .trim();
 }
 
-function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelected, onClick }) {
+function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelected, onContextMenu }) {
   if (msg.role === 'system') {
     return <div className="world-info-header">{msg.text}</div>;
   }
@@ -58,22 +74,19 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
     const charName = characterName || msg.name;
 
     return (
-      <div id={`bubble-${msg.id}`} className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`} onClick={onClick}>
-        <img src={persona.image} alt={msg.name} className="bubble-avatar" />
+      <div
+        id={`bubble-${msg.id}`}
+        className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`}
+        onContextMenu={onContextMenu}
+      >
         <div className="bubble-content">
-          <span className="badge badge--author">작가 {msg.name}</span>
-
-          {/* 나레이션 — 말풍선 없음 */}
           {hasNarration && (
             <p className="narration-text">
               {hasBookmark && !hasDialogue && <span className="bubble-bookmark">🔖</span>}
               {formatText(msg.narration || msg.text)}
             </p>
           )}
-
           {isLoading && <div className="typing-dots"><span /><span /><span /></div>}
-
-          {/* 대사 — 말풍선 */}
           {hasDialogue && (
             <div className="dialogue-block">
               <span className="badge">{charName}</span>
@@ -89,7 +102,11 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
   }
 
   return (
-    <div id={`bubble-${msg.id}`} className={`bubble-row bubble-row--user${isSelected ? ' bubble-row--selected' : ''}`} onClick={onClick}>
+    <div
+      id={`bubble-${msg.id}`}
+      className={`bubble-row bubble-row--user${isSelected ? ' bubble-row--selected' : ''}`}
+      onContextMenu={onContextMenu}
+    >
       <div className="bubble-content bubble-content--user">
         <span className="badge badge--user">{msg.name}</span>
         <div className="bubble bubble--user bubble--markdown">
@@ -104,39 +121,76 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
 export default function Chat() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { worldId, chatId: chatIdFromState, authorId: authorIdFromState } = location.state ?? {};
+  const { worldId, chatId: chatIdFromState, authorId: authorIdRaw, opening, manuscriptContent } = location.state ?? {};
   const chatId = chatIdFromState ?? worldId ?? 'room_001';
-  // authorId: state → localStorage 로 복원하고, 세션 로드 후 session.author_id(진짜 값)로 덮어쓴다
-  const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdFromState));
+  const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdRaw));
   useAuthorTheme(authorId);
-  const persona = AUTHOR_MAP[authorId] ?? { characterId: 'baekya', displayName: '백야' };
 
-  const MEMO_KEY = `memos_${chatId}`;
+  // 스토리 채팅 작가 (고정)
+  const storyAuthor = AUTHOR_MAP[authorId] ?? AUTHOR_MAP[1];
 
+  // 오른쪽 패널 작가 (슬라이드로 전환 가능)
+  const initialAuthorIdx = AUTHOR_IDS.indexOf(Number(authorId));
+  const [currentAuthorIdx, setCurrentAuthorIdx] = useState(
+    initialAuthorIdx !== -1 ? initialAuthorIdx : 0
+  );
+  const currentAuthor = AUTHOR_MAP[AUTHOR_IDS[currentAuthorIdx]];
+
+  // ── 스토리 채팅 상태 ───────────────────────────────────────
   const [messages, setMessages] = useState([]);
-  const [memos, setMemos] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(MEMO_KEY)) ?? MOCK_MEMOS; }
-    catch { return MOCK_MEMOS; }
-  });
-  const [input, setInput] = useState('');
-  const [memoInput, setMemoInput] = useState('');
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
   const [ending, setEnding] = useState(false);
-  const [worldOpen, setWorldOpen] = useState(true);
-  const [selectedMsgId, setSelectedMsgId] = useState(null);
-  const [editingMemoId, setEditingMemoId] = useState(null);
+  const [converting, setConverting] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const [importedNarration] = useState(manuscriptContent ?? null);
+
+  // ── 오른쪽 패널 상태 ──────────────────────────────────────
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [panelView, setPanelView] = useState('author'); // 'author' | 'memo'
+  const [authorMessages, setAuthorMessages] = useState([]);
+  const [authorInput, setAuthorInput] = useState('');
+  const [authorLoading, setAuthorLoading] = useState(false);
+
+  // ── 메모 상태 ────────────────────────────────────────────
+  const [memos, setMemos] = useState([]);
+  const [selectedMsgId, setSelectedMsgId] = useState(null);
+  const [memoInput, setMemoInput] = useState('');
+  const [editingMemoId, setEditingMemoId] = useState(null);
+  const memosLoadedRef = useRef(false);
+
+  // ── 컨텍스트 메뉴 ─────────────────────────────────────────
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null });
+
+  // ── 자동 피드백 상태 ─────────────────────────────────────
+  const [autoFeedback, setAutoFeedback] = useState(false);
+
+  // ── Refs ─────────────────────────────────────────────────
   const bottomRef = useRef(null);
   const esRef = useRef(null);
+  const authorBottomRef = useRef(null);
   const memoInputRef = useRef(null);
+  const awaitingRecommendRef = useRef(false);
+  const feedbackTimerRef = useRef(null);
 
+  // ── 메모 Redis 로드 ───────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem(MEMO_KEY, JSON.stringify(memos));
+    if (!chatId || chatId === 'room_001') return;
+    getMemos(chatId).then(({ memos: loaded }) => {
+      setMemos(loaded ?? []);
+      memosLoadedRef.current = true;
+    });
+  }, [chatId]);
+
+  // ── 메모 Redis 저장 ───────────────────────────────────────
+  useEffect(() => {
+    if (!memosLoadedRef.current) return;
+    saveMemos(chatId, memos);
   }, [memos]);
 
+  // ── 세션/세계관 로드 ──────────────────────────────────────
   useEffect(() => {
     if (!chatId || chatId === 'room_001') return;
     getSession(chatId)
@@ -151,152 +205,86 @@ export default function Chat() {
       .then(([w, chars, dialogues]) => {
         setWorld(w);
         setDbCharacters(chars);
-        // 세계관 요약 헤더 — 신규/이어쓰기 모두 항상 표시
-        const summaryLines = [];
-        if (w.title)       summaryLines.push(`제목     ${w.title}`);
-        if (w.genre)       summaryLines.push(`장르     ${w.genre}`);
-        if (w.description) summaryLines.push(`배경     ${w.description}`);
-        if (w.setting)     summaryLines.push(`공간     ${w.setting}`);
-        if (w.rules)       summaryLines.push(`규칙     ${w.rules}`);
-        if (chars.length > 0) {
-          if (summaryLines.length) summaryLines.push('');
-          summaryLines.push('등장인물');
-          chars.forEach(c => {
-            const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
-            summaryLines.push(`• ${c.name}  (${roleKo})${c.personality ? `  —  ${c.personality}` : ''}`);
-          });
-        }
-        summaryLines.push('');
-        summaryLines.push('───────────────────────────────');
-        const summaryMsg = { id: `summary_${Date.now()}`, role: 'system', text: summaryLines.join('\n') };
-
         const protagonistName = chars.find(c => c.role === 'protagonist')?.name ?? '나';
-
 
         if (dialogues.length > 0) {
           const restored = dialogues.map(d => ({
             id: d.id,
             role: d.speaker_type === 'user' ? 'user' : 'character',
-            name: d.speaker_type === 'user' ? protagonistName : persona.displayName,
+            name: d.speaker_type === 'user' ? protagonistName : storyAuthor.displayName,
             text: d.content,
           }));
-          setMessages([summaryMsg, ...restored]);
-        } else {
-          setMessages([summaryMsg]);
+          setMessages(restored);
         }
       })
       .catch(console.error);
   }, [chatId]);
 
+  // ── 자동 스크롤 ──────────────────────────────────────────
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  async function handleSend() {
-    if (!input.trim() || streaming) return;
-    const userText = input.trim();
-    setInput('');
+  useEffect(() => {
+    authorBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [authorMessages, authorLoading]);
 
-    const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
+  // ── 자동 피드백 (스트리밍 종료 시 트리거) ────────────────
+  useEffect(() => {
+    if (streaming || !autoFeedback) return;
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'character') return;
+    clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(handleFeedback, 2000);
+    return () => clearTimeout(feedbackTimerRef.current);
+  }, [streaming, autoFeedback]);
 
-    await sendMessage(chatId, { content: userText, character_id: persona.characterId });
+  // ── 컨텍스트 메뉴 외부 클릭 닫기 ─────────────────────────
+  useEffect(() => {
+    function close() { setContextMenu(prev => ({ ...prev, visible: false })); }
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, []);
 
-    const streamMsgId = `stream_${Date.now()}`;
-    setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: persona.displayName, text: '' }]);
-    setStreaming(true);
+  // ── 세계관/등장인물 카드 토글 ────────────────────────────
+  const [showWorldInfo, setShowWorldInfo] = useState(false);
+  const [showCharInfo, setShowCharInfo] = useState(false);
 
-    const worldContext = buildWorldContext(world, dbCharacters);
-    esRef.current = connectChatStream(
-      chatId,
-      { content: userText, character_id: persona.characterId, mode: 'author', world_context: worldContext },
-      ({ narration, dialogue }) => {
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === streamMsgId
-              ? { ...m, narration, dialogue }
-              : m
-          )
-        );
-      },
-      () => setStreaming(false),
-    );
+  // ── 작가 페르소나 전환 ───────────────────────────────────
+  function prevAuthor() {
+    setCurrentAuthorIdx(prev => (prev - 1 + AUTHOR_IDS.length) % AUTHOR_IDS.length);
+  }
+  function nextAuthor() {
+    setCurrentAuthorIdx(prev => (prev + 1) % AUTHOR_IDS.length);
   }
 
-  async function handleEnd() {
-    if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
-    if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
-
-    // 응답 중이면 스트림 강제 종료
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-    }
-    setStreaming(false);
-
-    setEnding(true);
-    try {
-      await completeSession(chatId);
-    } catch (err) {
-      alert(`세션 종료 실패: ${err.message}`);
-      setEnding(false);
-      return;
-    }
-
-    // 소설 생성 실패해도 종료는 진행
-    try {
-      await generateNovel(chatId);
-    } catch (err) {
-      console.warn('소설 생성 실패 (무시):', err.message);
-    }
-
-    navigate('/chatlist');
+  // ── 컨텍스트 메뉴 ─────────────────────────────────────────
+  function handleBubbleContextMenu(e, msgId) {
+    e.preventDefault();
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, msgId });
   }
 
-  async function fetchSuggestions() {
-    if (!chatId || chatId === 'room_001') return;
-    const worldContext = buildWorldContext(world, dbCharacters);
-    const data = await getSuggestions(chatId, { character_id: persona.characterId, world_context: worldContext });
-    setSuggestions(data.suggestions ?? []);
+  function handleMemoFromContext(msgId) {
+    setContextMenu(prev => ({ ...prev, visible: false }));
+    const existing = memos.find(m => m.msgId === msgId);
+    setEditingMemoId(existing ? existing.id : null);
+    setMemoInput(existing ? existing.text : '');
+    setSelectedMsgId(msgId);
+    setPanelOpen(true);
+    setPanelView('memo');
+    setTimeout(() => memoInputRef.current?.focus(), 80);
   }
 
-
-  function getMsgPreview(msgId) {
-    const msg = messages.find(m => m.id === msgId);
-    if (!msg) return '';
-    const text = msg.narration || msg.dialogue || msg.text || '';
-    return text.length > 36 ? text.slice(0, 36) + '…' : text;
+  function handleDeleteMsg(msgId) {
+    setContextMenu(prev => ({ ...prev, visible: false }));
+    setMessages(prev => prev.filter(m => m.id !== msgId));
   }
 
+  // ── 메모 조작 ─────────────────────────────────────────────
   function clearBookmarkState() {
     setSelectedMsgId(null);
     setEditingMemoId(null);
     setMemoInput('');
-  }
-
-  function handleBubbleClick(msgId) {
-    const existing = memos.find(m => m.msgId === msgId);
-    if (existing) {
-      setEditingMemoId(existing.id);
-      setMemoInput(existing.text);
-    } else {
-      setEditingMemoId(null);
-      setMemoInput('');
-    }
-    setSelectedMsgId(prev => prev === msgId ? null : msgId);
-    setPanelOpen(true);
-    setTimeout(() => memoInputRef.current?.focus(), 80);
-  }
-
-  function handleMemoClick(memo) {
-    if (memo.msgId) {
-      document.getElementById(`bubble-${memo.msgId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setSelectedMsgId(memo.msgId);
-      setEditingMemoId(memo.id);
-      setMemoInput(memo.text);
-      setPanelOpen(true);
-      setTimeout(() => memoInputRef.current?.focus(), 80);
-    }
   }
 
   function handleAddMemo() {
@@ -314,36 +302,187 @@ export default function Chat() {
     clearBookmarkState();
   }
 
+  function handleMemoClick(memo) {
+    if (!memo.msgId) return;
+    document.getElementById(`bubble-${memo.msgId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setSelectedMsgId(memo.msgId);
+  }
+
+  // ── 작가 AI 채팅 ─────────────────────────────────────────
+  async function handleSendAuthorMessage(overrideText) {
+    const text = (overrideText ?? authorInput).trim();
+    if (!text || authorLoading) return;
+    if (!overrideText) setAuthorInput('');
+    setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
+    setAuthorLoading(true);
+
+    const isNarrationReq = awaitingRecommendRef.current &&
+      NARRATION_KEYWORDS.some(kw => text.includes(kw));
+    awaitingRecommendRef.current = false;
+
+    try {
+      const data = await sendAuthorMessage(chatId, {
+        content: text,
+        author_id: currentAuthor.characterId,
+      });
+      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', content: data.content }]);
+      if (isNarrationReq) fetchSuggestions();
+    } catch (err) {
+      console.error('작가 AI 오류:', err);
+    } finally {
+      setAuthorLoading(false);
+    }
+  }
+
+  function handleTagClick(tag) {
+    if (authorLoading) return;
+    if (tag.label === '#세계관') {
+      setShowWorldInfo(prev => !prev);
+      setShowCharInfo(false);
+      return;
+    }
+    if (tag.label === '#등장인물') {
+      setShowCharInfo(prev => !prev);
+      setShowWorldInfo(false);
+      return;
+    }
+    if (tag.label === '#추천') {
+      setShowWorldInfo(false);
+      setShowCharInfo(false);
+      setPanelView('author');
+      awaitingRecommendRef.current = true;
+      const greeting = AUTHOR_RECOMMEND_GREETING[currentAuthor.characterId] ?? '어떤 추천을 받고 싶으신가요?';
+      setAuthorMessages(prev => [...prev, { id: `au_rec_${Date.now()}`, role: 'ai', content: greeting }]);
+      return;
+    }
+    setShowWorldInfo(false);
+    setShowCharInfo(false);
+    setPanelView('author');
+    handleSendAuthorMessage(tag.prompt);
+  }
+
+  // ── 스토리 채팅 ──────────────────────────────────────────
+  async function handleSend() {
+    if (!input.trim() || streaming) return;
+    const userText = input.trim();
+    setInput('');
+
+    const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
+
+    await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
+
+    const streamMsgId = `stream_${Date.now()}`;
+    setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: storyAuthor.displayName, text: '' }]);
+    setStreaming(true);
+
+    const worldContext = buildWorldContext(world, dbCharacters);
+    esRef.current = connectChatStream(
+      chatId,
+      { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext },
+      ({ narration, dialogue }) => {
+        setMessages(prev =>
+          prev.map(m => m.id === streamMsgId ? { ...m, narration, dialogue } : m)
+        );
+      },
+      () => setStreaming(false),
+    );
+  }
+
+  async function handleEnd() {
+    if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
+    if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    setStreaming(false);
+    setEnding(true);
+    try {
+      await completeSession(chatId);
+    } catch (err) {
+      alert(`세션 종료 실패: ${err.message}`);
+      setEnding(false);
+      return;
+    }
+    try { await generateNovel(chatId); } catch { /* 무시 */ }
+    navigate('/storylist');
+  }
+
+  function handleFeedback() {
+    if (!messages.length || authorLoading) return;
+    const recent = messages.slice(-6).filter(m => m.text || m.narration || m.dialogue);
+    const excerpt = recent.map(m => {
+      if (m.role === 'user') return `독자: ${m.text}`;
+      const parts = [];
+      if (m.narration) parts.push(m.narration);
+      if (m.dialogue) parts.push(`"${m.dialogue}"`);
+      return parts.join('\n');
+    }).join('\n\n');
+    const prompt = `다음 대화 장면을 읽고 작가로서 피드백을 줘:\n\n---\n${excerpt}\n---`;
+    setPanelView('author');
+    handleSendAuthorMessage(prompt);
+  }
+
+  async function handleSwitchToEditor() {
+    if (!chatId || chatId === 'room_001') return;
+    setConverting(true);
+    try {
+      await convertToNovel(chatId);
+    } catch { /* 변환 실패해도 에디터로 이동 */ }
+    navigate('/editor', { state: { chatId, authorId } });
+  }
+
+  async function fetchSuggestions() {
+    if (!chatId || chatId === 'room_001') return;
+    const worldContext = buildWorldContext(world, dbCharacters);
+    const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
+    setSuggestions(data.suggestions ?? []);
+  }
+
+  // ── 렌더 ─────────────────────────────────────────────────
   return (
     <div className="chat-layout">
-      {/* 채팅 영역 */}
+
+      {/* 왼쪽: 스토리 채팅 */}
       <div className="chat-main">
         <div className="chat-header">
           <div className="chat-header__info">
-            {persona.image && (
-              <img src={persona.image} alt={persona.displayName} className="chat-header__avatar" />
+            {storyAuthor.image && (
+              <img src={storyAuthor.image} alt={storyAuthor.displayName} className="chat-header__avatar" />
             )}
             <div className="chat-header__text">
-              <span className="chat-header__persona">{world?.title ?? persona.displayName}</span>
+              <span className="chat-header__persona">{world?.title ?? storyAuthor.displayName}</span>
               <span className="chat-header__genre">{world?.genre ?? ''}</span>
             </div>
           </div>
-          <button className="chat-end-btn" onClick={handleEnd} disabled={ending}>
-            {ending ? '저장 중...' : '채팅 종료'}
-          </button>
+          <div className="chat-header__btns">
+            <button className="mode-switch-btn" onClick={handleSwitchToEditor} disabled={converting || ending}>
+              {converting ? '변환 중...' : '집필형 →'}
+            </button>
+            <button className="chat-end-btn" onClick={handleEnd} disabled={ending || converting}>
+              {ending ? '저장 중...' : '채팅 종료'}
+            </button>
+          </div>
         </div>
 
         <div className="chat-messages">
+          {importedNarration && (
+            <div className="narration-import-block">
+              <span className="narration-import-block__label">✍ 집필형 원고</span>
+              <div className="narration-import-block__text">{importedNarration}</div>
+              <div className="narration-import-block__divider">— 여기서부터 참여형 대화 —</div>
+            </div>
+          )}
           {messages.map(msg => (
             <Bubble
               key={msg.id}
               msg={msg}
-              persona={persona}
+              persona={storyAuthor}
               characterName={dbCharacters.find(c => c.role !== 'protagonist')?.name}
               streaming={streaming && msg === messages[messages.length - 1]}
               hasBookmark={memos.some(m => m.msgId === msg.id)}
               isSelected={selectedMsgId === msg.id}
-              onClick={msg.role !== 'system' ? () => handleBubbleClick(msg.id) : undefined}
+              onContextMenu={msg.role !== 'system'
+                ? e => handleBubbleContextMenu(e, msg.id)
+                : undefined}
             />
           ))}
           <div ref={bottomRef} />
@@ -356,20 +495,15 @@ export default function Chat() {
                 key={i}
                 className="suggestion-chip"
                 onClick={() => { setInput(s); setSuggestions([]); }}
-              >
-                {s}
-              </button>
+              >{s}</button>
             ))}
           </div>
         )}
 
         <div className="chat-input-bar">
-          <button
-            className="suggest-btn"
-            onClick={fetchSuggestions}
-            disabled={streaming}
-            title="입력 추천"
-          >💡</button>
+          <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천">
+            💡
+          </button>
           <textarea
             className="chat-input"
             placeholder={streaming ? '응답 중...' : '주인공으로 대사 입력...'}
@@ -378,138 +512,238 @@ export default function Chat() {
             rows={1}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
             }}
           />
           <button className="chat-send-btn" onClick={handleSend} disabled={streaming}>전송</button>
         </div>
       </div>
 
-      {/* 메모 패널 래퍼 */}
-      <div className="memo-wrapper">
+      {/* 오른쪽: 작가 AI 패널 */}
+      <div className="author-panel-wrapper">
         <button
           className="panel-toggle-btn"
           onClick={() => setPanelOpen(prev => !prev)}
-          aria-label={panelOpen ? '메모 패널 닫기' : '메모 패널 열기'}
+          aria-label={panelOpen ? '패널 닫기' : '패널 열기'}
         >
           {panelOpen ? '>' : '<'}
         </button>
 
-        <div className={`memo-slide ${panelOpen ? 'memo-slide--open' : ''}`}>
-          <aside className="memo-panel">
-            {world && (
-              <div className="world-summary">
-                <button
-                  className="world-summary__toggle"
-                  onClick={() => setWorldOpen(prev => !prev)}
-                >
-                  세계관 요약 {worldOpen ? '▲' : '▼'}
-                </button>
-                {worldOpen && (
-                  <div className="world-summary__body">
-                    {world.description && (
-                      <p className="world-summary__desc">{world.description}</p>
+        <div className={`author-panel-slide${panelOpen ? ' author-panel-slide--open' : ''}`}>
+          <div className="author-panel">
+
+            {panelView === 'author' ? (
+              <>
+                {/* 작가 이미지 + 스위처 오버레이 */}
+                <div className="author-panel__image">
+                  <img src={currentAuthor.image} alt={currentAuthor.displayName} />
+                  <div className="author-switcher author-panel__switcher-overlay">
+                    <button className="author-switch-btn" onClick={prevAuthor}>‹</button>
+                    <span className="author-name-badge">{currentAuthor.displayName}</span>
+                    <button className="author-switch-btn" onClick={nextAuthor}>›</button>
+                  </div>
+                </div>
+
+                {/* 태그 바 + 메모 버튼 */}
+                <div className="author-tag-bar">
+                  {AUTHOR_TAGS.map(tag => (
+                    <button
+                      key={tag.label}
+                      className={`author-tag${(tag.label === '#세계관' && showWorldInfo) || (tag.label === '#등장인물' && showCharInfo) ? ' author-tag--active' : ''}`}
+                      onClick={() => handleTagClick(tag)}
+                      disabled={authorLoading}
+                    >{tag.label}</button>
+                  ))}
+                  <button
+                    className={`memo-view-btn author-tag-bar__memo${panelView === 'memo' ? ' memo-view-btn--active' : ''}`}
+                    onClick={() => setPanelView('memo')}
+                  >
+                    🗒️ 메모
+                    {memos.length > 0 && <span className="memo-count">{memos.length}</span>}
+                  </button>
+                </div>
+
+                {/* 자동 피드백 토글 */}
+                <div className="auto-feedback-bar">
+                  <span className="auto-feedback-bar__label">자동 피드백</span>
+                  <button
+                    className={`auto-feedback-toggle${autoFeedback ? ' auto-feedback-toggle--on' : ''}`}
+                    onClick={() => setAutoFeedback(prev => !prev)}
+                  >
+                    {autoFeedback ? 'ON' : 'OFF'}
+                  </button>
+                  {!autoFeedback && (
+                    <button
+                      className="feedback-btn"
+                      onClick={handleFeedback}
+                      disabled={authorLoading || messages.length === 0}
+                    >피드백 받기</button>
+                  )}
+                </div>
+
+                {/* 세계관 카드 */}
+                {showWorldInfo && world && (
+                  <div className="world-info-card">
+                    {world.title && <div className="world-info-card__row"><span className="world-info-card__label">제목</span>{world.title}</div>}
+                    {world.genre && <div className="world-info-card__row"><span className="world-info-card__label">장르</span>{world.genre}</div>}
+                    {world.description && <div className="world-info-card__row"><span className="world-info-card__label">배경</span>{world.description}</div>}
+                    {world.setting && <div className="world-info-card__row"><span className="world-info-card__label">공간</span>{world.setting}</div>}
+                    {world.rules && <div className="world-info-card__row"><span className="world-info-card__label">규칙</span>{world.rules}</div>}
+                  </div>
+                )}
+
+                {/* 등장인물 카드 */}
+                {showCharInfo && dbCharacters.length > 0 && (
+                  <div className="world-info-card">
+                    {dbCharacters.map(c => (
+                      <div key={c.id ?? c.name} className="world-info-card__char-row">
+                        <span className="world-info-card__char-name">{c.name}</span>
+                        <span className="world-info-card__char-role">{c.role === 'protagonist' ? '주인공' : '조연'}</span>
+                        {c.personality && <span className="world-info-card__char-desc">{c.personality}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 작가 AI 채팅 */}
+                <div className="author-chat">
+                  <div className="author-chat__messages">
+                    {authorMessages.length === 0 && !authorLoading && (
+                      <p className="author-chat__empty">
+                        {currentAuthor.displayName}에게<br />소설에 대해 물어보세요
+                      </p>
                     )}
-                    {world.setting && (
-                      <div className="world-summary__field">
-                        <span className="world-summary__label">배경</span>
-                        <p className="world-summary__text">{world.setting}</p>
+                    {authorMessages.map(msg => (
+                      msg.role === 'ai' ? (
+                        <div key={msg.id} className="author-msg-group">
+                          <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
+                          <div className="author-msg author-msg--ai">{msg.content}</div>
+                        </div>
+                      ) : (
+                        <div key={msg.id} className="author-msg author-msg--user">{msg.content}</div>
+                      )
+                    ))}
+                    {authorLoading && (
+                      <div className="author-msg-group">
+                        <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
+                        <div className="author-msg author-msg--ai">
+                          <div className="typing-dots"><span /><span /><span /></div>
+                        </div>
                       </div>
                     )}
-                    {world.rules && (
-                      <div className="world-summary__field">
-                        <span className="world-summary__label">규칙</span>
-                        <p className="world-summary__text">{world.rules}</p>
+                    <div ref={authorBottomRef} />
+                  </div>
+                  <div className="author-chat__input-bar">
+                    <textarea
+                      className="author-chat__input"
+                      placeholder={`${currentAuthor.displayName}에게 물어보기...`}
+                      value={authorInput}
+                      rows={2}
+                      disabled={authorLoading}
+                      onChange={e => setAuthorInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAuthorMessage(); }
+                      }}
+                    />
+                    <button
+                      className="author-chat__send"
+                      onClick={handleSendAuthorMessage}
+                      disabled={authorLoading}
+                    >→</button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* 메모 뷰 */
+              <div className="memo-view">
+                <div className="memo-view__header">
+                  <span>🗒️ 메모</span>
+                  <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
+                </div>
+                {selectedMsgId && (
+                  <div className="memo-context">
+                    <div className="memo-context__header">
+                      <span className="memo-context__label">🔖 책갈피</span>
+                      <button className="memo-context__clear" onClick={clearBookmarkState}>×</button>
+                    </div>
+                    <textarea
+                      ref={memoInputRef}
+                      className="memo-input memo-context__input"
+                      placeholder="메모 작성..."
+                      value={memoInput}
+                      rows={3}
+                      onChange={e => setMemoInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddMemo(); }
+                      }}
+                    />
+                    <button className="memo-context__save" onClick={handleAddMemo}>
+                      {editingMemoId ? '수정' : '저장'}
+                    </button>
+                  </div>
+                )}
+
+                <div className="memo-view__list">
+                  {memos.length === 0 && (
+                    <p className="author-chat__empty">메모가 없습니다<br />말풍선을 우클릭해 추가하세요</p>
+                  )}
+                  {memos.map(memo => (
+                    <div
+                      key={memo.id}
+                      className={`memo-item memo-item--${memo.type}${memo.msgId ? ' memo-item--bookmark' : ''}`}
+                      onClick={() => handleMemoClick(memo)}
+                    >
+                      {memo.msgId && <p className="memo-item__ref">🔖 책갈피</p>}
+                      <div className="memo-item__body">
+                        <span>{memo.text}</span>
+                        <button
+                          className="memo-item__delete"
+                          onClick={e => { e.stopPropagation(); setMemos(prev => prev.filter(m => m.id !== memo.id)); }}
+                        >×</button>
                       </div>
-                    )}
+                    </div>
+                  ))}
+                </div>
+
+                {!selectedMsgId && (
+                  <div className="memo-add">
+                    <textarea
+                      className="memo-input"
+                      placeholder="메모 추가..."
+                      value={memoInput}
+                      rows={2}
+                      onChange={e => setMemoInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddMemo(); }
+                      }}
+                    />
+                    <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
                   </div>
                 )}
               </div>
             )}
-
-            <div className="char-list">
-              <p className="char-list__title">등장인물</p>
-              {dbCharacters.length > 0
-                ? dbCharacters.map(c => (
-                    <div key={c.id} className="char-item">
-                      ● {c.name} <span className="char-role">({c.role === 'protagonist' ? '주인공' : '조연'})</span>
-                    </div>
-                  ))
-                : <div className="char-item">● {persona.displayName} (작가 AI)</div>
-              }
-            </div>
-
-            <p className="memo-panel__title">작가 메모</p>
-
-            {selectedMsgId && (
-              <div className="memo-context">
-                <div className="memo-context__header">
-                  <span className="memo-context__label">🔖 책갈피</span>
-                  <button className="memo-context__clear" onClick={clearBookmarkState}>×</button>
-                </div>
-                <textarea
-                  ref={memoInputRef}
-                  className="memo-input memo-context__input"
-                  placeholder="메모 작성..."
-                  value={memoInput}
-                  rows={3}
-                  onChange={e => setMemoInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleAddMemo();
-                    }
-                  }}
-                />
-                <button className="memo-context__save" onClick={handleAddMemo}>{editingMemoId ? '수정' : '저장'}</button>
-              </div>
-            )}
-
-            <div className="memo-list">
-              {memos.map(memo => (
-                <div
-                  key={memo.id}
-                  className={`memo-item memo-item--${memo.type}${memo.msgId ? ' memo-item--bookmark' : ''}`}
-                  onClick={() => handleMemoClick(memo)}
-                >
-                  {memo.msgId && (
-                    <p className="memo-item__ref">🔖 책갈피</p>
-                  )}
-                  <div className="memo-item__body">
-                    <span>{memo.text}</span>
-                    <button
-                      className="memo-item__delete"
-                      onClick={e => { e.stopPropagation(); setMemos(prev => prev.filter(m => m.id !== memo.id)); }}
-                    >×</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {!selectedMsgId && (
-              <div className="memo-add">
-                <textarea
-                  className="memo-input"
-                  placeholder="메모 추가..."
-                  value={memoInput}
-                  rows={2}
-                  onChange={e => setMemoInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleAddMemo();
-                    }
-                  }}
-                />
-                <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
-              </div>
-            )}
-          </aside>
+          </div>
         </div>
       </div>
+
+      {/* 컨텍스트 메뉴 */}
+      {contextMenu.visible && (
+        <div
+          className="context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button className="context-menu__item" onClick={() => handleMemoFromContext(contextMenu.msgId)}>
+            메모
+          </button>
+          <button
+            className="context-menu__item context-menu__item--danger"
+            onClick={() => handleDeleteMsg(contextMenu.msgId)}
+          >
+            삭제
+          </button>
+        </div>
+      )}
     </div>
   );
 }
