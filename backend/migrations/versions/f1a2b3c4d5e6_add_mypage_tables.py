@@ -1,7 +1,7 @@
 """add_mypage_tables
 
 Revision ID: f1a2b3c4d5e6
-Revises: e1f2a3b4c5d6
+Revises: e5f6a7b8c9d0
 Create Date: 2026-06-11 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'f1a2b3c4d5e6'
-down_revision: Union[str, None] = 'c3d4e5f6a7b8'
+down_revision: Union[str, None] = 'e5f6a7b8c9d0'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

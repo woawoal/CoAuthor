@@ -8,6 +8,7 @@ import Editor from './pages/editor/ui';
 import StoryList from './pages/storylist/storylist';
 import ReadNovel from './pages/read/read';
 import Login from './pages/login/login';
+import VoiceProfile from './pages/voice/voice';
 import TokenDashboard from './pages/tokenDashboard/tokenDashboard';
 import MyPage from './pages/mypage/mypage';
 
@@ -35,6 +36,7 @@ function App() {
         <Route path="/read/:storyId" element={<ReadNovel />} />
         <Route path="/login/*" element={<Login />} />
         <Route path="/auth/*" element={<Login />} />
+        <Route path="/voice-profile" element={<VoiceProfile />} />
         <Route path="/tokenDashboard" element={<TokenDashboard />} />
         <Route path="/mypage" element={<MyPage />} />
       </Routes>
