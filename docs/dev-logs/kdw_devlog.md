@@ -2,6 +2,38 @@
 
 ## 오늘 한 일
 
+- `backend/app/services/tts.py` 신규 (F-AV-02)
+  - OpenAI tts-1 모델 연동
+  - 작가별 음성 매핑 (백야→onyx / 차로운→echo / 한여름→nova / 김도현→fable)
+  - narration 첫 문장 추출 로직 (`extract_first_sentence()`)
+
+- `backend/app/api/v1/endpoints/chats.py` 수정 (F-AV-02)
+  - `stream_response()`에 TTS 변환 로직 추가
+  - `parse_ai_response()` 후 narration 첫 문장 → TTS 변환 → base64 인코딩
+  - reply 이벤트에 `audio` 필드 추가 — 텍스트와 음성 동시 전달
+  - TTS 실패 시 음성 없이 정상 진행 (에러 핸들링)
+
+- `backend/app/api/v1/endpoints/authors.py` 수정 (F-AS-05)
+  - 작가 리액션 정적 데이터 추가 (5가지 상황: first_input / unexpected / good_scene / stuck / chapter_done)
+  - `GET /authors/{author_id}/reactions` 전체 리액션 세트 반환
+  - `GET /authors/{author_id}/reactions/{trigger}` 특정 상황 리액션 반환
+
+## 이슈 / 막힌 점
+
+- `chats.py` 수정본을 `dialogues.py`에 잘못 덮어씌우는 실수 발생
+  - `git checkout origin/dev -- backend/app/api/v1/endpoints/dialogues.py` 로 복구
+  - 이후 `chats.py` 올바르게 적용 후 재푸시
+
+## 내일 할 일
+
+- F-PR-02 사용자 취향 → 말투 조정 프롬프트 (PR-01 스키마 확정 후)
+
+---
+
+# 2025-06-09
+
+## 오늘 한 일
+
 - `data/world_tags.json` 신규 — 세계관 멀티라벨 마스터 태그 사전 (154개, 11개 카테고리)
 
 - `backend/app/services/world_tag_classifier.py` 신규 (F-WD-06)
