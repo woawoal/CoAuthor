@@ -23,7 +23,6 @@ from app.services import memory
 from app.services import consistency  # 설정 일관성 검수 (F-QC-01)
 from app.services.tts import synthesize, extract_first_sentence
 import base64
-import asyncio
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
     WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
@@ -442,6 +441,7 @@ async def stream_response(
                 except Exception as e:  # 요약 실패는 대화 흐름을 막지 않는다
                     logger.warning("요약 갱신 실패: %s", e)
 
+            # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
             reply_payload = json.dumps(
                 {"messageId": message_id, "narration": narration, "dialogue": dialogue,
                  "memories": relevant_memories, "consistency": consistency_result},
@@ -449,21 +449,21 @@ async def stream_response(
             )
             yield f"event: reply\ndata: {reply_payload}\n\n"
 
-            # F-AV-02: TTS — reply 전달 후 백그라운드로 음성 변환
-            # 완료되면 tts_ready 이벤트로 전달 (텍스트와 음성이 거의 동시에 도착)
+            # F-AV-02: TTS — narration 첫 문장을 음성으로 변환해 별도 event:audio로 전달
+            # 텍스트는 위에서 이미 나갔으므로 음성 변환(1~2s) 지연이 텍스트를 막지 않는다.
             try:
                 first_sentence = extract_first_sentence(narration)
                 if first_sentence:
+                    # author_id: character_id(str) → int 변환
                     _id_map = {"baekya": 1, "charoun": 2, "hanyeoreum": 3, "kimdohyeon": 4}
                     author_id = _id_map.get(character_id, 1)
                     audio_bytes = await synthesize(first_sentence, author_id)
-                    if audio_bytes:
-                        audio_b64 = base64.b64encode(audio_bytes).decode()
-                        tts_payload = json.dumps(
-                            {"messageId": message_id, "audio": audio_b64},
+                    if audio_bytes:  # 키 없거나 빈 결과면 음성 스킵
+                        audio_payload = json.dumps(
+                            {"messageId": message_id, "audio": base64.b64encode(audio_bytes).decode()},
                             ensure_ascii=False,
                         )
-                        yield f"event: tts_ready\ndata: {tts_payload}\n\n"
+                        yield f"event: audio\ndata: {audio_payload}\n\n"
             except Exception as e:
                 logger.warning("TTS 변환 실패 (음성 없이 진행): %s", e)
 
