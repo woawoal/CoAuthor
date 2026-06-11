@@ -217,7 +217,7 @@ function Main() {
                         </button>
                     )}
                     <button
-                        className="chatlist-btn"
+                        className="storylist-btn"
                         onClick={() => {
                             if (!userId) {
                                 alert('로그인 후 이용 가능합니다.');
@@ -225,7 +225,7 @@ function Main() {
                                 return;
                             }
 
-                            navigate('/chatlist');
+                            navigate('/storylist');
                         }}
                     >
                         내 소설 목록 →

@@ -4,7 +4,8 @@ import Main from './pages/main/main';
 import Worldview from './pages/worldview/worldview';
 import Intro from './pages/intro/intro';
 import Chat from './pages/chat/ui';
-import ChatList from './pages/chatlist/chatlist';
+import Editor from './pages/editor/ui';
+import StoryList from './pages/storylist/storylist';
 import ReadNovel from './pages/read/read';
 import Login from './pages/login/login';
 import TokenDashboard from './pages/tokenDashboard/tokenDashboard';
@@ -28,7 +29,8 @@ function App() {
         <Route path="/worldview" element={<Worldview />} />
         <Route path="/intro" element={<Intro />} />
         <Route path="/chat" element={<Chat />} />
-        <Route path="/chatlist" element={<ChatList />} />
+        <Route path="/editor" element={<Editor />} />
+        <Route path="/storylist" element={<StoryList />} />
         <Route path="/read/:storyId" element={<ReadNovel />} />
         <Route path="/login/*" element={<Login />} />
         <Route path="/auth/*" element={<Login />} />
