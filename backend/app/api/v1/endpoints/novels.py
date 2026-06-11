@@ -9,7 +9,7 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.world import World
 from app.models.novel import Novel, NovelStatus
 from app.schemas.novel import NovelUpdate, NovelResponse
-from app.core.personas import build_novel_system
+from app.core.personas import build_novel_system, AUTHOR_ID_MAP
 from app.services import llm
 from app.services.llm_router import LLMRouter
 
@@ -17,7 +17,6 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 llm_router = LLMRouter()
-_AUTHOR_ID_TO_PERSONA = {1: "baekya", 2: "charoun", 3: "hanyeoreum", 4: "kimdohyeon"}
 
 
 @router.get("/{session_id}/novel", response_model=NovelResponse)
@@ -63,7 +62,7 @@ async def generate_novel(
     if world:
         world_desc = "\n".join(p for p in (world.setting, world.description) if p)
 
-    persona_id = _AUTHOR_ID_TO_PERSONA.get(session.author_id, "")
+    persona_id = AUTHOR_ID_MAP.get(session.author_id, "")
 
     # 대화 로그 → LLMRouter 입력 형식 (문체 RAG few-shot은 generate_novel 내부에서 주입)
     dialogue_history = [
@@ -149,7 +148,7 @@ async def convert_dialogues_to_novel(
     if world:
         world_desc = "\n".join(p for p in (world.setting, world.description) if p)
 
-    persona_id = _AUTHOR_ID_TO_PERSONA.get(session.author_id, "")
+    persona_id = AUTHOR_ID_MAP.get(session.author_id, "")
 
     content = ""
     if dialogues:

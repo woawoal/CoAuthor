@@ -20,3 +20,4 @@ class User(Base):
     worlds: Mapped[list["World"]] = relationship(back_populates="user", cascade="all, delete-orphan")
     sessions: Mapped[list["Session"]] = relationship(back_populates="user")
     api_logs: Mapped[list["ApiLog"]] = relationship(back_populates="user")
+    saved_sentences: Mapped[list["SavedSentence"]] = relationship(back_populates="user", cascade="all, delete-orphan")

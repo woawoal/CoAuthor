@@ -16,6 +16,7 @@ F-AV-02 첫 문장 낭독 — OpenAI TTS 연동.
 
 import re
 from app.core.config import settings
+from app.core.personas import AUTHOR_ID_MAP as _AUTHOR_ID_MAP
 
 _client = None
 
@@ -38,14 +39,6 @@ _VOICE_MAP = {
     "charoun":    "echo",
     "hanyeoreum": "nova",
     "kimdohyeon": "fable",
-}
-
-# author_id(int) → persona_id(str)
-_AUTHOR_ID_MAP = {
-    1: "baekya",
-    2: "charoun",
-    3: "hanyeoreum",
-    4: "kimdohyeon",
 }
 
 DEFAULT_VOICE = "alloy"

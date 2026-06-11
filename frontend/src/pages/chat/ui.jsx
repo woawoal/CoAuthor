@@ -7,6 +7,8 @@ import {
 } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
+import { authClient } from '../../lib/auth';
+import { saveSentence } from '../../lib/mypageApi';
 import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
@@ -126,6 +128,14 @@ export default function Chat() {
   const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdRaw));
   useAuthorTheme(authorId);
 
+  // manuscriptContent: state로 오면 localStorage에 저장, 없으면 localStorage에서 복원
+  useEffect(() => {
+    if (!chatId || chatId === 'room_001') return;
+    if (manuscriptContent) {
+      localStorage.setItem(`manuscript_${chatId}`, manuscriptContent);
+    }
+  }, [chatId, manuscriptContent]);
+
   // 스토리 채팅 작가 (고정)
   const storyAuthor = AUTHOR_MAP[authorId] ?? AUTHOR_MAP[1];
 
@@ -145,7 +155,11 @@ export default function Chat() {
   const [ending, setEnding] = useState(false);
   const [converting, setConverting] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
-  const [importedNarration] = useState(manuscriptContent ?? null);
+  const [importedNarration] = useState(() => {
+    if (manuscriptContent) return manuscriptContent;
+    if (chatId && chatId !== 'room_001') return localStorage.getItem(`manuscript_${chatId}`) ?? null;
+    return null;
+  });
 
   // ── 오른쪽 패널 상태 ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(true);
@@ -167,6 +181,10 @@ export default function Chat() {
   // ── 자동 피드백 상태 ─────────────────────────────────────
   const [autoFeedback, setAutoFeedback] = useState(false);
 
+  // ── 문장 저장 상태 ───────────────────────────────────────
+  const [userId, setUserId] = useState(null);
+  const [savedMsgId, setSavedMsgId] = useState(null);
+
   // ── Refs ─────────────────────────────────────────────────
   const bottomRef = useRef(null);
   const esRef = useRef(null);
@@ -174,6 +192,16 @@ export default function Chat() {
   const memoInputRef = useRef(null);
   const awaitingRecommendRef = useRef(false);
   const feedbackTimerRef = useRef(null);
+
+  // ── userId 로드 ──────────────────────────────────────────
+  useEffect(() => {
+    authClient.getSession().then(s => setUserId(s.data?.user?.id ?? null));
+  }, []);
+
+  // ── 마지막 사용 모드 기록 ────────────────────────────────
+  useEffect(() => {
+    if (chatId && chatId !== 'room_001') localStorage.setItem(`session_mode_${chatId}`, 'chat');
+  }, [chatId]);
 
   // ── 메모 Redis 로드 ───────────────────────────────────────
   useEffect(() => {
@@ -421,6 +449,15 @@ export default function Chat() {
     handleSendAuthorMessage(prompt);
   }
 
+  async function handleSaveSentence(msgId, content) {
+    if (!userId) return;
+    try {
+      await saveSentence({ userId, content, sessionId: chatId !== 'room_001' ? chatId : null });
+      setSavedMsgId(msgId);
+      setTimeout(() => setSavedMsgId(null), 1500);
+    } catch (e) { console.error(e); }
+  }
+
   async function handleSwitchToEditor() {
     if (!chatId || chatId === 'room_001') return;
     setConverting(true);
@@ -616,7 +653,16 @@ export default function Chat() {
                     {authorMessages.map(msg => (
                       msg.role === 'ai' ? (
                         <div key={msg.id} className="author-msg-group">
-                          <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
+                          <div className="author-msg-group__top">
+                            <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
+                            <button
+                              className={`save-sentence-btn${savedMsgId === msg.id ? ' save-sentence-btn--saved' : ''}`}
+                              onClick={() => handleSaveSentence(msg.id, msg.content)}
+                              title="문장 보관함에 저장"
+                            >
+                              {savedMsgId === msg.id ? '✓' : '💾'}
+                            </button>
+                          </div>
                           <div className="author-msg author-msg--ai">{msg.content}</div>
                         </div>
                       ) : (
