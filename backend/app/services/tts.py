@@ -15,18 +15,22 @@ F-AV-02 첫 문장 낭독 — OpenAI TTS 연동.
 """
 
 import re
-from openai import AsyncOpenAI
 from app.core.config import settings
+from app.core.personas import AUTHOR_ID_MAP as _AUTHOR_ID_MAP
 
 _client = None
 
 
 def _get_client():
     """OpenAI 클라이언트 lazy 초기화. 키 없으면 None(=TTS 스킵).
-    모듈 import 시 클라이언트를 만들지 않아야 키 미설정 환경(CI·타엔진 팀원)에서도 앱이 뜬다."""
+    openai 패키지 미설치 환경(CI·타엔진 팀원)에서도 앱이 뜨도록 import를 지연."""
     global _client
     if _client is None and settings.OPENAI_API_KEY:
-        _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        try:
+            from openai import AsyncOpenAI
+            _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        except ImportError:
+            return None
     return _client
 
 # 작가별 음성 매핑
@@ -35,14 +39,6 @@ _VOICE_MAP = {
     "charoun":    "echo",
     "hanyeoreum": "nova",
     "kimdohyeon": "fable",
-}
-
-# author_id(int) → persona_id(str)
-_AUTHOR_ID_MAP = {
-    1: "baekya",
-    2: "charoun",
-    3: "hanyeoreum",
-    4: "kimdohyeon",
 }
 
 DEFAULT_VOICE = "alloy"

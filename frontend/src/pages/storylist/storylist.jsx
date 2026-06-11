@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSessions, deleteSession } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
-import './chatlist.css';
+import './storylist.css';
 
 const STATUS_LABEL = {
   active: '진행 중',
@@ -21,7 +21,7 @@ function GenreTags({ genre }) {
   if (!genre) return null;
   const tags = genre.split(/[,/]/).map(t => t.trim()).filter(Boolean);
   return (
-    <div className="chatlist-card__tags">
+    <div className="storylist-card__tags">
       {tags.map(tag => <span key={tag} className="genre-tag">#{tag}</span>)}
     </div>
   );
@@ -32,12 +32,11 @@ function formatDate(iso) {
   return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export default function ChatList() {
+export default function StoryList() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 목록은 작가가 여러 명 — 마지막으로 쓴 작가 테마(localStorage) 유지
   useAuthorTheme(resolveAuthorId(null));
 
   useEffect(() => {
@@ -48,7 +47,9 @@ export default function ChatList() {
   }, []);
 
   const handleResume = (session) => {
-    navigate('/chat', { state: { chatId: session.id, authorId: session.author_id } });
+    const mode = localStorage.getItem(`session_mode_${session.id}`) ?? 'chat';
+    const dest = mode === 'editor' ? '/editor' : '/chat';
+    navigate(dest, { state: { chatId: session.id, authorId: session.author_id } });
   };
 
   const handleRead = (session) => {
@@ -66,45 +67,45 @@ export default function ChatList() {
   };
 
   return (
-    <div className="chatlist-container">
-      <div className="chatlist-wrapper">
-        <header className="chatlist-header">
+    <div className="storylist-container">
+      <div className="storylist-wrapper">
+        <header className="storylist-header">
           <button className="back-btn" onClick={() => navigate('/')}>← 돌아가기</button>
-          <h2 className="chatlist-title">내 소설 목록</h2>
+          <h2 className="storylist-title">내 소설 목록</h2>
         </header>
 
-        {loading && <p className="chatlist-empty">불러오는 중...</p>}
+        {loading && <p className="storylist-empty">불러오는 중...</p>}
 
         {!loading && sessions.length === 0 && (
-          <p className="chatlist-empty">아직 작성한 소설이 없어요.<br />작가를 선택해 첫 세계관을 만들어보세요.</p>
+          <p className="storylist-empty">아직 작성한 소설이 없어요.<br />작가를 선택해 첫 세계관을 만들어보세요.</p>
         )}
 
-        <div className="chatlist-grid">
+        <div className="storylist-grid">
           {sessions.map((s) => (
-            <div key={s.id} className="chatlist-card">
-              <div className="chatlist-card__body">
-                <h3 className="chatlist-card__title">{s.world_title}</h3>
+            <div key={s.id} className="storylist-card">
+              <div className="storylist-card__body">
+                <h3 className="storylist-card__title">{s.world_title}</h3>
                 <GenreTags genre={s.world_genre} />
-                <div className="chatlist-card__meta">
+                <div className="storylist-card__meta">
                   <span className={`status-badge status-badge--${s.status}`}>
                     {STATUS_LABEL[s.status] ?? s.status}
                   </span>
                   {s.author_id && (
-                    <span className="chatlist-card__author">✒ {AUTHOR_NAME[s.author_id]}</span>
+                    <span className="storylist-card__author">✒ {AUTHOR_NAME[s.author_id]}</span>
                   )}
-                  <span className="chatlist-card__date">{formatDate(s.started_at)}</span>
+                  <span className="storylist-card__date">{formatDate(s.started_at)}</span>
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {s.status === 'completed' && (
-                  <button className="chatlist-card__btn chatlist-card__btn--read" onClick={() => handleRead(s)}>
+                  <button className="storylist-card__btn storylist-card__btn--read" onClick={() => handleRead(s)}>
                     읽기
                   </button>
                 )}
-                <button className="chatlist-card__btn" onClick={() => handleResume(s)}>
+                <button className="storylist-card__btn" onClick={() => handleResume(s)}>
                   이어쓰기 →
                 </button>
-                <button className="chatlist-card__btn chatlist-card__btn--delete" onClick={() => handleDelete(s)}>
+                <button className="storylist-card__btn storylist-card__btn--delete" onClick={() => handleDelete(s)}>
                   삭제
                 </button>
               </div>

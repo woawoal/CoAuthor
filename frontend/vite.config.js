@@ -26,12 +26,16 @@ export default defineConfig(({ mode }) => {
     resolve: { alias: neonAlias },
     server: {
       proxy: {
-        '/api': {
+        '/api/v1': {
           target: apiTarget,
           changeOrigin: true,
           headers: {
             'ngrok-skip-browser-warning': 'true',
           },
+        },
+        '/health': {
+          target: apiTarget,
+          changeOrigin: true,
         },
       },
     },

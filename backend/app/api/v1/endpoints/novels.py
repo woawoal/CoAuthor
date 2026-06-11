@@ -9,7 +9,7 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.world import World
 from app.models.novel import Novel, NovelStatus
 from app.schemas.novel import NovelUpdate, NovelResponse
-from app.core.personas import build_novel_system
+from app.core.personas import build_novel_system, AUTHOR_ID_MAP
 from app.services import llm
 from app.services.llm_router import LLMRouter
 
@@ -17,7 +17,6 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 llm_router = LLMRouter()
-_AUTHOR_ID_TO_PERSONA = {1: "baekya", 2: "charoun", 3: "hanyeoreum", 4: "kimdohyeon"}
 
 
 @router.get("/{session_id}/novel", response_model=NovelResponse)
@@ -63,7 +62,7 @@ async def generate_novel(
     if world:
         world_desc = "\n".join(p for p in (world.setting, world.description) if p)
 
-    persona_id = _AUTHOR_ID_TO_PERSONA.get(session.author_id, "")
+    persona_id = AUTHOR_ID_MAP.get(session.author_id, "")
 
     # 대화 로그 → LLMRouter 입력 형식 (문체 RAG few-shot은 generate_novel 내부에서 주입)
     dialogue_history = [
@@ -92,6 +91,96 @@ async def generate_novel(
     await db.flush()
     await db.refresh(novel)
     logger.info("소설 초안 생성: %s (session=%s, %d자)", novel.id, session_id, len(content))
+    return novel
+
+
+@router.put("/{session_id}/novel/draft", response_model=NovelResponse)
+async def save_draft(session_id: uuid.UUID, body: NovelUpdate, db: AsyncSession = Depends(get_db)):
+    """원고 초안 upsert — 없으면 생성, 있으면 업데이트."""
+    result = await db.execute(select(Novel).where(Novel.session_id == session_id))
+    novel = result.scalar_one_or_none()
+    if novel:
+        for field, value in body.model_dump(exclude_none=True).items():
+            setattr(novel, field, value)
+    else:
+        session_result = await db.execute(select(Session).where(Session.id == session_id))
+        session = session_result.scalar_one_or_none()
+        world_title = "제목 없음"
+        if session:
+            world_result = await db.execute(select(World).where(World.id == session.world_id))
+            w = world_result.scalar_one_or_none()
+            if w and w.title:
+                world_title = w.title
+        novel = Novel(
+            session_id=session_id,
+            title=body.title or world_title,
+            content=body.content or "",
+            status=NovelStatus.DRAFT,
+        )
+        db.add(novel)
+    await db.flush()
+    await db.refresh(novel)
+    return novel
+
+
+@router.post("/{session_id}/novel/convert", response_model=NovelResponse, status_code=201)
+async def convert_dialogues_to_novel(
+    session_id: uuid.UUID,
+    use_style: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """진행 중인 세션의 대화를 소설 형식으로 변환 (상태 제한 없음, 항상 upsert)."""
+    session_result = await db.execute(select(Session).where(Session.id == session_id))
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    dialogues_result = await db.execute(
+        select(Dialogue)
+        .where(Dialogue.session_id == session_id)
+        .order_by(Dialogue.turn_order)
+    )
+    dialogues = dialogues_result.scalars().all()
+
+    world_result = await db.execute(select(World).where(World.id == session.world_id))
+    world = world_result.scalar_one_or_none()
+    world_desc = ""
+    if world:
+        world_desc = "\n".join(p for p in (world.setting, world.description) if p)
+
+    persona_id = AUTHOR_ID_MAP.get(session.author_id, "")
+
+    content = ""
+    if dialogues:
+        dialogue_history = [
+            {"role": "user" if d.speaker_type == SpeakerType.USER else "assistant", "content": d.content}
+            for d in dialogues
+        ]
+        try:
+            content = await llm_router.generate_novel(
+                dialogue_history, world_desc, persona_id=persona_id, use_style=use_style
+            )
+        except Exception as e:
+            logger.error("소설 변환 LLM 실패 (session=%s): %s", session_id, e)
+            content = "\n\n".join(d.content for d in dialogues)
+
+    existing = await db.execute(select(Novel).where(Novel.session_id == session_id))
+    novel = existing.scalar_one_or_none()
+    if novel:
+        if content:
+            novel.content = content
+    else:
+        novel = Novel(
+            session_id=session_id,
+            title=(world.title if world and world.title else "제목 없음"),
+            content=content,
+            status=NovelStatus.DRAFT,
+        )
+        db.add(novel)
+
+    await db.flush()
+    await db.refresh(novel)
+    logger.info("소설 변환 완료: %s (session=%s, %d자)", novel.id, session_id, len(content))
     return novel
 
 
