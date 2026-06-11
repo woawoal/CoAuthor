@@ -227,14 +227,6 @@ function Main() {
                 <header className="header">
                     <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />
                     <h1 className="logo">NodeVelture</h1>
-
-                    <div className="header-auth">
-                        {!userId && (
-                            <button className="btn" onClick={() => navigate('/login')}>
-                                로그인
-                            </button>
-                        )}
-                    </div>
                 </header>
 
                 {/* 메인 타이틀 영역 */}
@@ -322,9 +314,13 @@ function Main() {
                             토큰 대시보드
                         </button>
                     )}
-                    {userId && (
+                    {userId ? (
                         <button className="btn main-logout-btn" onClick={handleLogout}>
                             로그아웃
+                        </button>
+                    ) : (
+                        <button className="btn main-logout-btn" onClick={() => navigate('/login')}>
+                            로그인
                         </button>
                     )}
                 </div>
