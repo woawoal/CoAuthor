@@ -405,7 +405,9 @@ async def stream_response(
                 session_uuid = uuid.UUID(chat_id)
                 async with AsyncSessionLocal() as save_session:
                     session_result = await save_session.execute(select(Session).where(Session.id == session_uuid))
-                    if session_result.scalar_one_or_none():
+                    session = session_result.scalar_one_or_none()
+
+                    if session:
                         count_result = await save_session.execute(
                             select(func.count()).select_from(Dialogue).where(Dialogue.session_id == session_uuid)
                         )
@@ -420,6 +422,7 @@ async def stream_response(
 
                         api_log = ApiLog(
                             session_id=session_uuid,
+                            user_id=session.user_id,
                             endpoint=f"GET /chats/{chat_id}/stream",
                             model_used=PRIMARY_MODEL,
                             prompt_tokens=prompt_tokens,

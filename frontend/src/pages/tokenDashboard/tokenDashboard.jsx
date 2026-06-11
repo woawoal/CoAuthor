@@ -14,9 +14,21 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 
+const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+};
+
 function TokenDashboard() {
-    const [startDate, setStartDate] = useState('2026-06-01');
-    const [endDate, setEndDate] = useState('2026-06-10');
+    const today = new Date();
+    const weekAgo = new Date();
+    weekAgo.setDate(today.getDate() - 7);
+
+    const [startDate, setStartDate] = useState(formatDate(weekAgo));
+    const [endDate, setEndDate] = useState(formatDate(today));
     const [daily, setDaily] = useState([]);
     const [users, setUsers] = useState([]);
 
