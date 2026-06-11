@@ -23,6 +23,7 @@ class Session(Base):
     author_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[SessionStatus] = mapped_column(SAEnum(SessionStatus), default=SessionStatus.ACTIVE)
     started_at: Mapped[datetime] = mapped_column(default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
     ended_at: Mapped[datetime | None] = mapped_column(nullable=True)
     context_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_state: Mapped[str | None] = mapped_column(Text, nullable=True)

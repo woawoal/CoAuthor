@@ -9,6 +9,7 @@ import StoryList from './pages/storylist/storylist';
 import ReadNovel from './pages/read/read';
 import Login from './pages/login/login';
 import TokenDashboard from './pages/tokenDashboard/tokenDashboard';
+import MyPage from './pages/mypage/mypage';
 
 function App() {
   useEffect(() => {
@@ -35,6 +36,7 @@ function App() {
         <Route path="/login/*" element={<Login />} />
         <Route path="/auth/*" element={<Login />} />
         <Route path="/tokenDashboard" element={<TokenDashboard />} />
+        <Route path="/mypage" element={<MyPage />} />
       </Routes>
     </Router>
   );

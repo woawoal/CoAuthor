@@ -7,6 +7,7 @@ def build_author_system(
     world_context: str = "",
     story_summary: str = "",
     memos: list = None,
+    prev_questions: list = None,
 ) -> str:
     """
     오른쪽 패널 작가 AI 채팅용 시스템 프롬프트.
@@ -32,6 +33,11 @@ def build_author_system(
     story_section = f"\n\n[지금까지의 줄거리]\n{story_summary}" if story_summary else ""
     world_section = f"\n\n[세계관]\n{world_context}" if world_context else ""
 
+    prev_section = ""
+    if prev_questions:
+        q_lines = "\n".join(f"- {q}" for q in prev_questions)
+        prev_section = f"\n\n[이전 작가와 나눈 대화 맥락 — 사용자가 논의한 주요 질문들]\n{q_lines}"
+
     return f"""\
 {base}
 
@@ -48,7 +54,7 @@ def build_author_system(
 
 말투는 위의 작가 페르소나({author['name']}) 그대로 유지한다.
 한국어로만 답한다.
-{world_section}{story_section}{memos_section}"""
+{world_section}{story_section}{memos_section}{prev_section}"""
 
 
 def build_author_messages(
@@ -58,6 +64,7 @@ def build_author_messages(
     memos: list,
     author_history: list[dict],
     user_input: str,
+    prev_questions: list = None,
 ) -> list[dict]:
     """작가 AI 채팅용 messages 배열 구성."""
     system = build_author_system(
@@ -65,6 +72,7 @@ def build_author_messages(
         world_context=world_context,
         story_summary=story_summary,
         memos=memos,
+        prev_questions=prev_questions,
     )
 
     messages: list[dict] = [{"role": "system", "content": system}]

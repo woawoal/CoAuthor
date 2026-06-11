@@ -40,8 +40,10 @@ def key_turn(chat_id: str) -> str:
 def key_memos(chat_id: str) -> str:
     return f"session:{chat_id}:memos"
 
-def key_author_history(chat_id: str) -> str:
-    return f"session:{chat_id}:author_history"
+def key_author_history(chat_id: str, author_id: str) -> str:
+    return f"session:{chat_id}:author_history:{author_id}"
+
+_KNOWN_AUTHORS = ["baekya", "charoun", "hanyeoreum", "kimdohyeon"]
 
 
 # ── 스토리 컨텍스트 조회 (DB fallback 포함) ──────────────────
@@ -151,13 +153,27 @@ async def sync_to_db(chat_id: str):
         logger.error("DB 동기화 실패 - chat_id=%s: %s", chat_id, e)
 
 
-# ── 작가 AI 히스토리 갱신 ─────────────────────────────────────
-async def get_author_history(chat_id: str) -> list[dict]:
-    raw = await redis_client.lrange(key_author_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
+# ── 작가 AI 히스토리 (작가별 분리) ───────────────────────────
+async def get_author_history(chat_id: str, author_id: str) -> list[dict]:
+    raw = await redis_client.lrange(key_author_history(chat_id, author_id), 0, RECENT_DIALOGUE_LIMIT - 1)
     return [json.loads(item) for item in raw]
 
 
-async def append_author_history(chat_id: str, role: str, content: str):
+async def append_author_history(chat_id: str, author_id: str, role: str, content: str):
     entry = json.dumps({"role": role, "content": content}, ensure_ascii=False)
-    await redis_client.lpush(key_author_history(chat_id), entry)
-    await redis_client.ltrim(key_author_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
+    await redis_client.lpush(key_author_history(chat_id, author_id), entry)
+    await redis_client.ltrim(key_author_history(chat_id, author_id), 0, RECENT_DIALOGUE_LIMIT - 1)
+
+
+async def get_prev_user_questions(chat_id: str, exclude_author: str) -> list[str]:
+    """다른 작가들과 나눈 대화에서 사용자 메시지만 추출 — 작가 전환 시 상황 전달용."""
+    questions: list[str] = []
+    for author_id in _KNOWN_AUTHORS:
+        if author_id == exclude_author:
+            continue
+        raw = await redis_client.lrange(key_author_history(chat_id, author_id), 0, 19)
+        for item in raw:
+            h = json.loads(item)
+            if h["role"] == "user":
+                questions.append(h["content"])
+    return questions[-5:]  # 가장 최근 5개만

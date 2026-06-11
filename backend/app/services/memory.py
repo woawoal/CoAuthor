@@ -24,7 +24,7 @@ from app.models.dialogue import Dialogue
 logger = logging.getLogger(__name__)
 
 # 요약이 무한정 길어지지 않도록 상한(문자). 넘으면 모델이 압축하도록 유도.
-SUMMARY_CHAR_BUDGET = 800
+SUMMARY_CHAR_BUDGET = 600
 
 _SUMMARY_SYSTEM = (
     "너는 소설 협업 대화의 '기억 관리자'다. 이어지는 창작 대화가 길어져도 "

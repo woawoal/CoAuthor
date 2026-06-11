@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { sendAuthorMessage, getMemos, saveMemos } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
+import { authClient } from '../../lib/auth';
+import { saveSentence } from '../../lib/mypageApi';
 import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
@@ -53,6 +55,8 @@ export default function Editor() {
   const [panelView, setPanelView] = useState('author');
   const [autoFeedback, setAutoFeedback] = useState(false);
   const [authorMessages, setAuthorMessages] = useState([]);
+  const [userId, setUserId] = useState(null);
+  const [savedMsgId, setSavedMsgId] = useState(null);
   const [authorInput, setAuthorInput] = useState('');
   const [authorLoading, setAuthorLoading] = useState(false);
   const [showWorldInfo, setShowWorldInfo] = useState(false);
@@ -68,6 +72,11 @@ export default function Editor() {
   const saveTimerRef = useRef(null);
   const feedbackTimerRef = useRef(null);
   const awaitingRecommendRef = useRef(false);
+
+  // ── userId 로드 ──────────────────────────────────────────
+  useEffect(() => {
+    authClient.getSession().then(s => setUserId(s.data?.user?.id ?? null));
+  }, []);
 
   // ── 세션/세계관 로드 ──────────────────────────────────────
   useEffect(() => {
@@ -103,6 +112,11 @@ export default function Editor() {
     if (!memosLoadedRef.current) return;
     saveMemos(chatId, memos);
   }, [memos]);
+
+  // ── 마지막 사용 모드 기록 ────────────────────────────────
+  useEffect(() => {
+    if (chatId) localStorage.setItem(`session_mode_${chatId}`, 'editor');
+  }, [chatId]);
 
   // ── 자동 저장 (2초 debounce) ─────────────────────────────
   useEffect(() => {
@@ -140,6 +154,15 @@ export default function Editor() {
     } catch {
       setSaveStatus('unsaved');
     }
+  }
+
+  async function handleSaveSentence(msgId, content) {
+    if (!userId) return;
+    try {
+      await saveSentence({ userId, content, sessionId: chatId ?? null });
+      setSavedMsgId(msgId);
+      setTimeout(() => setSavedMsgId(null), 1500);
+    } catch (e) { console.error(e); }
   }
 
   // ── 피드백 요청 ───────────────────────────────────────────
@@ -215,6 +238,7 @@ export default function Editor() {
           </div>
           <div className="editor-header__actions">
             <span className={`editor-save-status editor-save-status--${saveStatus}`}>{saveLabel}</span>
+            <button className="editor-save-btn" onClick={saveDraft} disabled={saveStatus === 'saving'}>저장</button>
             <button className="mode-switch-btn" onClick={handleSwitchToChat}>← 참여형</button>
             <button className="editor-back-btn" onClick={() => navigate('/storylist')}>목록</button>
           </div>
@@ -330,7 +354,16 @@ export default function Editor() {
                     {authorMessages.map(msg => (
                       msg.role === 'ai' ? (
                         <div key={msg.id} className="author-msg-group">
-                          <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
+                          <div className="author-msg-group__top">
+                            <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
+                            <button
+                              className={`save-sentence-btn${savedMsgId === msg.id ? ' save-sentence-btn--saved' : ''}`}
+                              onClick={() => handleSaveSentence(msg.id, msg.content)}
+                              title="문장 보관함에 저장"
+                            >
+                              {savedMsgId === msg.id ? '✓' : '💾'}
+                            </button>
+                          </div>
                           <div className="author-msg author-msg--ai">{msg.content}</div>
                         </div>
                       ) : (
