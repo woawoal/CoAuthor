@@ -252,12 +252,21 @@ export default function Chat() {
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
 
-    await sendMessage(chatId, { content: userText, character_id: persona.characterId });
-
+    // 전송 즉시 '작가가 쓰는 중…' 피드백을 띄운다(백엔드 왕복을 기다리지 않음) → 체감 지연 제거
     const streamMsgId = `stream_${Date.now()}`;
     setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: persona.displayName, text: '' }]);
     setStreaming(true);
     showAvatar('thinking', '이야기, 쓰는 중…', 0);  // 응답 동안 '쓰는 중' 유지(자동 사라짐 X)
+
+    try {
+      await sendMessage(chatId, { content: userText, character_id: persona.characterId });
+    } catch (err) {
+      console.error('메시지 전송 실패:', err);
+      setStreaming(false);
+      setAvatarBubble(b => (b?.kind === 'thinking' ? null : b));  // '쓰는 중' 정리
+      setMessages(prev => prev.filter(m => m.id !== streamMsgId));  // 빈 말풍선 제거
+      return;
+    }
 
     const worldContext = buildWorldContext(world, dbCharacters);
     esRef.current = connectChatStream(
