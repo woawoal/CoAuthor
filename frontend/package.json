@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@neondatabase/neon-js": "^0.6.2-beta",
+    "better-auth": "^1.6.16",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
