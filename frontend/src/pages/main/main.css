@@ -1,4 +1,8 @@
 /* src/pages/main/main.css */
+.app-container {
+    display: flex;
+}
+
 .header-auth {
     position: absolute;
     right: 10px;
@@ -146,9 +150,7 @@
 }
 
 /* 하단 스타일 */
-.speech-text,
-.dashboard-btn,
-.storylist-btn {
+.speech-text {
     padding: 18px;
     color: var(--text-main);
     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -161,19 +163,49 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    margin-top: auto;
     letter-spacing: 0.5px;
 }
 
-.dashboard-btn,
-.storylist-btn {
-    cursor: pointer;
+.author-panel-wrapper {
+    margin-left: auto;
+    display: flex;
+    justify-content: flex-end;
 }
 
-.dashboard-btn:hover,
-.storylist-btn:hover {
-    background-color: color-mix(in srgb, var(--theme-color) 18%, transparent);
-    border-color: var(--theme-color);
+/* ── 토글 버튼 ── */
+.panel-resize-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-size: 24px;
+    color: var(--text-muted);
+    cursor: col-resize;
+    background: transparent;
+}
+
+.panel-resize-handle:hover {
+    background: color-mix(in srgb, var(--theme-color) 25%, transparent);
+}
+
+.author-panel-slide {
+    flex: 0 0 400px;
+    min-height: 100vh;
+    overflow: hidden;
+    background: var(--card-main);
+    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    transition: none;
+}
+
+.author-panel {
+    width: 100%;
+    height: 100%;
+    padding: 16px;
+    box-sizing: border-box;
+
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
 
 /* 말투 설정 팝업 */

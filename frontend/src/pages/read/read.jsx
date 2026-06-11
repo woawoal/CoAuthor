@@ -44,7 +44,8 @@ export default function ReadNovel() {
   const [novel, setNovel] = useState(null);
   const [session, setSession] = useState(null);
   const [world, setWorld] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const [videoEnded, setVideoEnded] = useState(false);
   const [error, setError] = useState(null);
   const [fontSize, setFontSize] = useState(16);
   const [fontPanelOpen, setFontPanelOpen] = useState(false);
@@ -71,7 +72,7 @@ export default function ReadNovel() {
       } catch (err) {
         setError(err.message);
       } finally {
-        setLoading(false);
+        setDataLoaded(true);
       }
     }
     load();
@@ -108,10 +109,22 @@ export default function ReadNovel() {
     URL.revokeObjectURL(url);
   };
 
-  if (loading) {
+  const showLoading = !(dataLoaded && videoEnded);
+  const loadingAuthorId = resolveAuthorId(null);
+  const loadingVideoSrc = `/assets/author${loadingAuthorId}/loading.mp4`;
+
+  if (showLoading) {
     return (
       <div className="read-page">
-        <div className="read-empty"><p>소설을 불러오는 중...</p></div>
+        <div className="read-loading-video-wrap">
+          <video
+            className="read-loading-video"
+            src={loadingVideoSrc}
+            autoPlay
+            playsInline
+            onEnded={() => setVideoEnded(true)}
+          />
+        </div>
       </div>
     );
   }

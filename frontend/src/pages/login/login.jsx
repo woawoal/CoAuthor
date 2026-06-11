@@ -11,17 +11,30 @@ function Login() {
     return (
         <div className="app-container">
             <div className="app-wrapper">
-                <div className="login-wrapper">
-                    <header className="header">
-                        <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />
-                        <h1 className="logo">NodeVelture</h1>
-                    </header>
+                <div className="login-layout">
 
-                    <AuthView pathname={location.pathname} />
+                    <div className="login-left">
+                        <div className="login-wrapper">
+                            <header className="header">
+                                <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />
+                                <h1 className="logo">NodeVelture</h1>
+                            </header>
 
-                    <button className="btn" onClick={() => navigate('/')}>
-                        main
-                    </button>
+                            <AuthView pathname={location.pathname} />
+
+                            <button className="main-btn" onClick={() => navigate('/')}>
+                                main
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="login-right">
+                        <img
+                            src="/assets/login.png"
+                            alt="NodeVelture Authors"
+                            className="login-visual"
+                        />
+                    </div>
                 </div>
             </div>
         </div>
