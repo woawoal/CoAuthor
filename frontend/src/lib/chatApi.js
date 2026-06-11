@@ -8,6 +8,17 @@ export async function sendMessage(chatId, payload) {
   });
 }
 
+// F-AS-05 작가 리액션 — 사용자 대사 → 작가 짧은 반응 한 줄(아바타 자막용)
+export async function getAuthorReaction(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/reaction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return { reaction: '', emotion: '' };
+  return res.json();
+}
+
 export function connectChatStream(
   chatId,
   { content, character_id, mode = "author", world_context = "", check_consistency = false },

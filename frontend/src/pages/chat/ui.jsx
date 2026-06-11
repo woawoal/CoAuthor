@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
-  getSuggestions, sendAuthorMessage, getMemos, saveMemos,
+  getSuggestions, sendAuthorMessage, getMemos, saveMemos, getAuthorReaction,
 } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
@@ -150,6 +150,8 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
+  const [reaction, setReaction] = useState('');     // F-AS-05 작가 리액션 자막
+  const reactionTimerRef = useRef(null);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
   const [ending, setEnding] = useState(false);
@@ -390,6 +392,13 @@ export default function Chat() {
   }
 
   // ── 스토리 채팅 ──────────────────────────────────────────
+  // F-AS-05: 사용자 대사 → 작가 리액션 자막(아바타 위)을 잠깐 표시
+  function showReaction(text) {
+    setReaction(text);
+    if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
+    reactionTimerRef.current = setTimeout(() => setReaction(''), 4500);
+  }
+
   async function handleSend() {
     if (!input.trim() || streaming) return;
     const userText = input.trim();
@@ -397,6 +406,11 @@ export default function Chat() {
 
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
+
+    // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
+    getAuthorReaction(chatId, { content: userText, character_id: currentAuthor.characterId })
+      .then(r => { if (r.reaction) showReaction(r.reaction); })
+      .catch(() => {});
 
     await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
 
@@ -574,6 +588,9 @@ export default function Chat() {
                 {/* 작가 이미지 + 스위처 오버레이 */}
                 <div className="author-panel__image">
                   <img src={currentAuthor.image} alt={currentAuthor.displayName} />
+                  {reaction && (
+                    <div className="author-reaction-subtitle" key={reaction}>— {reaction}</div>
+                  )}
                   <div className="author-switcher author-panel__switcher-overlay">
                     <button className="author-switch-btn" onClick={prevAuthor}>‹</button>
                     <span className="author-name-badge">{currentAuthor.displayName}</span>

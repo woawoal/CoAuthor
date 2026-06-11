@@ -600,6 +600,30 @@
   padding: 2px 6px;
 }
 
+/* F-AS-05 작가 리액션 — 사진/영상 위 영화 자막 스타일(흰 글씨 + 그림자) */
+.author-reaction-subtitle {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  max-width: 90%;
+  text-align: center;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  animation: reaction-in 0.35s ease-out;
+}
+
+@keyframes reaction-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
 /* ── 빠른 질문 태그 바 ── */
 .author-tag-bar {
   display: flex;
