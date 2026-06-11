@@ -1,40 +1,39 @@
 """
 services/tts.py
 ----------------
-F-AV-02 첫 문장 낭독 — OpenAI TTS 연동.
+F-AV-02 첫 문장 낭독 — ElevenLabs TTS 연동.
 
-- 모델: tts-1 (빠름, 일반 품질)
-- narration 첫 문장만 추출해서 음성 생성
-- 엔드포인트: GET /chats/{chat_id}/tts?text=...
+- 모델: eleven_multilingual_v2 (한국어 지원)
+- narration 50자 내외로 추출해서 음성 생성
+- 작가별 음성 ID 설정
 
 작가별 음성:
-    백야      → onyx  (낮고 차분)
-    차로운    → echo  (명료하고 또렷)
-    한여름    → nova  (따뜻하고 부드러움)
-    김도현    → fable (잔잔하고 자연스러움)
+    백야v1    → XTqHG68XyHm3iAxC18O2
+    백야v2    → Velz1FYYWzS1Ro8Ln77l
+    김도현    → icPpEDRQnftyC8bLxQht
+    차로운    → x1VfcAsjwQX6oXjHOffX
+    한여름    → DheTGeQX8ACNXdfZwHSe
 """
 
 import re
-from openai import AsyncOpenAI
+import httpx
 from app.core.config import settings
 
-_client = None
 
-
-def _get_client():
-    """OpenAI 클라이언트 lazy 초기화. 키 없으면 None(=TTS 스킵).
-    모듈 import 시 클라이언트를 만들지 않아야 키 미설정 환경(CI·타엔진 팀원)에서도 앱이 뜬다."""
-    global _client
-    if _client is None and settings.OPENAI_API_KEY:
-        _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    return _client
-
-# 작가별 음성 매핑
+# 작가별 음성 ID
 _VOICE_MAP = {
-    "baekya":     "onyx",
-    "charoun":    "echo",
-    "hanyeoreum": "nova",
-    "kimdohyeon": "fable",
+    "baekya":     "Velz1FYYWzS1Ro8Ln77l",
+    "charoun":    "x1VfcAsjwQX6oXjHOffX",
+    "hanyeoreum": "DheTGeQX8ACNXdfZwHSe",
+    "kimdohyeon": "icPpEDRQnftyC8bLxQht",
+}
+
+# 작가별 API 키 매핑 (계정 2개로 분리)
+_API_KEY_MAP = {
+    "baekya":     "ELEVENLABS_API_KEY_2",
+    "charoun":    "ELEVENLABS_API_KEY_1",
+    "hanyeoreum": "ELEVENLABS_API_KEY_1",
+    "kimdohyeon": "ELEVENLABS_API_KEY_2",
 }
 
 # author_id(int) → persona_id(str)
@@ -45,43 +44,69 @@ _AUTHOR_ID_MAP = {
     4: "kimdohyeon",
 }
 
-DEFAULT_VOICE = "alloy"
+ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
+MODEL_ID = "eleven_multilingual_v2"
 
 
-def extract_first_sentence(narration: str) -> str:
-    """narration에서 첫 문장만 추출."""
+def extract_first_sentence(narration: str, max_chars: int = 50) -> str:
+    """narration에서 50자 내외로 자연스럽게 추출."""
     if not narration:
         return ""
-    # 마침표·느낌표·물음표 기준으로 첫 문장 추출
-    match = re.search(r"[^.!?]*[.!?]", narration.strip())
-    if match:
-        return match.group(0).strip()
-    # 마침표 없으면 전체 반환 (최대 100자)
-    return narration.strip()[:100]
+
+    sentences = re.split(r'(?<=[.!?])\s*', narration.strip())
+    sentences = [s for s in sentences if s]
+
+    result = ""
+    for s in sentences:
+        if len(result) + len(s) <= max_chars:
+            result += s + " "
+        else:
+            break
+
+    return result.strip() or sentences[0]
 
 
 async def synthesize(text: str, author_id: int) -> bytes:
     """
-    텍스트를 음성으로 변환.
+    텍스트를 음성으로 변환 (ElevenLabs).
 
     Args:
-        text: 낭독할 텍스트 (narration 첫 문장)
+        text: 낭독할 텍스트 (narration 50자 내외)
         author_id: 1~4 (작가 ID)
 
     Returns:
         mp3 bytes
     """
-    client = _get_client()
-    if client is None:
-        return b""  # OPENAI_API_KEY 미설정 → 음성 없이 진행
-
     persona_id = _AUTHOR_ID_MAP.get(author_id, "")
-    voice = _VOICE_MAP.get(persona_id, DEFAULT_VOICE)
+    voice_id = _VOICE_MAP.get(persona_id)
+    if not voice_id:
+        return b""
+    
+    api_key_attr = _API_KEY_MAP.get(persona_id, "ELEVENLABS_API_KEY_1")
+    api_key = getattr(settings, api_key_attr, "")
+    if not api_key:
+        return b""
+    
+    voice_id = _VOICE_MAP.get(persona_id)
+    if not voice_id:
+        return b""
 
-    response = await client.audio.speech.create(
-        model="tts-1",
-        voice=voice,
-        input=text,
-        response_format="mp3",
-    )
-    return response.content
+    url = f"{ELEVENLABS_API_URL}/{voice_id}"
+    headers = {
+        "xi-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+
+    payload = {
+        "text": text,
+        "model_id": MODEL_ID,
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.75,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        return resp.content

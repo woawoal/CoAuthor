@@ -119,7 +119,6 @@ async def get_context(chat_id: str, db: AsyncSession) -> dict:
         "memos":      memos,
     }
 
-
 async def init_context_if_empty(chat_id: str, state: str, characters: str, summary: str):
     if not await redis_client.exists(key_state(chat_id)) and state:
         await redis_client.set(key_state(chat_id), state)
@@ -128,7 +127,6 @@ async def init_context_if_empty(chat_id: str, state: str, characters: str, summa
     if not await redis_client.exists(key_summary(chat_id)) and summary:
         await redis_client.set(key_summary(chat_id), summary)
 
-
 # ── Redis 갱신 헬퍼 ────────────────────────────────────────
 async def append_history(chat_id: str, role: str, content: str) -> int:
     entry = json.dumps({"role": role, "content": content}, ensure_ascii=False)
@@ -136,10 +134,8 @@ async def append_history(chat_id: str, role: str, content: str) -> int:
     await redis_client.ltrim(key_history(chat_id), 0, RECENT_DIALOGUE_LIMIT - 1)
     return int(await redis_client.incr(key_turn(chat_id)))
 
-
 async def update_state(chat_id: str, new_state: str):
     await redis_client.set(key_state(chat_id), new_state)
-
 
 async def sync_to_db(chat_id: str):
     state   = await redis_client.get(key_state(chat_id))   or ""
@@ -156,7 +152,6 @@ async def sync_to_db(chat_id: str):
                 logger.info("DB 동기화 완료 - chat_id=%s", chat_id)
     except (ValueError, Exception) as e:
         logger.error("DB 동기화 실패 - chat_id=%s: %s", chat_id, e)
-
 
 # ── 메시지 빌더 ────────────────────────────────────────────
 def build_messages(
@@ -209,7 +204,6 @@ def build_messages(
 
     messages.append({"role": "user", "content": user_content})
     return messages
-
 
 # ── API ───────────────────────────────────────────────────
 class MessageRequest(BaseModel):
