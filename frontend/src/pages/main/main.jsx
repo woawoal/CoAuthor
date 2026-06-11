@@ -91,6 +91,7 @@ function Main() {
     const [userId, setUserId] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [showVoicePopup, setShowVoicePopup] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
 
     useEffect(() => {
         const checkLogin = async () => {
@@ -102,6 +103,7 @@ function Main() {
             if (authUserId) {
                 try {
                     const user = await syncCurrentUser();
+                    setIsAdmin(user.is_admin);
                     console.log("로그인됨");
                 } catch (error) {
                     console.error(error);
@@ -245,8 +247,16 @@ function Main() {
                     <div className="speech-text">
                         <span>작가를 선택하세요</span>
                     </div>
+                    {isAdmin && (
+                        <button
+                            className="dashboard-btn"
+                            onClick={() => navigate('/tokendashboard')}
+                        >
+                            토큰 대시보드 →
+                        </button>
+                    )}
                     <button
-                        className="chatlist-btn"
+                        className="storylist-btn"
                         onClick={() => {
                             if (!userId) {
                                 alert('로그인 후 이용 가능합니다.');
@@ -254,7 +264,7 @@ function Main() {
                                 return;
                             }
 
-                            navigate('/chatlist');
+                            navigate('/storylist');
                         }}
                     >
                         내 소설 목록 →

@@ -17,6 +17,14 @@ export function connectChatStream(chatId, { content, character_id, mode = "autho
     onToken({ narration: narration || "", dialogue: dialogue || "" });
   });
 
+  es.addEventListener("audio", (event) => {
+    const { audio } = JSON.parse(event.data);
+    if (audio) {
+      const blob = new Blob([Uint8Array.from(atob(audio), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+      new Audio(URL.createObjectURL(blob)).play();
+    }
+  });
+
   es.addEventListener("done", () => {
     onDone?.();
     es.close();
@@ -43,6 +51,14 @@ export async function generateNovel(sessionId) {
   return res.json();
 }
 
+export async function convertToNovel(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/novel/convert`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('소설 변환 실패');
+  return res.json();
+}
+
 export async function getNovel(sessionId) {
   const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/novel`);
   if (!res.ok) throw new Error('소설 조회 실패');
@@ -57,4 +73,28 @@ export async function getSuggestions(chatId, payload) {
   });
   if (!res.ok) return { suggestions: [] };
   return res.json();
+}
+
+export async function sendAuthorMessage(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/author/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('작가 AI 요청 실패');
+  return res.json();
+}
+
+export async function getMemos(chatId) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/memos`);
+  if (!res.ok) return { memos: [] };
+  return res.json();
+}
+
+export async function saveMemos(chatId, memos) {
+  await fetch(`${API_BASE_URL}/chats/${chatId}/memos`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ memos }),
+  });
 }
