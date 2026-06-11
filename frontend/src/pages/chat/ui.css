@@ -684,3 +684,118 @@
   letter-spacing: 0.3px;
   user-select: none;
 }
+
+/* ── 작가 아바타 (협업 반응: 생각중·기억·일관성·메모) ───── */
+.author-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 20%, transparent);
+}
+
+/* 말풍선 자리를 미리 잡아 아바타가 튀지 않게 */
+.author-avatar__bubble-wrap {
+  min-height: 42px;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.author-avatar__bubble {
+  position: relative;
+  max-width: 92%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-main);
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 35%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  animation: avatar-pop 0.25s ease;
+}
+
+/* 말풍선 꼬리 (아래 중앙 → 아바타를 가리킴) */
+.author-avatar__bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  border-right: inherit;
+  border-bottom: inherit;
+}
+
+.author-avatar__text { word-break: break-word; }
+
+/* 종류별 색 */
+.author-avatar__bubble--memory {
+  border-color: color-mix(in srgb, var(--theme-color) 50%, transparent);
+}
+.author-avatar__bubble--consistency {
+  border-color: #e0a23a;
+  background: color-mix(in srgb, #e0a23a 14%, var(--card-main));
+}
+.author-avatar__bubble--memo {
+  border-color: #4caf7d;
+  background: color-mix(in srgb, #4caf7d 14%, var(--card-main));
+}
+.author-avatar__bubble--thinking {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.author-avatar__figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  transition: transform 0.2s ease;
+}
+.author-avatar__figure.is-reacting { transform: translateY(-1px) scale(1.02); }
+
+.author-avatar__img {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid color-mix(in srgb, var(--theme-color) 60%, transparent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-color) 45%, transparent);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.author-avatar__figure.is-reacting .author-avatar__img {
+  border-color: var(--theme-color);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-color) 28%, transparent);
+}
+.author-avatar__img--ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--theme-color);
+  background: color-mix(in srgb, var(--theme-color) 18%, transparent);
+}
+.author-avatar__name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--theme-color);
+}
+
+/* 인라인(작은) 타이핑 점 — 아바타 '쓰는 중' 말풍선용 */
+.typing-dots--inline { gap: 3px; padding: 0; }
+.typing-dots--inline span { width: 5px; height: 5px; }
+
+@keyframes avatar-pop {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

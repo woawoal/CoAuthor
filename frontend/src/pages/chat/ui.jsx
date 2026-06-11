@@ -101,6 +101,30 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
   );
 }
 
+// 작가 아바타 — 메모 패널 상단에 앉아 협업 반응(생각중·기억소환·일관성지적·메모받아적기)을 말풍선으로 표시
+function AuthorAvatar({ persona, bubble }) {
+  return (
+    <div className="author-avatar">
+      <div className={`author-avatar__bubble-wrap${bubble ? ' is-on' : ''}`}>
+        {bubble && (
+          <div className={`author-avatar__bubble author-avatar__bubble--${bubble.kind}`}>
+            <span className="author-avatar__text">{bubble.text}</span>
+            {bubble.kind === 'thinking' && (
+              <span className="typing-dots typing-dots--inline"><span /><span /><span /></span>
+            )}
+          </div>
+        )}
+      </div>
+      <div className={`author-avatar__figure${bubble ? ' is-reacting' : ''}`}>
+        {persona.image
+          ? <img src={persona.image} alt={persona.displayName} className="author-avatar__img" />
+          : <div className="author-avatar__img author-avatar__img--ph">{persona.displayName?.[0]}</div>}
+        <span className="author-avatar__name">작가 {persona.displayName}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Chat() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -132,6 +156,34 @@ export default function Chat() {
   const bottomRef = useRef(null);
   const esRef = useRef(null);
   const memoInputRef = useRef(null);
+
+  // ── 작가 아바타 협업 말풍선 ──────────────────────────────
+  const [avatarBubble, setAvatarBubble] = useState(null);  // { kind: 'thinking'|'memory'|'consistency'|'memo', text }
+  const avatarTimerRef = useRef(null);
+
+  function showAvatar(kind, text, ttl = 8000) {
+    if (avatarTimerRef.current) clearTimeout(avatarTimerRef.current);
+    setAvatarBubble({ kind, text });
+    if (ttl > 0) avatarTimerRef.current = setTimeout(() => setAvatarBubble(null), ttl);
+  }
+
+  function trimText(s, n) {
+    const t = String(s ?? '').replace(/\s+/g, ' ').trim();
+    return t.length > n ? t.slice(0, n) + '…' : t;
+  }
+
+  // 응답에 딸려온 기억검색·일관성검수 결과를 아바타 말풍선으로 surface
+  function reactAsAuthor(memories, consistency) {
+    if (consistency && !consistency.consistent && consistency.violations?.length) {
+      const v = consistency.violations[0];
+      const txt = typeof v === 'string' ? v : (v.conflict || v.established || '설정이 좀 어긋나는데');
+      showAvatar('consistency', `어, ${trimText(txt, 30)} — 설정 맞아?`, 11000);
+    } else if (memories?.length) {
+      showAvatar('memory', `아까 “${trimText(memories[0], 26)}” 기억하지?`, 9000);
+    } else {
+      setAvatarBubble(b => (b?.kind === 'thinking' ? null : b));  // 짚을 게 없으면 '쓰는 중' 정리
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem(MEMO_KEY, JSON.stringify(memos));
@@ -205,12 +257,13 @@ export default function Chat() {
     const streamMsgId = `stream_${Date.now()}`;
     setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: persona.displayName, text: '' }]);
     setStreaming(true);
+    showAvatar('thinking', '이야기, 쓰는 중…', 0);  // 응답 동안 '쓰는 중' 유지(자동 사라짐 X)
 
     const worldContext = buildWorldContext(world, dbCharacters);
     esRef.current = connectChatStream(
       chatId,
-      { content: userText, character_id: persona.characterId, mode: 'author', world_context: worldContext },
-      ({ narration, dialogue }) => {
+      { content: userText, character_id: persona.characterId, mode: 'author', world_context: worldContext, check_consistency: true },
+      ({ narration, dialogue, memories, consistency }) => {
         setMessages(prev =>
           prev.map(m =>
             m.id === streamMsgId
@@ -218,8 +271,12 @@ export default function Chat() {
               : m
           )
         );
+        reactAsAuthor(memories, consistency);  // 기억소환 / 일관성지적 말풍선
       },
-      () => setStreaming(false),
+      () => {
+        setStreaming(false);
+        setAvatarBubble(b => (b?.kind === 'thinking' ? null : b));  // 반응 없이 끝나면 '쓰는 중' 정리
+      },
     );
   }
 
@@ -311,6 +368,7 @@ export default function Chat() {
         msgId: selectedMsgId || null,
       }]);
     }
+    showAvatar('memo', '기억해둘게.', 2800);  // 작가가 메모를 받아적는 연출
     clearBookmarkState();
   }
 
@@ -400,6 +458,7 @@ export default function Chat() {
 
         <div className={`memo-slide ${panelOpen ? 'memo-slide--open' : ''}`}>
           <aside className="memo-panel">
+            <AuthorAvatar persona={persona} bubble={avatarBubble} />
             {world && (
               <div className="world-summary">
                 <button
