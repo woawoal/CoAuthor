@@ -2,7 +2,7 @@ import json
 import uuid
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
+from app.models.user import User
 from app.models.world import World
 from app.models.character import Character
 from app.services.chat_context import (
@@ -31,7 +32,7 @@ import base64
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
     WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
-    build_multi_npc_prompt,
+    build_multi_npc_prompt, VOICE_PROFILE_SYSTEM, build_voice_suggest_prompt,
 )
 
 router = APIRouter()
@@ -484,6 +485,127 @@ async def npc_react(
     except Exception as e:
         logger.warning("NPC 반응 생성 실패 - chat_id=%s: %s", chat_id, e)
         return {"narration": "", "responses": [], "state_changes": {"trust_delta": 0, "event": None}}
+
+
+class VoiceProfileRequest(BaseModel):
+    user_samples: list[str] = []      # 자유 입력 문장
+    guide_answers: list[str] = []     # 가이드 문장에 대한 사용자 답변
+    optional_context: str = ""        # 원하는 말투 방향 (선택)
+
+
+class VoiceSuggestRequest(BaseModel):
+    npc_dialogue: str
+    scene_summary: str = ""
+    genre: str = ""
+    relationship_summary: str = ""    # 사용자-등장인물 관계
+    character_profile: str = ""       # 상대 등장인물 정보
+    user_intent: str = ""             # 사용자가 원하는 반응 방향
+    user_emotion: str = ""            # 사용자의 현재 감정
+    constraints: str = ""             # 서비스 정책 또는 장면 제한
+
+
+@router.post("/{chat_id}/voice-profile")
+async def analyze_voice_profile(
+    chat_id: str,
+    body: VoiceProfileRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """사용자 샘플 문장 → 말투 프로파일 JSON 생성 후 User DB 저장 (Voice Mirroring)."""
+    if not body.user_samples and not body.guide_answers:
+        raise HTTPException(status_code=422, detail="user_samples 또는 guide_answers를 1개 이상 입력하세요.")
+
+    # chat_id(=session_id)로 user_id 조회
+    session_result = await db.execute(select(Session).where(Session.id == uuid.UUID(chat_id)))
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    parts = []
+    if body.user_samples:
+        parts.append("[자유 입력 문장]\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(body.user_samples)))
+    if body.guide_answers:
+        parts.append("[가이드 문장 답변]\n" + "\n".join(f"{i+1}. {s}" for i, s in enumerate(body.guide_answers)))
+    if body.optional_context:
+        parts.append(f"[원하는 말투 방향]\n{body.optional_context}")
+    user_msg = "\n\n".join(parts)
+
+    try:
+        raw = await llm.generate(
+            VOICE_PROFILE_SYSTEM,
+            [{"role": "user", "parts": [{"text": user_msg}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        profile = json.loads(cleaned)
+    except Exception as e:
+        logger.warning("말투 분석 실패 - chat_id=%s: %s", chat_id, e)
+        raise HTTPException(status_code=500, detail="말투 분석 중 오류가 발생했습니다.")
+
+    # User 테이블에 영구 저장
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    user.voice_profile = profile
+    await db.flush()
+
+    logger.info("말투 프로파일 저장 - user_id=%s", session.user_id)
+    return {"voice_profile": profile}
+
+
+@router.post("/{chat_id}/voice-suggest")
+async def voice_suggest(
+    chat_id: str,
+    body: VoiceSuggestRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """저장된 말투 프로파일 기반으로 사용자 다음 대사 5개 추천 (Voice Mirroring)."""
+    # chat_id(=session_id)로 user_id 조회 → User.voice_profile 로드
+    session_result = await db.execute(select(Session).where(Session.id == uuid.UUID(chat_id)))
+    session = session_result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user or not user.voice_profile:
+        raise HTTPException(status_code=404, detail="말투 프로파일이 없습니다. /voice-profile을 먼저 호출하세요.")
+
+    voice_profile = user.voice_profile
+
+    scene_summary = body.scene_summary
+    if not scene_summary:
+        context = await get_context(chat_id, db)
+        if context["history"]:
+            scene_summary = "\n".join(
+                f"{'사용자' if h['role'] == 'user' else 'AI'}: {h['content']}"
+                for h in reversed(context["history"][:4])
+            )
+
+    system_prompt = build_voice_suggest_prompt(
+        voice_profile=voice_profile,
+        scene_summary=scene_summary,
+        npc_dialogue=body.npc_dialogue,
+        genre=body.genre,
+        relationship_summary=body.relationship_summary,
+        character_profile=body.character_profile,
+        user_intent=body.user_intent,
+        user_emotion=body.user_emotion,
+        constraints=body.constraints,
+    )
+
+    try:
+        raw = await llm.generate(
+            system_prompt,
+            [{"role": "user", "parts": [{"text": "위 상황에서 사용자 대사 후보 5개를 JSON으로 출력하세요."}]}],
+        )
+        import re as _re
+        cleaned = _re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=_re.MULTILINE)
+        data = json.loads(cleaned)
+        return {"suggestions": data.get("suggestions", [])}
+    except Exception as e:
+        logger.warning("대사 추천 실패 - chat_id=%s: %s", chat_id, e)
+        return {"suggestions": []}
 
 
 @router.delete("/{chat_id}/memo/{index}")

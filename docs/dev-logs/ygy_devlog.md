@@ -2,6 +2,127 @@
 
 ---
 
+## 2026-06-11
+
+### 작업 내용
+
+#### 1. Voice Mirroring (F-VM) — 사용자 말투 기반 대사 추천 기능 구현
+
+**배경**: 사용자가 NPC 대사에 답할 때 "뭐라고 하지?"에서 막히는 문제를 해결하기 위해, 사용자의 말투를 분석해 그 사람처럼 들리는 대사 후보를 추천하는 기능 설계 및 구현.
+
+**구조 (2단계)**
+```
+1단계: 사용자 샘플 문장 → 말투 프로파일 JSON 추출 (VOICE_PROFILE_SYSTEM)
+2단계: 프로파일 + 현재 장면 + NPC 대사 → 사용자 대사 후보 5개 생성 (build_voice_suggest_prompt)
+```
+
+**핵심 설계 원칙**
+- 말투 분석 프롬프트는 **생성 금지** — 분석만 수행, 원문 복사 절대 금지
+- 대사 추천 프롬프트는 **원본 샘플 미참조** — summary_for_prompt(요약)와 generation_guidelines만 주입
+- 말투 70% + 장면 맥락 30% 비율 반영, 충돌 시 장면 감정 우선
+
+**추가 엔드포인트**
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| POST | `/chats/{id}/voice-profile` | 사용자 샘플 문장 분석 → voice_profile 생성 + User DB 영구 저장 |
+| POST | `/chats/{id}/voice-suggest` | 저장된 프로파일 기반 대사 5개 추천 |
+
+**voice-profile 요청 바디**
+```json
+{
+  "user_samples": ["자유 입력 문장"],
+  "guide_answers": ["가이드 문장에 대한 사용자 답변"],
+  "optional_context": "원하는 말투 방향 (선택)"
+}
+```
+
+**voice-suggest 요청 바디**
+```json
+{
+  "npc_dialogue": "NPC가 한 말",
+  "scene_summary": "현재 장면 요약",
+  "genre": "로맨스",
+  "relationship_summary": "관계 설명",
+  "character_profile": "등장인물 정보",
+  "user_intent": "원하는 반응 방향",
+  "user_emotion": "현재 감정",
+  "constraints": "장면 제한 사항"
+}
+```
+
+**voice-suggest 응답 구조 (5개 후보)**
+```json
+{
+  "suggestions": [
+    {"type": "honest_response",   "label": "솔직하게 답하기",    "text": "...", "emotion": "...", "intensity": 2, "why": "..."},
+    {"type": "soft_response",     "label": "부드럽게 넘기기",    "text": "...", ...},
+    {"type": "evasive_response",  "label": "회피하거나 농담하기", "text": "...", ...},
+    {"type": "emotional_response","label": "감정 드러내기",      "text": "...", ...},
+    {"type": "bold_response",     "label": "한 발 다가가기",     "text": "...", ...}
+  ],
+  "applied_voice_features": [],
+  "safety_note": ""
+}
+```
+
+**VOICE_PROFILE_SYSTEM 주요 분석 항목**
+- `speech_level`, `sentence_length`, `rhythm`, `tone` (primary/secondary/avoid_overdoing)
+- `situation_styles` — 당황·서운·미안·거절·설렘 등 상황별 말투 패턴
+- `language_habits` — 종결어미·감탄사·선호 단어·피해야 할 단어
+- `mirroring_risk` — 원문 반복 위험도 (낮음/보통/높음)
+- `generation_guidelines` — 대사 추천 프롬프트에 자동 주입되는 금지 규칙
+- `summary_for_user` — 사용자에게 보여줄 말투 요약
+- `summary_for_prompt` — 생성 프롬프트에 넣을 짧은 요약
+- confidence 값 (0.0~1.0), 샘플 3개 미만 시 0.6 이하 제한
+
+---
+
+#### 2. User 모델 voice_profile 컬럼 추가 + Alembic 마이그레이션
+
+**배경**: voice_profile은 세션이 아닌 유저 단위 정보라 User 테이블에 영구 저장하는 것이 올바른 설계.
+
+**변경 사항**
+- `User` 모델에 `voice_profile: JSON` 컬럼 추가
+- 마이그레이션 수동 작성 및 Neon DB 적용 완료
+
+**마이그레이션 결과**
+```
+Running upgrade b2c3d4e5f6a7 -> c3d4e5f6a7b8, add voice_profile to users
+```
+
+**흐름**
+```
+POST /voice-profile
+  → Session(chat_id) → user_id 조회
+  → LLM 분석 → User.voice_profile = profile (DB 저장)
+
+POST /voice-suggest
+  → Session(chat_id) → user_id 조회
+  → User.voice_profile 로드 → 대사 5개 생성
+```
+
+**수정 파일**
+- `app/models/user.py` — voice_profile JSON 컬럼 추가
+- `app/api/v1/endpoints/chats.py` — 두 엔드포인트 추가, User import 추가, Redis → DB 저장으로 변경
+- `app/prompts/__init__.py` — VOICE_PROFILE_SYSTEM, build_voice_suggest_prompt 추가
+- `migrations/versions/c3d4e5f6a7b8_add_voice_profile_to_users.py` — 마이그레이션 파일 신규 작성
+
+---
+
+### 남은 작업
+
+- [x] F-WD-06 World.tags 컬럼 + 마이그레이션 + 엔드포인트
+- [x] F-AS-02 POST /stuck 엔드포인트
+- [x] F-CH-09 POST /npc-react 엔드포인트
+- [x] Voice Mirroring (F-VM) — voice-profile + voice-suggest 엔드포인트
+- [x] User.voice_profile 컬럼 + 마이그레이션 적용
+- [ ] personas.py few-shot 사용자 시나리오 기반 수정
+- [ ] personas.py baekya 신체반응 금지 원칙 추가
+- [ ] 서버 배포 보조 (F-SY-08)
+
+---
+
 ## 2026-06-10
 
 ### 작업 내용
@@ -82,14 +203,64 @@ story_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 ---
 
+#### 5. F-WD-06 World.tags 컬럼 + 자동 분류 엔드포인트
+
+**배경**: 세계관 태그를 LLM으로 자동 분류해 검색·필터에 활용.
+
+**구현**
+- `World` 모델에 `tags: Mapped[list | None] = mapped_column(JSON, nullable=True)` 추가
+- `WorldResponse` 스키마에 `tags: list[str] | None = None` 추가
+- Alembic 마이그레이션 수동 작성 및 Neon DB 적용 완료 (`b2c3d4e5f6a7`, down_revision: `a1b2c3d4e5f6`)
+
+**추가 엔드포인트**
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| POST | `/worlds/{id}/tags/classify` | 세계관 텍스트(title·description·setting·rules) → LLM 2단계 자동 태그 분류 |
+| PATCH | `/worlds/{id}/tags` | 태그 수동 수정 |
+
+**수정 파일**
+- `app/models/world.py` — tags 컬럼 추가
+- `app/schemas/world.py` — WorldResponse tags 필드 추가
+- `app/api/v1/endpoints/worlds.py` — classify_tags, update_tags 엔드포인트 추가
+- `migrations/versions/b2c3d4e5f6a7_add_tags_to_worlds.py` — 마이그레이션 파일 신규 작성
+
+---
+
+#### 6. F-AS-02 / F-CH-09 chats.py 엔드포인트 추가
+
+**배경**: 동완님 작업 분담. `app/prompts/__init__.py`에 추가된 프롬프트 상수들을 엔드포인트에 연결.
+
+**추가 엔드포인트**
+
+| 메서드 | 경로 | 프롬프트 | 기능 |
+|---|---|---|---|
+| POST | `/chats/{id}/stuck` | `STUCK_HELP_SYSTEM` | 창작 막혔을 때 힌트 3개 (situation + hints[]) |
+| POST | `/chats/{id}/npc-react` | `build_multi_npc_prompt()` | 조연 NPC 다중 동시 반응 (narration + responses[] + state_changes) |
+
+**동작 방식**
+- `stuck`: `world_context` 미입력 시 Redis에서 자동 조회, 최근 대화 6턴 포함
+- `npc-react`: 요청 바디에 `npcs: [{name, personality, relationship}]` 리스트 전달. `recent_dialogue` 미입력 시 Redis에서 최근 4턴 자동 조회
+
+**수정 파일**
+- `app/api/v1/endpoints/chats.py` — `StuckRequest`, `NpcInfo`, `NpcReactRequest` Pydantic 모델 + 두 엔드포인트 추가, import에 `STUCK_HELP_SYSTEM`, `build_multi_npc_prompt` 추가
+
+**참고**
+- F-QC-01(consistency.py 호출)은 기존 `stream_response` 내에 이미 구현돼 있었음. `suggestion` 필드는 LLM 응답을 그대로 pass-through하므로 별도 수정 불필요.
+- GET `/chats/{id}/suggest` (SUGGEST_NEXT_SYSTEM)는 이미 존재하므로 중복 추가 없음.
+
+---
+
 ### 남은 작업
 
 - [x] Neon 클라우드 DB 연동
 - [x] session.py 머지 충돌 해결
 - [x] personas.py 출력 규칙 개선 적용
+- [x] F-WD-06 World.tags 컬럼 + Alembic migration + 엔드포인트
+- [x] F-AS-02 POST /stuck 엔드포인트
+- [x] F-CH-09 POST /npc-react 엔드포인트
 - [ ] personas.py few-shot 사용자 시나리오 기반 수정
-- [ ] F-WD-06 World.tags 컬럼 + Alembic migration (동완님 프롬프트 파일 수령 후 엔드포인트 연결)
-- [ ] F-AS-02/03, F-CH-09, F-QC-01 엔드포인트 (동완님 프롬프트 파일 수령 후 진행)
+- [ ] personas.py baekya 신체반응 금지 원칙 추가
 - [ ] 서버 배포 보조 (F-SY-08)
 
 ---
