@@ -4,7 +4,7 @@ import uuid
 import logging
 import re as _re
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -106,6 +106,7 @@ async def send_author_message(
     except Exception as e:
         logger.warning("작가채팅 RAG 실패: %s", e)
 
+    # RAG 결과를 story_summary에 보강
     context_summary = story_summary
     if relevant:
         context_summary += "\n\n[관련 사건 (RAG)]\n" + "\n".join(f"- {r}" for r in relevant)
@@ -146,7 +147,10 @@ async def send_author_message(
 
 
 @router.get("/{chat_id}/author/history")
-async def get_author_chat_history(chat_id: str):
+async def get_author_chat_history(
+    chat_id: str,
+    author_id: str = Query(default="baekya"),
+):
     """작가 AI 채팅 히스토리 조회."""
-    history = await get_author_history(chat_id)
+    history = await get_author_history(chat_id, author_id)
     return {"history": list(reversed(history))}

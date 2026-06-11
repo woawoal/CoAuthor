@@ -256,7 +256,10 @@ async def stream_response(
                     session_result = await save_session.execute(
                         select(Session).where(Session.id == session_uuid)
                     )
-                    if session_result.scalar_one_or_none():
+<<<<<<< HEAD
+                    session = session_result.scalar_one_or_none()
+
+                    if session:
                         count_result = await save_session.execute(
                             select(func.count()).select_from(Dialogue)
                             .where(Dialogue.session_id == session_uuid)
@@ -269,6 +272,7 @@ async def stream_response(
                         ))
                         save_session.add(ApiLog(
                             session_id=session_uuid,
+                            user_id=session.user_id,
                             endpoint=f"GET /chats/{chat_id}/stream",
                             model_used=PRIMARY_MODEL,
                             prompt_tokens=prompt_tokens,
@@ -276,8 +280,8 @@ async def stream_response(
                             total_cost=calc_cost(PRIMARY_MODEL, prompt_tokens, completion_tokens),
                         ))
                         await save_session.commit()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("대화/토큰 로그 저장 실패: %s", e)
 
             if turn % DB_SYNC_INTERVAL == 0:
                 recent_turns = list(reversed(context["history"])) + [

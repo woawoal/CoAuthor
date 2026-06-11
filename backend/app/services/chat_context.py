@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
 
 RECENT_DIALOGUE_LIMIT = 20
-PROMPT_HISTORY_LIMIT  = 6
-DB_SYNC_INTERVAL      = 3
+PROMPT_HISTORY_LIMIT  = 10
+DB_SYNC_INTERVAL      = 5
 
 
 # ── Redis 키 규칙 ──────────────────────────────────────────────
