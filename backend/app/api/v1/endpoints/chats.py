@@ -441,8 +441,16 @@ async def stream_response(
                 except Exception as e:  # 요약 실패는 대화 흐름을 막지 않는다
                     logger.warning("요약 갱신 실패: %s", e)
 
-            # F-AV-02: TTS 변환 — narration 첫 문장을 음성으로 변환 후 reply와 동시 전달
-            audio_b64 = ""
+            # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
+            reply_payload = json.dumps(
+                {"messageId": message_id, "narration": narration, "dialogue": dialogue,
+                 "memories": relevant_memories, "consistency": consistency_result},
+                ensure_ascii=False,
+            )
+            yield f"event: reply\ndata: {reply_payload}\n\n"
+
+            # F-AV-02: TTS — narration 첫 문장을 음성으로 변환해 별도 event:audio로 전달
+            # 텍스트는 위에서 이미 나갔으므로 음성 변환(1~2s) 지연이 텍스트를 막지 않는다.
             try:
                 first_sentence = extract_first_sentence(narration)
                 if first_sentence:
@@ -450,17 +458,14 @@ async def stream_response(
                     _id_map = {"baekya": 1, "charoun": 2, "hanyeoreum": 3, "kimdohyeon": 4}
                     author_id = _id_map.get(character_id, 1)
                     audio_bytes = await synthesize(first_sentence, author_id)
-                    audio_b64 = base64.b64encode(audio_bytes).decode()
+                    if audio_bytes:  # 키 없거나 빈 결과면 음성 스킵
+                        audio_payload = json.dumps(
+                            {"messageId": message_id, "audio": base64.b64encode(audio_bytes).decode()},
+                            ensure_ascii=False,
+                        )
+                        yield f"event: audio\ndata: {audio_payload}\n\n"
             except Exception as e:
                 logger.warning("TTS 변환 실패 (음성 없이 진행): %s", e)
-
-            reply_payload = json.dumps(
-                {"messageId": message_id, "narration": narration, "dialogue": dialogue,
-                 "audio": audio_b64,
-                 "memories": relevant_memories, "consistency": consistency_result},
-                ensure_ascii=False,
-            )
-            yield f"event: reply\ndata: {reply_payload}\n\n"
 
         except Exception as e:
             logger.error("OpenAI API 오류: %s", e)
