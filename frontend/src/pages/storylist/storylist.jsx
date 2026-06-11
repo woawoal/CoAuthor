@@ -47,7 +47,9 @@ export default function StoryList() {
   }, []);
 
   const handleResume = (session) => {
-    navigate('/chat', { state: { chatId: session.id, authorId: session.author_id } });
+    const mode = localStorage.getItem(`session_mode_${session.id}`) ?? 'chat';
+    const dest = mode === 'editor' ? '/editor' : '/chat';
+    navigate(dest, { state: { chatId: session.id, authorId: session.author_id } });
   };
 
   const handleRead = (session) => {

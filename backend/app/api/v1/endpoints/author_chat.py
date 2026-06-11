@@ -4,7 +4,7 @@ import uuid
 import logging
 import re as _re
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -15,7 +15,7 @@ from app.models.world import World
 from app.models.character import Character
 from app.services.chat_context import (
     redis_client,
-    get_author_history, append_author_history,
+    get_author_history, append_author_history, get_prev_user_questions,
     key_memos,
 )
 from app.services import llm, memory
@@ -91,8 +91,13 @@ async def send_author_message(
     - 일반 텍스트 응답 (JSON 아님)
     """
     world_context, story_summary = await _get_story_context(chat_id, db)
-    memos         = await _get_memos(chat_id)
-    author_history = await get_author_history(chat_id)
+    memos          = await _get_memos(chat_id)
+    author_history = await get_author_history(chat_id, body.author_id)
+
+    # 첫 대화(작가 전환)일 때만 다른 작가와 나눈 사용자 질문 수집
+    prev_questions: list[str] = []
+    if not author_history:
+        prev_questions = await get_prev_user_questions(chat_id, exclude_author=body.author_id)
 
     # RAG: 사용자 입력과 관련된 과거 대화 검색
     relevant: list[str] = []
@@ -112,6 +117,7 @@ async def send_author_message(
         story_summary=context_summary,
         memos=memos,
         author_history=author_history,
+        prev_questions=prev_questions,
         user_input=body.content,
     )
 
@@ -129,8 +135,8 @@ async def send_author_message(
     reply = (raw or "").strip()
 
     # 히스토리 저장
-    await append_author_history(chat_id, "user", body.content)
-    await append_author_history(chat_id, "ai", reply)
+    await append_author_history(chat_id, body.author_id, "user", body.content)
+    await append_author_history(chat_id, body.author_id, "ai", reply)
 
     logger.info("작가채팅 응답 - chat_id=%s: %s", chat_id, reply[:80])
 
@@ -141,7 +147,10 @@ async def send_author_message(
 
 
 @router.get("/{chat_id}/author/history")
-async def get_author_chat_history(chat_id: str):
+async def get_author_chat_history(
+    chat_id: str,
+    author_id: str = Query(default="baekya"),
+):
     """작가 AI 채팅 히스토리 조회."""
-    history = await get_author_history(chat_id)
+    history = await get_author_history(chat_id, author_id)
     return {"history": list(reversed(history))}

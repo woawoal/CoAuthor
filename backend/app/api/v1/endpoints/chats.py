@@ -26,7 +26,7 @@ from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
 from app.services import consistency
-from app.core.personas import get_author_prompt
+from app.core.personas import get_author_prompt, AUTHOR_ID_MAP
 from app.services.tts import synthesize, extract_first_sentence
 import base64
 from app.prompts import (
@@ -307,8 +307,8 @@ async def stream_response(
                 first_sentence = extract_first_sentence(narration)
                 if first_sentence:
                     # author_id: character_id(str) → int 변환
-                    _id_map = {"baekya": 1, "charoun": 2, "hanyeoreum": 3, "kimdohyeon": 4}
-                    author_id = _id_map.get(character_id, 1)
+                    _str_to_int = {v: k for k, v in AUTHOR_ID_MAP.items()}
+                    author_id = _str_to_int.get(character_id, 1)
                     audio_bytes = await synthesize(first_sentence, author_id)
                     if audio_bytes:  # 키 없거나 빈 결과면 음성 스킵
                         audio_payload = json.dumps(
