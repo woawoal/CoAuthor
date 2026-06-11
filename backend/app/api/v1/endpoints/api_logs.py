@@ -7,6 +7,7 @@ from sqlalchemy import select, func, cast, Date
 
 from app.database import get_db
 from app.models.api_log import ApiLog
+from app.models.user import User
 from app.schemas.api_log import ApiLogResponse, ApiLogSummary
 
 router = APIRouter()
@@ -126,4 +127,76 @@ async def get_total(db: AsyncSession = Depends(get_db)):
         "total_completion_tokens": row.total_completion_tokens,
         "total_tokens": row.total_prompt_tokens + row.total_completion_tokens,
         "total_cost_usd": round(row.total_cost, 6),
+    }
+
+@router.get("/dashboard")
+async def get_dashboard(
+    start_date: str,
+    end_date: str,
+    db: AsyncSession = Depends(get_db),
+):
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+
+    daily_result = await db.execute(
+        select(
+            cast(ApiLog.created_at, Date).label("date"),
+            func.count(ApiLog.id).label("total_calls"),
+            func.coalesce(func.sum(ApiLog.prompt_tokens), 0).label("total_prompt_tokens"),
+            func.coalesce(func.sum(ApiLog.completion_tokens), 0).label("total_completion_tokens"),
+            func.coalesce(func.sum(ApiLog.total_cost), 0.0).label("total_cost"),
+        )
+        .where(ApiLog.created_at >= start)
+        .where(ApiLog.created_at < end)
+        .group_by(cast(ApiLog.created_at, Date))
+        .order_by(cast(ApiLog.created_at, Date).asc())
+    )
+
+    user_result = await db.execute(
+        select(
+            ApiLog.user_id,
+            User.username,
+            User.email,
+            func.count(ApiLog.id).label("total_calls"),
+            func.coalesce(func.sum(ApiLog.prompt_tokens), 0).label("total_prompt_tokens"),
+            func.coalesce(func.sum(ApiLog.completion_tokens), 0).label("total_completion_tokens"),
+            func.coalesce(func.sum(ApiLog.total_cost), 0.0).label("total_cost"),
+            func.max(ApiLog.created_at).label("last_used_at"),
+        )
+        .outerjoin(User, ApiLog.user_id == User.id)
+        .where(ApiLog.created_at >= start)
+        .where(ApiLog.created_at < end)
+        .group_by(ApiLog.user_id, User.username, User.email)
+        .order_by(func.sum(ApiLog.prompt_tokens + ApiLog.completion_tokens).desc())
+    )
+
+    daily_rows = daily_result.all()
+    user_rows = user_result.all()
+
+    return {
+        "daily": [
+            {
+                "date": str(row.date),
+                "total_calls": row.total_calls,
+                "total_prompt_tokens": row.total_prompt_tokens,
+                "total_completion_tokens": row.total_completion_tokens,
+                "total_tokens": row.total_prompt_tokens + row.total_completion_tokens,
+                "total_cost_usd": round(row.total_cost, 6),
+            }
+            for row in daily_rows
+        ],
+        "users": [
+            {
+                "user_id": str(row.user_id) if row.user_id else None,
+                "username": row.username or "비회원",
+                "email": row.email,
+                "total_calls": row.total_calls,
+                "total_prompt_tokens": row.total_prompt_tokens,
+                "total_completion_tokens": row.total_completion_tokens,
+                "total_tokens": row.total_prompt_tokens + row.total_completion_tokens,
+                "total_cost_usd": round(row.total_cost, 6),
+                "last_used_at": row.last_used_at,
+            }
+            for row in user_rows
+        ],
     }

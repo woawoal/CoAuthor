@@ -18,6 +18,7 @@ F-AV-02 첫 문장 낭독 — ElevenLabs TTS 연동.
 import re
 import httpx
 from app.core.config import settings
+from app.core.personas import AUTHOR_ID_MAP as _AUTHOR_ID_MAP
 
 
 # 작가별 음성 ID

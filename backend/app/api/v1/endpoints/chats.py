@@ -1,3 +1,4 @@
+import re
 import json
 import uuid
 import logging
@@ -51,6 +52,36 @@ def key_characters(chat_id: str) -> str:
 
 def key_summary(chat_id: str) -> str:
     return f"session:{chat_id}:summary"
+# 작가 리액션(F-AS-05) 직전 반응 추적 키 — chat_context엔 없어 chats.py 전용 정의
+def key_last_reaction(chat_id: str) -> str:
+    return f"session:{chat_id}:last_reaction"
+
+
+# ── 세계관·등장인물 DB 조회 ────────────────────────────────────
+async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
+    try:
+        sid = uuid.UUID(chat_id)
+    except (ValueError, TypeError):
+        return ""
+    session = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
+    if not session:
+        return ""
+    world = (await db.execute(select(World).where(World.id == session.world_id))).scalar_one_or_none()
+    chars = (await db.execute(select(Character).where(Character.world_id == session.world_id))).scalars().all()
+    parts = []
+    if world:
+        for label, val in (("제목", world.title), ("장르", world.genre),
+                           ("배경", world.setting), ("요약", world.description), ("규칙", world.rules)):
+            if val:
+                parts.append(f"{label}: {val}")
+    if chars:
+        lines = "\n".join(
+            f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in chars
+        )
+        parts.append(f"[등장인물]\n{lines}")
+    if session.story_summary:
+        parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
+    return "\n".join(parts)
 
 def key_turn(chat_id: str) -> str:
     return f"session:{chat_id}:turn"
@@ -394,6 +425,12 @@ async def stream_response(
                 async with AsyncSessionLocal() as save_session:
                     session_result = await save_session.execute(select(Session).where(Session.id == session_uuid))
                     if session_result.scalar_one_or_none():
+                    session_result = await save_session.execute(
+                        select(Session).where(Session.id == session_uuid)
+                    )
+                    session = session_result.scalar_one_or_none()
+
+                    if session:
                         count_result = await save_session.execute(
                             select(func.count()).select_from(Dialogue).where(Dialogue.session_id == session_uuid)
                         )
@@ -408,6 +445,7 @@ async def stream_response(
 
                         api_log = ApiLog(
                             session_id=session_uuid,
+                            user_id=session.user_id,
                             endpoint=f"GET /chats/{chat_id}/stream",
                             model_used=PRIMARY_MODEL,
                             prompt_tokens=prompt_tokens,
@@ -416,12 +454,8 @@ async def stream_response(
                         )
                         save_session.add(api_log)
                         await save_session.commit()
-                        logger.info(
-                            "AI 응답 저장 완료 - chat_id=%s prompt=%d completion=%d",
-                            chat_id, prompt_tokens, completion_tokens,
-                        )
-            except (ValueError, Exception):
-                pass
+            except Exception as e:
+                logger.warning("대화/토큰 로그 저장 실패: %s", e)
 
             # RAG-lite: N턴마다 누적 요약 갱신 (이전 요약 + 최근 대화만 재요약 → 토큰 절약)
             if turn % DB_SYNC_INTERVAL == 0:
@@ -449,8 +483,8 @@ async def stream_response(
                 first_sentence = extract_first_sentence(narration)
                 if first_sentence:
                     # author_id: character_id(str) → int 변환
-                    _id_map = {"baekya": 1, "charoun": 2, "hanyeoreum": 3, "kimdohyeon": 4}
-                    author_id = _id_map.get(character_id, 1)
+                    _str_to_int = {v: k for k, v in AUTHOR_ID_MAP.items()}
+                    author_id = _str_to_int.get(character_id, 1)
                     audio_bytes = await synthesize(first_sentence, author_id)
                     if audio_bytes:  # 키 없거나 빈 결과면 음성 스킵
                         audio_payload = json.dumps(
@@ -696,3 +730,64 @@ async def delete_memo(chat_id: str, index: int):
         target = memos[index]
         await redis_client.lrem(key_memos(chat_id), 1, target)
     return {"memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}
+
+
+# ── 작가 리액션 (F-AS-05) ──────────────────────────────────
+# 사용자 대사 → 작가가 짧게 즉각 반응(말풍선). LLM은 '감정 라벨'만 분류하고,
+# 실제 문장은 reactions.py 풀에서 꺼낸다 → 작가 톤 보장 + 빠르고 저렴.
+REACTION_EMOTION_SYSTEM = (
+    "다음은 인터랙티브 소설에서 사용자(주인공)가 방금 한 말/행동이다. "
+    "이 순간의 감정 분위기를 아래 6개 중 하나로만 분류한다. 새 문장을 짓지 말고 분류만 한다.\n"
+    "- tension: 긴장·위기·갈등\n"
+    "- fear: 공포·불안\n"
+    "- sadness: 슬픔·상실\n"
+    "- joy: 기쁨·설렘·즐거움\n"
+    "- calm: 평온·일상·잔잔함\n"
+    "- resolve: 결심·각오·행동 개시\n"
+    '반드시 JSON만: {"emotion": "tension|fear|sadness|joy|calm|resolve"}'
+)
+
+
+async def classify_emotion(text: str) -> str:
+    """사용자 입력의 감정을 6개 라벨 중 하나로 분류(실패/예상 밖 값이면 calm)."""
+    try:
+        raw = await llm.generate(
+            REACTION_EMOTION_SYSTEM,
+            [{"role": "user", "parts": [{"text": text}]}],
+        )
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.MULTILINE)
+        emotion = json.loads(cleaned).get("emotion", "")
+        return emotion if emotion in EMOTIONS else "calm"
+    except Exception as e:
+        logger.warning("감정 분류 실패 - %s", e)
+        return "calm"
+
+
+class ReactionRequest(BaseModel):
+    content: str
+    character_id: str = "baekya"
+
+
+@router.post("/{chat_id}/reaction")
+async def author_reaction(chat_id: str, body: ReactionRequest):
+    """사용자 대사에 대한 작가의 짧은 리액션 말풍선 (F-AS-05).
+
+    감정을 분류(LLM) → 그 감정 버킷에서 작가 톤 문장을 하나 꺼낸다.
+    직전 리액션(last_reaction)은 피해서 반복을 줄인다.
+    """
+    text = (body.content or "").strip()
+    if not text:
+        return {"reaction": "", "emotion": ""}
+
+    emotion = await classify_emotion(text)
+    last = await redis_client.get(key_last_reaction(chat_id))
+    reaction = pick_reaction(body.character_id, emotion, exclude=last)
+    if reaction:
+        await redis_client.set(key_last_reaction(chat_id), reaction)
+    logger.info("작가 리액션 - chat_id=%s emotion=%s → %s", chat_id, emotion, reaction)
+    return {"reaction": reaction, "emotion": emotion}
+
+@router.put("/{chat_id}/memos", status_code=200)
+async def save_memos(chat_id: str, body: MemosBody):
+    await redis_client.set(key_memos(chat_id), json.dumps(body.memos, ensure_ascii=False))
+    return {"status": "saved", "count": len(body.memos)}

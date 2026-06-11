@@ -8,13 +8,37 @@ export async function sendMessage(chatId, payload) {
   });
 }
 
-export function connectChatStream(chatId, { content, character_id, mode = "author", world_context = "" }, onToken, onDone) {
+// F-AS-05 작가 리액션 — 사용자 대사 → 작가 짧은 반응 한 줄(아바타 자막용)
+export async function getAuthorReaction(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/reaction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return { reaction: '', emotion: '' };
+  return res.json();
+}
+
+export function connectChatStream(
+  chatId,
+  { content, character_id, mode = "author", world_context = "", check_consistency = false },
+  onToken,
+  onDone,
+) {
   const params = new URLSearchParams({ content, character_id, mode, world_context });
+  // 일관성 검수(F-QC-01)를 켜면 응답에 consistency.violations 가 채워져 아바타가 짚어줄 수 있다.
+  if (check_consistency) params.set("check_consistency", "true");
   const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream?${params}`);
 
   es.addEventListener("reply", (event) => {
-    const { narration, dialogue } = JSON.parse(event.data);
-    onToken({ narration: narration || "", dialogue: dialogue || "" });
+    // 백엔드는 narration·dialogue 외에 memories(기억 검색)·consistency(검수)도 함께 보낸다.
+    const { narration, dialogue, memories, consistency } = JSON.parse(event.data);
+    onToken({
+      narration: narration || "",
+      dialogue: dialogue || "",
+      memories: memories || [],
+      consistency: consistency || { consistent: true, violations: [] },
+    });
   });
 
   es.addEventListener("audio", (event) => {

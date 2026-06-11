@@ -124,3 +124,8 @@ html,
   background-color: color-mix(in srgb, var(--theme-color) 18%, transparent);
   border-color: var(--theme-color);
 }
+
+.btn--secondary {
+  background-color: color-mix(in srgb, var(--theme-color) 10%, transparent);
+  border-color: color-mix(in srgb, var(--theme-color) 40%, transparent);
+}
