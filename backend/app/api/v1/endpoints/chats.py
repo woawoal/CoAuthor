@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.config import settings
-from app.core.personas import get_author_prompt
+from app.core.personas import get_author_prompt, AUTHOR_ID_MAP
 from app.core.reactions import EMOTIONS, pick_reaction  # F-AS-05 작가 리액션 (머지 때 빠졌던 import 복구)
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
