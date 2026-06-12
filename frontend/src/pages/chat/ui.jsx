@@ -651,7 +651,7 @@ export default function Chat() {
           setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
 
@@ -690,6 +690,11 @@ export default function Chat() {
   async function handleEnd() {
     if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
     if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
+
+    const MIN_END_DURATION = 10000;
+    const startedAt = Date.now();
+    setReactionEmotion('read');
+
     if (esRef.current) { esRef.current.close(); esRef.current = null; }
     setStreaming(false);
     setEnding(true);
@@ -701,7 +706,13 @@ export default function Chat() {
       return;
     }
     try { await generateNovel(chatId); } catch { /* 무시 */ }
-    navigate('/storylist');
+
+    const elapsed = Date.now() - startedAt;
+    const remainingDelay = Math.max(0, MIN_END_DURATION - elapsed);
+
+    setTimeout(() => {
+      navigate('/storylist');
+    }, remainingDelay);
   }
 
   function handleFeedback() {
