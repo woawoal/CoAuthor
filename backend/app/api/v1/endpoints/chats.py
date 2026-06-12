@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
 from app.core.config import settings
-from app.core.personas import get_author_prompt
+from app.core.personas import get_author_prompt, AUTHOR_ID_MAP
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
 from app.models.dialogue import Dialogue, SpeakerType
