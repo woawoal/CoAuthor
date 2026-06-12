@@ -78,6 +78,12 @@ export default function ReadNovel() {
     load();
   }, [storyId]);
 
+  // 로딩 영상이 없거나(작가별 loading.mp4 누락) 재생이 안 끝나도 화면이 멈추지 않도록 안전 타임아웃
+  useEffect(() => {
+    const t = setTimeout(() => setVideoEnded(true), 6000);
+    return () => clearTimeout(t);
+  }, []);
+
   const handleScroll = useCallback(() => {
     const scrollTop = window.scrollY;
     const docH = document.documentElement.scrollHeight - window.innerHeight;

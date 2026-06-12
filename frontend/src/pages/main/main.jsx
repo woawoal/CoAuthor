@@ -229,13 +229,7 @@ function Main() {
                     <h1 className="logo">NodeVelture</h1>
 
                     <div className="header-auth">
-                        {userId ? (
-                            <>
-                                <button className="btn" onClick={handleLogout}>
-                                    로그아웃
-                                </button>
-                            </>
-                        ) : (
+                        {!userId && (
                             <button className="btn" onClick={() => navigate('/login')}>
                                 로그인
                             </button>
@@ -279,13 +273,6 @@ function Main() {
                     </div>
                 </section>
 
-                {/* 하단 네비게이션 버튼 영역 */}
-                <div className="bottom-nav">
-                    <div className="speech-text">
-                        <span>작가를 선택하세요</span>
-                    </div>
-
-                </div>
             </div>
 
             <div
@@ -333,6 +320,11 @@ function Main() {
                             onClick={() => navigate('/tokendashboard')}
                         >
                             토큰 대시보드
+                        </button>
+                    )}
+                    {userId && (
+                        <button className="btn main-logout-btn" onClick={handleLogout}>
+                            로그아웃
                         </button>
                     )}
                 </div>
