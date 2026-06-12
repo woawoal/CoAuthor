@@ -138,6 +138,18 @@
   cursor: not-allowed;
 }
 
+.voice-btn-secondary {
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  color: var(--text-muted, #aaa);
+  font-size: 14px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
 /* 완료 화면 */
 .voice-done {
   display: flex;
