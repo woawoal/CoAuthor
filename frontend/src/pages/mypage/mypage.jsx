@@ -4,8 +4,11 @@ import { authClient } from '../../lib/auth';
 import {
     getProfile, getWorks, getRecent, getSentences, getWiki,
     deleteSentence, getAuthorRecords, getAchievements, getStats, getDashboard,
+    getTasteProfile, setupTasteProfile,
 } from '../../lib/mypageApi';
+import TasteOnboarding from './TasteOnboarding';
 import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
+import { getVoiceProfile } from '../../lib/voiceApi';
 import './mypage.css';
 
 const WORK_GOAL_CHARS = 30000;
@@ -29,6 +32,7 @@ const NAV = {
     library: [
         { id: '대시보드',     icon: '🏠' },
         { id: '최근 작업',    icon: '🕐' },
+        { id: '취향 프로필',  icon: '✨' },
         { id: '설정집',       icon: '🗂️' },
         { id: '문장 보관함',  icon: '💾' },
         { id: 'AI 작가 기록', icon: '🤖' },
@@ -36,6 +40,7 @@ const NAV = {
         { id: '업적',         icon: '🏆' },
     ],
     account: [
+        { id: '말투 설정', icon: '✨' },
         { id: '환경설정', icon: '⚙️' },
         { id: '알림설정', icon: '🔔' },
     ],
@@ -58,11 +63,17 @@ function MyPage() {
     const [achievements, setAchievements] = useState(null);
     const [stats, setStats] = useState(null);
 
+    // 취향 프로필
+    const [tasteProfile, setTasteProfile] = useState(null);
+    const [tasteWorks, setTasteWorks] = useState([]);
+    const [showTasteOnboarding, setShowTasteOnboarding] = useState(false);
+
     // 설정집 선택 상태
     const [wikiWork, setWikiWork] = useState(null);
     const [wiki, setWiki] = useState(null);
     const [wikiTab, setWikiTab] = useState('세계관');
 
+    const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
     const [loading, setLoading] = useState(true);
 
     // 초기 로딩: 유저 확인 + 프로필 + 작품 목록
@@ -74,16 +85,21 @@ function MyPage() {
             setUserId(uid);
             setUserInfo(session.data?.user);
             try {
-                const [profileData, worksData, dashboardData, statsData] = await Promise.all([
+                const [profileData, worksData, dashboardData, statsData, tasteData, vp] = await Promise.all([
                     getProfile(uid),
                     getWorks(uid),
                     getDashboard(uid),
                     getStats(uid),
+                    getTasteProfile(uid),
+                    getVoiceProfile(),
                 ]);
+                setVoiceProfile(vp ?? null);
                 setProfile(profileData);
                 setWorks(worksData);
                 setDashboard(dashboardData);
                 setStats(statsData);
+                setTasteProfile(tasteData.taste_profile ?? {});
+                setTasteWorks(tasteData.selected_works ?? []);
             } catch (e) {
                 console.error(e);
             } finally {
@@ -95,6 +111,7 @@ function MyPage() {
 
     // 탭 전환 시 lazy fetch
     const handleNav = useCallback(async (tab) => {
+        if (tab === '말투 설정') { navigate('/voice-profile'); return; }
         setActive(tab);
         if (!userId) return;
         try {
@@ -106,6 +123,15 @@ function MyPage() {
             console.error(e);
         }
     }, [userId, recent, sentences, authorRecords, achievements]);
+
+    async function handleTasteComplete(selectedWorks) {
+        try {
+            const data = await setupTasteProfile(userId, selectedWorks);
+            setTasteProfile(data.taste_profile ?? {});
+            setTasteWorks(data.selected_works ?? []);
+        } catch (e) { console.error(e); }
+        setShowTasteOnboarding(false);
+    }
 
     const handleWikiSelect = async (work) => {
         setWikiWork(work);
@@ -197,6 +223,44 @@ function MyPage() {
                                         </div>
                                     );
                                 })()}
+
+                                {/* 말투 설정 카드 */}
+                                <div className="mp-voice-card" onClick={() => navigate('/voice-profile')}>
+                                    <div className="mp-voice-card__left">
+                                        <span className="mp-voice-card__icon">✨</span>
+                                        <div>
+                                            <div className="mp-voice-card__title">나만의 말투 설정</div>
+                                            {voiceProfile ? (
+                                                <>
+                                                    <div className="mp-voice-card__tags">
+                                                        {voiceProfile.speech_level?.value && voiceProfile.speech_level.value !== '추정 불가' && (
+                                                            <span className="mp-voice-tag">{voiceProfile.speech_level.value}</span>
+                                                        )}
+                                                        {voiceProfile.sentence_length?.value && voiceProfile.sentence_length.value !== '추정 불가' && (
+                                                            <span className="mp-voice-tag">문장 {voiceProfile.sentence_length.value}</span>
+                                                        )}
+                                                        {voiceProfile.tone?.primary?.slice(0, 2).map(t => (
+                                                            <span key={t} className="mp-voice-tag">{t}</span>
+                                                        ))}
+                                                        {voiceProfile.emoji_style?.value && voiceProfile.emoji_style.value !== '추정 불가' && (
+                                                            <span className="mp-voice-tag">이모지 {voiceProfile.emoji_style.value}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="mp-voice-card__desc">
+                                                        {voiceProfile.summary_for_user ?? '대사 추천에 반영 중'}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="mp-voice-card__desc">
+                                                    말투를 설정하면 대사 추천이 내 말투로 나와요
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <span className="mp-voice-card__arrow">
+                                        {voiceProfile ? '수정 →' : '설정하기 →'}
+                                    </span>
+                                </div>
 
                                 {/* 이어쓰기 + 최근 AI 피드백 */}
                                 <div className="mp-dash-row">
@@ -374,6 +438,78 @@ function MyPage() {
                                 ))}
                             </div>
                         ))}
+                    </div>
+                )}
+
+                {/* ── 취향 프로필 ── */}
+                {active === '취향 프로필' && (
+                    <div className="mp-taste">
+                        <div className="mp-taste__header">
+                            <div>
+                                <h2 className="mp-taste__title">취향 프로필</h2>
+                                <p className="mp-taste__desc">좋아하는 작품을 선택하면 AI가 당신의 취향을 분석해요</p>
+                            </div>
+                            <button
+                                className="mp-taste__setup-btn"
+                                onClick={() => setShowTasteOnboarding(true)}
+                            >
+                                {tasteWorks.length > 0 ? '다시 설정하기' : '취향 설정하기'}
+                            </button>
+                        </div>
+
+                        {tasteWorks.length > 0 ? (
+                            <>
+                                {/* 선택한 작품 chips */}
+                                <div className="mp-taste__section-label">선택한 작품</div>
+                                <div className="mp-taste__chips">
+                                    {['book','movie','drama'].map(cat => {
+                                        const catWorks = tasteWorks.filter(w => w.category === cat);
+                                        if (!catWorks.length) return null;
+                                        const catLabel = { book: '책', movie: '영화', drama: '드라마' }[cat];
+                                        return (
+                                            <div key={cat} className="mp-taste__chip-group">
+                                                <span className="mp-taste__chip-cat">{catLabel}</span>
+                                                {catWorks.map(w => (
+                                                    <span key={w.id} className="mp-taste__chip">{w.title}</span>
+                                                ))}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* 취향 분석 결과 */}
+                                {tasteProfile && (tasteProfile["선호장르"] || tasteProfile["선호키워드"]?.length > 0) && (
+                                    <>
+                                        <div className="mp-taste__section-label">취향 분석 결과</div>
+                                        {tasteProfile["선호장르"] && (
+                                            <div className="mp-taste__genre-result">
+                                                <span className="mp-taste__genre-label">선호 장르</span>
+                                                <span className="mp-taste__genre-value">{tasteProfile["선호장르"]}</span>
+                                            </div>
+                                        )}
+                                        {tasteProfile["선호키워드"]?.length > 0 && (
+                                            <div className="mp-taste__keywords-section">
+                                                <span className="mp-taste__genre-label">선호 키워드</span>
+                                                <div className="mp-taste__keywords">
+                                                    {tasteProfile["선호키워드"].map((kw, i) => (
+                                                        <span key={i} className="mp-taste__keyword">{kw}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        ) : (
+                            <div className="mp-taste__empty">
+                                <p>아직 취향 프로필이 없어요</p>
+                                <p>좋아하는 작품을 선택해 AI가 당신의 취향을 분석하도록 해보세요</p>
+                                <button
+                                    className="mp-taste__setup-btn mp-taste__setup-btn--large"
+                                    onClick={() => setShowTasteOnboarding(true)}
+                                >취향 설정하기</button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -583,6 +719,13 @@ function MyPage() {
                     </div>
                 )}
             </main>
+
+            {showTasteOnboarding && (
+                <TasteOnboarding
+                    onComplete={handleTasteComplete}
+                    onClose={() => setShowTasteOnboarding(false)}
+                />
+            )}
         </div>
     );
 }

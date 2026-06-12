@@ -3,12 +3,15 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
-  getSuggestions, sendAuthorMessage, getMemos, saveMemos, getAuthorReaction,
+  getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
+  getMemos, saveMemos, getAuthorReaction, getTasteRecommend,
 } from '../../lib/chatApi';
+import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
 import { saveSentence } from '../../lib/mypageApi';
+import { getTaste, analyzeTaste } from '../../lib/tasteApi';
 import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
@@ -18,7 +21,13 @@ const AUTHOR_TAGS = [
   { label: '#등장인물', prompt: null },
   { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
   { label: '#추천', prompt: null },
+  { label: '#취향저격ai', prompt: null },
 ];
+
+const TASTE_LABELS = {
+  fantasy: '판타지', growth: '성장', romance: '로맨스', action: '액션',
+  sf: 'SF', mystery: '미스터리', horror: '호러', politics: '정치', slice_of_life: '일상',
+};
 
 const AUTHOR_RECOMMEND_GREETING = {
   baekya: '...어떤 추천이 필요한가요.',
@@ -222,7 +231,7 @@ export default function Chat() {
   const memosLoadedRef = useRef(false);
 
   // ── 컨텍스트 메뉴 ─────────────────────────────────────────
-  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null });
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, msgId: null, recContent: null, copyContent: null });
 
   // ── 자동 피드백 상태 ─────────────────────────────────────
   const [autoFeedback, setAutoFeedback] = useState(false);
@@ -230,6 +239,14 @@ export default function Chat() {
   // ── 문장 저장 상태 ───────────────────────────────────────
   const [userId, setUserId] = useState(null);
   const [savedMsgId, setSavedMsgId] = useState(null);
+
+  // ── 취향 패널 상태 ────────────────────────────────────────
+  const [showTastePanel, setShowTastePanel] = useState(false);
+  const [tasteWorks, setTasteWorks] = useState([]);
+  const [tasteInput, setTasteInput] = useState('');
+  const [tasteProfile, setTasteProfile] = useState(null);
+  const [tasteAnalyzing, setTasteAnalyzing] = useState(false);
+  const [tasteRecommending, setTasteRecommending] = useState(false);
 
   // ── Refs ─────────────────────────────────────────────────
   const bottomRef = useRef(null);
@@ -239,9 +256,18 @@ export default function Chat() {
   const awaitingRecommendRef = useRef(false);
   const feedbackTimerRef = useRef(null);
 
-  // ── userId 로드 ──────────────────────────────────────────
+  // ── userId 로드 + 기존 취향 복원 ────────────────────────
   useEffect(() => {
-    authClient.getSession().then(s => setUserId(s.data?.user?.id ?? null));
+    authClient.getSession().then(s => {
+      const uid = s.data?.user?.id ?? null;
+      setUserId(uid);
+      if (uid && chatId && chatId !== 'room_001') {
+        getTaste(chatId, uid).then(data => {
+          if (data.works?.length) setTasteWorks(data.works);
+          if (data.taste_profile && Object.keys(data.taste_profile).length) setTasteProfile(data.taste_profile);
+        }).catch(() => { });
+      }
+    });
   }, []);
 
   // ── 마지막 사용 모드 기록 ────────────────────────────────
@@ -399,12 +425,30 @@ export default function Chat() {
   }
 
   // ── 작가 AI 채팅 ─────────────────────────────────────────
-  async function handleSendAuthorMessage(overrideText, opts = {}) {
+  // ── 추천 문장 자동 요청 ──────────────────────────────────
+  async function fetchRecommendation(aiMsgId, authorCharacterId, userText, aiFeedback) {
+    const recId = `rec_${aiMsgId}`;
+    setAuthorMessages(prev => [...prev, { id: recId, role: 'ai', type: 'recommend', content: '', loading: true }]);
+    try {
+      const data = await generateAuthorRewrite(chatId, {
+        original: userText,
+        feedback: aiFeedback,
+        author_id: authorCharacterId,
+      });
+      setAuthorMessages(prev => prev.map(m =>
+        m.id === recId ? { ...m, content: data.content, loading: false } : m
+      ));
+    } catch {
+      setAuthorMessages(prev => prev.filter(m => m.id !== recId));
+    }
+  }
+
+  async function handleSendAuthorMessage(overrideText, { skipRecommend = false, mode = 'chat', hideUser = false } = {}) {
     const text = (overrideText ?? authorInput).trim();
     if (!text || authorLoading) return;
     if (!overrideText) setAuthorInput('');
     // 피드백 요청처럼 원문을 패널에 노출하기 싫을 땐 opts.hideUser 로 사용자 말풍선 생략
-    if (!opts.hideUser) setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
+    if (!hideUser) setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
     setAuthorLoading(true);
 
     const isNarrationReq = awaitingRecommendRef.current &&
@@ -415,13 +459,76 @@ export default function Chat() {
       const data = await sendAuthorMessage(chatId, {
         content: text,
         author_id: currentAuthor.characterId,
+        mode,
       });
-      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', content: data.content }]);
+      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', type: 'feedback', content: data.content }]);
       if (isNarrationReq) fetchSuggestions();
+      if (!skipRecommend) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
       setAuthorLoading(false);
+    }
+  }
+
+  async function runTasteAnalysis(works) {
+    if (!userId || !chatId || chatId === 'room_001') return;
+    setTasteAnalyzing(true);
+    try {
+      const data = await analyzeTaste(chatId, { user_id: userId, works });
+      setTasteProfile(data.taste_profile);
+    } catch (e) {
+      console.error('취향 분석 실패', e);
+    } finally {
+      setTasteAnalyzing(false);
+    }
+  }
+
+  async function handleTasteRecommend() {
+    if (!userId || !chatId || chatId === 'room_001' || tasteRecommending) return;
+    setTasteRecommending(true);
+    const loadingId = `tr_${Date.now()}`;
+    setAuthorMessages(prev => [...prev, {
+      id: loadingId,
+      role: 'ai',
+      type: 'taste-recommend',
+      loading: true,
+      narration: '',
+      dialogue: '',
+      reason: '',
+    }]);
+    try {
+      const data = await getTasteRecommend(chatId, userId);
+      setAuthorMessages(prev => prev.map(m =>
+        m.id === loadingId ? { ...m, loading: false, ...data } : m
+      ));
+    } catch (e) {
+      console.error('취향저격 오류', e);
+      setAuthorMessages(prev => prev.filter(m => m.id !== loadingId));
+    } finally {
+      setTasteRecommending(false);
+    }
+  }
+
+  async function handleTasteInputKeyDown(e) {
+    if (e.key !== 'Enter' || !tasteInput.trim()) return;
+    e.preventDefault();
+    const newWorks = [...tasteWorks, tasteInput.trim()];
+    setTasteWorks(newWorks);
+    setTasteInput('');
+    await runTasteAnalysis(newWorks);
+  }
+
+  async function handleRemoveTasteWork(idx) {
+    const newWorks = tasteWorks.filter((_, i) => i !== idx);
+    setTasteWorks(newWorks);
+    if (newWorks.length > 0) {
+      await runTasteAnalysis(newWorks);
+    } else {
+      setTasteProfile(null);
+      if (userId && chatId && chatId !== 'room_001') {
+        analyzeTaste(chatId, { user_id: userId, works: [] }).catch(() => { });
+      }
     }
   }
 
@@ -441,9 +548,14 @@ export default function Chat() {
       setShowWorldInfo(false);
       setShowCharInfo(false);
       setPanelView('author');
-      awaitingRecommendRef.current = true;
-      const greeting = AUTHOR_RECOMMEND_GREETING[currentAuthor.characterId] ?? '어떤 추천을 받고 싶으신가요?';
-      setAuthorMessages(prev => [...prev, { id: `au_rec_${Date.now()}`, role: 'ai', content: greeting }]);
+      setShowTastePanel(prev => !prev);
+      return;
+    }
+    if (tag.label === '#취향저격ai') {
+      setShowWorldInfo(false);
+      setShowCharInfo(false);
+      setPanelView('author');
+      handleTasteRecommend();
       return;
     }
     setShowWorldInfo(false);
@@ -480,6 +592,18 @@ export default function Chat() {
     setStreaming(true);
 
     const worldContext = buildWorldContext(world, dbCharacters);
+
+    // 50초 내 응답 없으면 로딩 해제
+    const streamTimeoutId = setTimeout(() => {
+      if (esRef.current) { esRef.current.close(); esRef.current = null; }
+      setStreaming(false);
+      setMessages(prev => prev.map(m =>
+        m.id === streamMsgId && !m.narration && !m.dialogue
+          ? { ...m, text: '⏱️ 응답 시간이 초과되었습니다. 다시 시도해주세요.' }
+          : m
+      ));
+    }, 50000);
+
     esRef.current = connectChatStream(
       chatId,
       { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext },
@@ -488,7 +612,10 @@ export default function Chat() {
           prev.map(m => m.id === streamMsgId ? { ...m, narration, dialogue } : m)
         );
       },
-      () => setStreaming(false),
+      () => {
+        clearTimeout(streamTimeoutId);
+        setStreaming(false);
+      },
     );
   }
 
@@ -511,17 +638,10 @@ export default function Chat() {
 
   function handleFeedback() {
     if (!messages.length || authorLoading) return;
-    const recent = messages.slice(-6).filter(m => m.text || m.narration || m.dialogue);
-    const excerpt = recent.map(m => {
-      if (m.role === 'user') return `독자: ${m.text}`;
-      const parts = [];
-      if (m.narration) parts.push(m.narration);
-      if (m.dialogue) parts.push(`"${m.dialogue}"`);
-      return parts.join('\n');
-    }).join('\n\n');
-    const prompt = `다음 대화 장면을 읽고 작가로서 피드백을 줘:\n\n---\n${excerpt}\n---`;
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user' && m.text);
+    if (!lastUserMsg) return;
     setPanelView('author');
-    handleSendAuthorMessage(prompt, { hideUser: true });   // 원문(사용자 채팅)은 패널에 출력하지 않음
+    handleSendAuthorMessage(lastUserMsg.text, { mode: 'feedback', hideUser: true });
   }
 
   async function handleSaveSentence(msgId, content) {
@@ -544,6 +664,25 @@ export default function Chat() {
 
   async function fetchSuggestions() {
     if (!chatId || chatId === 'room_001') return;
+
+    if (userId) {
+      try {
+        const voiceProfile = await getVoiceProfile();
+        if (voiceProfile) {
+          const lastCharMsg = [...messages].reverse().find(m => m.role === 'character');
+          const npcDialogue = lastCharMsg?.dialogue || lastCharMsg?.narration || '';
+          const data = await getVoiceSuggestions(chatId, {
+            npc_dialogue: npcDialogue,
+            genre: world?.genre || '',
+          });
+          if (data.suggestions?.length) {
+            setSuggestions(data.suggestions);
+            return;
+          }
+        }
+      } catch { /* 폴백 */ }
+    }
+
     const worldContext = buildWorldContext(world, dbCharacters);
     const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
     setSuggestions(data.suggestions ?? []);
@@ -603,13 +742,20 @@ export default function Chat() {
 
         {suggestions.length > 0 && !streaming && (
           <div className="chat-suggestions">
-            {suggestions.map((s, i) => (
-              <button
-                key={i}
-                className="suggestion-chip"
-                onClick={() => { setInput(s); setSuggestions([]); }}
-              >{s}</button>
-            ))}
+            {suggestions.map((s, i) => {
+              const text = typeof s === 'string' ? s : s.text;
+              const label = typeof s === 'object' ? s.label : null;
+              return (
+                <button
+                  key={i}
+                  className="suggestion-chip"
+                  onClick={() => { setInput(text); setSuggestions([]); }}
+                >
+                  {label && <span className="suggestion-chip__label">{label}</span>}
+                  {text}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -690,10 +836,14 @@ export default function Chat() {
                   {AUTHOR_TAGS.map(tag => (
                     <button
                       key={tag.label}
-                      className={`author-tag${(tag.label === '#세계관' && showWorldInfo) || (tag.label === '#등장인물' && showCharInfo) ? ' author-tag--active' : ''}`}
+                      className={`author-tag${(tag.label === '#세계관' && showWorldInfo) ||
+                          (tag.label === '#등장인물' && showCharInfo)
+                          ? ' author-tag--active' : ''
+                        }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${tag.label === '#추천' ? ' author-tag--disabled' : ''
+                        }`}
                       onClick={() => handleTagClick(tag)}
-                      disabled={authorLoading}
-                    >{tag.label}</button>
+                      disabled={authorLoading || tag.label === '#추천' || (tag.label === '#취향저격ai' && tasteRecommending)}
+                    >{tag.label === '#취향저격ai' && tasteRecommending ? '추천 중...' : tag.label}</button>
                   ))}
                   <button
                     className={`memo-view-btn author-tag-bar__memo${panelView === 'memo' ? ' memo-view-btn--active' : ''}`}
@@ -754,8 +904,64 @@ export default function Chat() {
                         {currentAuthor.displayName}에게<br />소설에 대해 물어보세요
                       </p>
                     )}
-                    {authorMessages.map(msg => (
-                      msg.role === 'ai' ? (
+                    {authorMessages.map(msg => {
+                      if (msg.role === 'user') return (
+                        <div key={msg.id} className="author-msg author-msg--user">{msg.content}</div>
+                      );
+                      if (msg.type === 'taste-recommend') return (
+                        <div key={msg.id} className="author-msg-group">
+                          <span className="author-msg__name author-msg__name--rec">✨ 취향저격 추천</span>
+                          {msg.loading ? (
+                            <div className="author-msg author-msg--taste-rec">
+                              <div className="typing-dots"><span /><span /><span /></div>
+                            </div>
+                          ) : (
+                            <div className="author-msg author-msg--taste-rec">
+                              {msg.narration && (
+                                <p className="taste-rec__narration">{msg.narration}</p>
+                              )}
+                              {msg.dialogue && (
+                                <p className="taste-rec__dialogue">"{msg.dialogue}"</p>
+                              )}
+                              {msg.reason && (
+                                <p className="taste-rec__reason">💡 {msg.reason}</p>
+                              )}
+                              <button
+                                className="taste-rec__use-btn"
+                                onClick={() => {
+                                  const parts = [
+                                    msg.narration,
+                                    msg.dialogue ? `"${msg.dialogue}"` : '',
+                                  ].filter(Boolean);
+                                  setInput(prev => prev ? `${prev}\n${parts.join('\n')}` : parts.join('\n'));
+                                }}
+                              >이 문장 사용하기 →</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                      if (msg.type === 'recommend') return (
+                        <div key={msg.id} className="author-msg-group">
+                          <span className="author-msg__name author-msg__name--rec">💡 제 추천은 이래요</span>
+                          {msg.loading ? (
+                            <div className="author-msg author-msg--recommend">
+                              <div className="typing-dots"><span /><span /><span /></div>
+                            </div>
+                          ) : (
+                            <div
+                              className="author-msg author-msg--recommend"
+                              onContextMenu={e => {
+                                e.preventDefault();
+                                setContextMenu({ visible: true, x: e.clientX, y: e.clientY, msgId: null, recContent: msg.content, copyContent: msg.content });
+                              }}
+                              title="우클릭 → 적용 / 복사"
+                            >
+                              {msg.content}
+                            </div>
+                          )}
+                        </div>
+                      );
+                      return (
                         <div key={msg.id} className="author-msg-group">
                           <div className="author-msg-group__top">
                             <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
@@ -767,12 +973,16 @@ export default function Chat() {
                               {savedMsgId === msg.id ? '✓' : '💾'}
                             </button>
                           </div>
-                          <div className="author-msg author-msg--ai">{msg.content}</div>
+                          <div
+                            className="author-msg author-msg--ai"
+                            onContextMenu={e => {
+                              e.preventDefault();
+                              setContextMenu({ visible: true, x: e.clientX, y: e.clientY, msgId: null, recContent: null, copyContent: msg.content });
+                            }}
+                          >{msg.content}</div>
                         </div>
-                      ) : (
-                        <div key={msg.id} className="author-msg author-msg--user">{msg.content}</div>
-                      )
-                    ))}
+                      );
+                    })}
                     {authorLoading && (
                       <div className="author-msg-group">
                         <span className="author-msg__name">작가 {currentAuthor.displayName}</span>
@@ -783,6 +993,50 @@ export default function Chat() {
                     )}
                     <div ref={authorBottomRef} />
                   </div>
+                  {showTastePanel && (
+                    <div className="taste-panel">
+                      <div className="taste-panel__header">
+                        <span className="taste-panel__title">좋아하는 작품을 입력해주세요 ({tasteWorks.length}/5)</span>
+                        <button className="taste-panel__close" onClick={() => setShowTastePanel(false)}>×</button>
+                      </div>
+                      <div className="taste-panel__chips">
+                        {tasteWorks.map((w, i) => (
+                          <span key={i} className="taste-chip">
+                            {w}
+                            <button className="taste-chip__remove" onClick={() => handleRemoveTasteWork(i)}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                      {tasteWorks.length < 5 && (
+                        <input
+                          className="taste-panel__input"
+                          placeholder="작품명 입력 후 엔터..."
+                          value={tasteInput}
+                          onChange={e => setTasteInput(e.target.value)}
+                          onKeyDown={handleTasteInputKeyDown}
+                          autoFocus
+                        />
+                      )}
+                      {tasteAnalyzing && <div className="taste-panel__analyzing">분석 중...</div>}
+                      {tasteProfile && Object.keys(tasteProfile).length > 0 && (
+                        <div className="taste-panel__result">
+                          {Object.entries(tasteProfile)
+                            .sort(([, a], [, b]) => b - a)
+                            .slice(0, 5)
+                            .map(([key, val]) => (
+                              <div key={key} className="taste-bar">
+                                <span className="taste-bar__label">{TASTE_LABELS[key] ?? key}</span>
+                                <div className="taste-bar__track">
+                                  <div className="taste-bar__fill" style={{ width: `${Math.round(val * 100)}%` }} />
+                                </div>
+                                <span className="taste-bar__val">{Math.round(val * 100)}%</span>
+                              </div>
+                            ))
+                          }
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div className="author-chat__input-bar">
                     <textarea
                       className="author-chat__input"
@@ -883,15 +1137,41 @@ export default function Chat() {
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={e => e.stopPropagation()}
         >
-          <button className="context-menu__item" onClick={() => handleMemoFromContext(contextMenu.msgId)}>
-            메모
-          </button>
-          <button
-            className="context-menu__item context-menu__item--danger"
-            onClick={() => handleDeleteMsg(contextMenu.msgId)}
-          >
-            삭제
-          </button>
+          {contextMenu.recContent ? (
+            <>
+              <button className="context-menu__item" onClick={() => {
+                setInput(contextMenu.recContent);
+                setContextMenu(m => ({ ...m, visible: false }));
+              }}>
+                적용하기
+              </button>
+              <button className="context-menu__item" onClick={() => {
+                navigator.clipboard.writeText(contextMenu.recContent);
+                setContextMenu(m => ({ ...m, visible: false }));
+              }}>
+                복사
+              </button>
+            </>
+          ) : contextMenu.copyContent ? (
+            <button className="context-menu__item" onClick={() => {
+              navigator.clipboard.writeText(contextMenu.copyContent);
+              setContextMenu(m => ({ ...m, visible: false }));
+            }}>
+              복사
+            </button>
+          ) : (
+            <>
+              <button className="context-menu__item" onClick={() => handleMemoFromContext(contextMenu.msgId)}>
+                메모
+              </button>
+              <button
+                className="context-menu__item context-menu__item--danger"
+                onClick={() => handleDeleteMsg(contextMenu.msgId)}
+              >
+                삭제
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

@@ -329,8 +329,8 @@ async def stream_response(
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     context = await get_context(chat_id, db)
     # send_message가 이미 현재 사용자 메시지를 history에 저장했으므로 제거
-    if context["history"] and context["history"][0].get("role") == "user":
-        context["history"] = context["history"][1:]
+    if context["history"] and context["history"][-1].get("role") == "user":
+        context["history"] = context["history"][:-1]
     # 프론트가 world_context를 안 보내면 세션에서 세계관·등장인물을 직접 조회해 주입
     if not world_context:
         world_context = await _build_world_context(chat_id, db)

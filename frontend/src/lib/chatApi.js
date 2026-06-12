@@ -89,6 +89,16 @@ export async function getNovel(sessionId) {
   return res.json();
 }
 
+export async function getVoiceSuggestions(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/voice-suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return { suggestions: [] };
+  return res.json();
+}
+
 export async function getSuggestions(chatId, payload) {
   const res = await fetch(`${API_BASE_URL}/chats/${chatId}/suggestions`, {
     method: 'POST',
@@ -109,6 +119,16 @@ export async function sendAuthorMessage(chatId, payload) {
   return res.json();
 }
 
+export async function generateAuthorRewrite(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/author/rewrite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error('추천 문장 생성 실패');
+  return res.json();
+}
+
 export async function getMemos(chatId) {
   const res = await fetch(`${API_BASE_URL}/chats/${chatId}/memos`);
   if (!res.ok) return { memos: [] };
@@ -121,4 +141,14 @@ export async function saveMemos(chatId, memos) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ memos }),
   });
+}
+
+export async function getTasteRecommend(chatId, userId) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/author/taste-recommend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) throw new Error('취향저격 추천 실패');
+  return res.json();
 }

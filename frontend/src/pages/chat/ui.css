@@ -368,6 +368,13 @@
   background: color-mix(in srgb, var(--theme-color) 25%, transparent);
 }
 
+.suggestion-chip__label {
+  display: block;
+  font-size: 10px;
+  opacity: 0.65;
+  margin-bottom: 2px;
+}
+
 /* ── 입력창 ── */
 .chat-input-bar {
   display: flex;
@@ -813,6 +820,13 @@
   cursor: not-allowed;
 }
 
+.feedback-btn--selection {
+  background: color-mix(in srgb, var(--theme-color) 25%, transparent);
+  border-color: color-mix(in srgb, var(--theme-color) 60%, transparent);
+  color: var(--theme-color);
+  font-weight: 600;
+}
+
 /* ── 세계관 카드 ── */
 .world-info-card {
   margin: 0 12px 8px;
@@ -981,6 +995,53 @@
   color: var(--theme-color);
   opacity: 0.85;
   padding-left: 2px;
+}
+
+.author-msg__name--rec {
+  color: #a0a0b8;
+  font-style: italic;
+}
+
+.author-msg--recommend {
+  background: color-mix(in srgb, var(--theme-color) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--theme-color) 40%, transparent);
+  align-self: flex-start;
+  color: var(--text-main);
+  cursor: context-menu;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.author-msg--recommend:hover {
+  border-color: color-mix(in srgb, var(--theme-color) 70%, transparent);
+  background: color-mix(in srgb, var(--theme-color) 14%, transparent);
+}
+
+.rec-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--card-main, #1e1e2e);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.rec-context-menu__item {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  background: none;
+  border: none;
+  color: var(--theme-color);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.rec-context-menu__item:hover {
+  background: color-mix(in srgb, var(--theme-color) 15%, transparent);
 }
 
 .author-chat__input-bar {
@@ -1285,6 +1346,204 @@
   letter-spacing: 0.3px;
   user-select: none;
 }
+
+
+/* ── 취향 입력 패널 ── */
+.taste-panel {
+  padding: 10px 12px 8px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  background: rgba(255,255,255,0.02);
+  flex-shrink: 0;
+}
+
+.taste-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.taste-panel__title {
+  font-size: 11px;
+  color: var(--text-sub, #aaa);
+  font-weight: 500;
+}
+
+.taste-panel__close {
+  background: none;
+  border: none;
+  color: var(--text-sub, #aaa);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.taste-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+
+.taste-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: color-mix(in srgb, var(--theme-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text-main);
+}
+
+.taste-chip__remove {
+  background: none;
+  border: none;
+  color: var(--text-sub, #aaa);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+}
+
+.taste-panel__input {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-size: 12px;
+  padding: 5px 9px;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+}
+
+.taste-panel__input:focus {
+  border-color: var(--theme-color);
+}
+
+.taste-panel__analyzing {
+  font-size: 11px;
+  color: var(--text-sub, #aaa);
+  margin: 4px 0 2px;
+  animation: taste-blink 1s ease-in-out infinite;
+}
+
+@keyframes taste-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.taste-panel__result {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.taste-bar {
+  display: grid;
+  grid-template-columns: 48px 1fr 28px;
+  align-items: center;
+  gap: 6px;
+}
+
+.taste-bar__label {
+  font-size: 11px;
+  color: var(--text-sub, #aaa);
+  text-align: right;
+}
+
+.taste-bar__track {
+  height: 5px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.taste-bar__fill {
+  height: 100%;
+  background: var(--theme-color);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.taste-bar__val {
+  font-size: 10px;
+  color: var(--text-sub, #aaa);
+  text-align: right;
+}
+
+/* ── #취향저격ai 태그 강조 ─────────────────────────────────── */
+.author-tag--accent {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--theme-color, #c084fc) 30%, transparent) 0%,
+    color-mix(in srgb, var(--theme-color, #c084fc) 15%, transparent) 100%
+  );
+  border-color: color-mix(in srgb, var(--theme-color, #c084fc) 50%, transparent);
+  color: var(--theme-color, #c084fc);
+  font-weight: 600;
+}
+
+/* ── 취향저격 추천 카드 ──────────────────────────────────────── */
+.author-msg--taste-rec {
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--theme-color, #c084fc) 12%, transparent) 0%,
+    rgba(255,255,255,0.03) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--theme-color, #c084fc) 30%, transparent);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.taste-rec__narration {
+  color: var(--text-sub, #ccc);
+  font-style: italic;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.taste-rec__dialogue {
+  color: var(--text-main, #fff);
+  font-weight: 600;
+  margin: 0;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  border-left: 2px solid var(--theme-color, #c084fc);
+  white-space: pre-wrap;
+}
+
+.taste-rec__reason {
+  font-size: 11px;
+  color: var(--text-sub, #888);
+  margin: 0;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.taste-rec__use-btn {
+  align-self: flex-end;
+  background: var(--theme-color, #c084fc);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin-top: 2px;
+}
+.taste-rec__use-btn:hover { opacity: 0.82; }
 
 /* ── 작가 아바타 (협업 반응: 생각중·기억·일관성·메모) ───── */
 .author-avatar {
