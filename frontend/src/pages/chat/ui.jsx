@@ -1148,7 +1148,7 @@ export default function Chat() {
               /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
               <div className="memo-view">
                 <div className="memo-view__header">
-                  <span>✏️ 작가의 교정</span>
+                  <span>{storyAuthor.displayName}의 교정</span>
                   <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
                 </div>
                 <div className="memo-view__list">

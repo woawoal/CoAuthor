@@ -11,6 +11,7 @@ F-QC-02: 한국어 맞춤법·문법 검사 독립 모듈
 """
 from __future__ import annotations
 
+import html
 import json
 import logging
 import re
@@ -84,6 +85,7 @@ def _parse_speller_response(response_text: str) -> str:
 
     corrected = result.get("notag_html") or result.get("html", "")
     corrected = re.sub(r"<[^>]+>", "", corrected)
+    corrected = html.unescape(corrected)  # &quot; &amp; 등 HTML 엔티티 복원
     return corrected.strip()
 
 

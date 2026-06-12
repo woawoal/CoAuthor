@@ -714,7 +714,7 @@ export default function Editor() {
               /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
               <div className="memo-view">
                 <div className="memo-view__header">
-                  <span>✏️ 작가의 교정</span>
+                  <span>{currentAuthor.displayName}의 교정</span>
                   <div className="memo-proof__head-actions">
                     {corrections.length > 0 && (
                       <button className="memo-view__back" onClick={() => { setCorrections([]); setProofMemo(''); }}>비우기</button>
