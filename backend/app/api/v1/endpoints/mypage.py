@@ -1,4 +1,5 @@
 """마이페이지(내 서재) 엔드포인트"""
+import json
 import uuid
 import logging
 from collections import Counter, defaultdict
@@ -17,7 +18,9 @@ from app.models.world import World
 from app.models.character import Character
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.saved_sentence import SavedSentence
+from app.models.user_taste_profile import UserTasteProfile
 from app.core.personas import AUTHOR_ID_MAP
+from app.services import llm
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -715,3 +718,103 @@ async def get_stats(
         "work_count": len(sessions),
         "completed_count": completed_count,
     }
+
+
+# ── 취향 프로필 ──────────────────────────────────────────────────
+_TASTE_PROMPT = """\
+사용자가 선택한 좋아하는 작품들입니다. 이를 바탕으로 취향 프로파일을 분석해주세요.
+
+{categories_text}
+
+반드시 아래 JSON 형식으로만 응답하세요 (다른 설명 없이):
+{{
+  "선호장르": "대표 장르나 분위기를 간결하게 (예: '현대 로맨스', '다크 판타지 액션', '감성 성장물')",
+  "선호키워드": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5"]
+}}
+
+선호키워드는 선택된 작품들에서 공통적으로 보이는 트로프, 분위기, 주제를 3~5개 추출해주세요. (예: '아이돌', '비밀연애', '집착남', '세계 멸망', '계략과 배신', '평행세계', '압도적 성장')"""
+
+_CATEGORY_KO = {"book": "책", "movie": "영화", "drama": "드라마"}
+
+
+class TasteSetupRequest(BaseModel):
+    user_id: str
+    selected_works: list[dict]  # [{id, title, category, tags}]
+
+
+class TasteProfileResponse(BaseModel):
+    selected_works: list[dict]
+    taste_profile: dict
+
+
+@router.get("/taste")
+async def get_taste_profile(
+    user_id: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> TasteProfileResponse:
+    try:
+        uid = uuid.UUID(user_id)
+    except (ValueError, TypeError):
+        return TasteProfileResponse(selected_works=[], taste_profile={})
+
+    row = (await db.execute(
+        select(UserTasteProfile).where(UserTasteProfile.user_id == uid)
+    )).scalar_one_or_none()
+
+    if not row:
+        return TasteProfileResponse(selected_works=[], taste_profile={})
+    return TasteProfileResponse(selected_works=row.selected_works or [], taste_profile=row.taste_profile or {})
+
+
+@router.post("/taste/setup")
+async def setup_taste_profile(
+    body: TasteSetupRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TasteProfileResponse:
+    try:
+        uid = uuid.UUID(body.user_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="invalid user_id")
+
+    # 카테고리별 작품 그룹핑
+    by_cat: dict[str, list[str]] = {}
+    for w in body.selected_works:
+        cat = w.get("category", "기타")
+        by_cat.setdefault(cat, []).append(w.get("title", ""))
+
+    categories_text = "\n".join(
+        f"[{_CATEGORY_KO.get(cat, cat)}]\n" + "\n".join(f"- {t}" for t in titles)
+        for cat, titles in by_cat.items()
+    )
+
+    taste_profile: dict = {}
+    try:
+        system_prompt = _TASTE_PROMPT.format(categories_text=categories_text)
+        contents = [{"role": "user", "parts": [{"text": "위 작품들을 분석해서 취향 JSON을 반환해주세요."}]}]
+        raw = await llm.generate(system_prompt, contents, json_mode=True)
+        if raw:
+            text = raw if isinstance(raw, str) else json.dumps(raw)
+            text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            parsed = json.loads(text)
+            if "선호장르" in parsed:
+                taste_profile["선호장르"] = str(parsed["선호장르"])
+            if "선호키워드" in parsed and isinstance(parsed["선호키워드"], list):
+                taste_profile["선호키워드"] = [str(k) for k in parsed["선호키워드"][:6]]
+    except Exception as e:
+        logger.warning("취향 LLM 분석 실패: %s", e)
+
+    # upsert
+    row = (await db.execute(
+        select(UserTasteProfile).where(UserTasteProfile.user_id == uid)
+    )).scalar_one_or_none()
+
+    if row:
+        row.selected_works = body.selected_works
+        row.taste_profile = taste_profile
+    else:
+        row = UserTasteProfile(user_id=uid, selected_works=body.selected_works, taste_profile=taste_profile)
+        db.add(row)
+
+    await db.commit()
+    logger.info("취향 프로필 저장 - user=%s works=%d", body.user_id, len(body.selected_works))
+    return TasteProfileResponse(selected_works=body.selected_works, taste_profile=taste_profile)

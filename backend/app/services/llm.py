@@ -187,7 +187,10 @@ def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: lis
         return (resp.choices[0].message.content or ""), usage
     # gemini
     resp = _gemini_model(model, key, system_prompt).generate_content(
-        contents, generation_config=_gemini_gen_config(json_mode))
+        contents,
+        generation_config=_gemini_gen_config(json_mode),
+        request_options={"timeout": 40},
+    )
     meta = getattr(resp, "usage_metadata", None)
     usage = {"model": model,
              "prompt_tokens": getattr(meta, "prompt_token_count", 0) or 0,
@@ -259,10 +262,18 @@ async def generate(system_prompt: str, contents: list[dict], usage_out: list | N
         attempt = 0
         while True:
             try:
-                text, usage = await asyncio.to_thread(_gen_once, prov, model, key, system_prompt, contents, json_mode)
+                text, usage = await asyncio.wait_for(
+                    asyncio.to_thread(_gen_once, prov, model, key, system_prompt, contents, json_mode),
+                    timeout=45.0,
+                )
                 if usage_out is not None:
                     usage_out.append(usage)
                 return text
+            except asyncio.TimeoutError:
+                tag = f"{prov}/{model}"
+                logger.warning("[LLM timeout] %s 45s 초과 → 다음 후보", tag)
+                last_exc = RuntimeError(f"{tag} 응답 시간 초과")
+                break
             except Exception as e:
                 last_exc = e
                 action = _handle_failure(cand, e, attempt)

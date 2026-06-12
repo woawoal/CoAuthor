@@ -9,10 +9,16 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from fastapi import HTTPException
 from app.database import get_db
 from app.models.session import Session
 from app.models.world import World
 from app.models.character import Character
+from app.models.dialogue import Dialogue, SpeakerType
+from app.models.user_taste_profile import UserTasteProfile
+from app.core.taste_recommend_prompt import (
+    TASTE_RECOMMEND_SYSTEM, build_taste_section, build_novel_section, build_dialogue_section,
+)
 from app.services.chat_context import (
     redis_client,
     get_author_history, append_author_history, get_prev_user_questions,
@@ -20,6 +26,7 @@ from app.services.chat_context import (
 )
 from app.services import llm, memory
 from app.prompts.author import build_author_messages
+from app.core.personas import build_feedback_prompt, build_rewrite_prompt
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -70,6 +77,13 @@ async def _get_memos(chat_id: str) -> list:
 class AuthorMessageRequest(BaseModel):
     content: str
     author_id: str = "baekya"
+    mode: str = "chat"  # 'chat' | 'feedback'
+
+
+class AuthorRewriteRequest(BaseModel):
+    original: str
+    feedback: str
+    author_id: str = "baekya"
 
 
 class AuthorMessageResponse(BaseModel):
@@ -91,50 +105,52 @@ async def send_author_message(
     - 일반 텍스트 응답 (JSON 아님)
     """
     world_context, story_summary = await _get_story_context(chat_id, db)
-    memos          = await _get_memos(chat_id)
-    author_history = await get_author_history(chat_id, body.author_id)
 
-    # 첫 대화(작가 전환)일 때만 다른 작가와 나눈 사용자 질문 수집
-    prev_questions: list[str] = []
-    if not author_history:
-        prev_questions = await get_prev_user_questions(chat_id, exclude_author=body.author_id)
+    logger.info("작가채팅 요청 - chat_id=%s author=%s mode=%s", chat_id, body.author_id, body.mode)
 
-    # RAG: 사용자 입력과 관련된 과거 대화 검색
-    relevant: list[str] = []
-    try:
-        relevant = await memory.retrieve_relevant(chat_id, db, body.content)
-    except Exception as e:
-        logger.warning("작가채팅 RAG 실패: %s", e)
+    if body.mode == "feedback":
+        system_prompt = build_feedback_prompt(
+            persona_id=body.author_id,
+            world_context=world_context,
+        )
+        contents = [{"role": "user", "parts": [{"text": body.content}]}]
+    else:
+        memos          = await _get_memos(chat_id)
+        author_history = await get_author_history(chat_id, body.author_id)
 
-    # RAG 결과를 story_summary에 보강
-    context_summary = story_summary
-    if relevant:
-        context_summary += "\n\n[관련 사건 (RAG)]\n" + "\n".join(f"- {r}" for r in relevant)
+        prev_questions: list[str] = []
+        if not author_history:
+            prev_questions = await get_prev_user_questions(chat_id, exclude_author=body.author_id)
 
-    messages = build_author_messages(
-        author_id=body.author_id,
-        world_context=world_context,
-        story_summary=context_summary,
-        memos=memos,
-        author_history=author_history,
-        prev_questions=prev_questions,
-        user_input=body.content,
-    )
+        relevant: list[str] = []
+        try:
+            relevant = await memory.retrieve_relevant(chat_id, db, body.content)
+        except Exception as e:
+            logger.warning("작가채팅 RAG 실패: %s", e)
 
-    logger.info("작가채팅 요청 - chat_id=%s author=%s", chat_id, body.author_id)
+        context_summary = story_summary
+        if relevant:
+            context_summary += "\n\n[관련 사건 (RAG)]\n" + "\n".join(f"- {r}" for r in relevant)
 
-    # llm.generate 는 contents 형식을 기대 (system 제외)
-    system_prompt = messages[0]["content"]
-    contents = [
-        {"role": "user" if m["role"] == "user" else "model",
-         "parts": [{"text": m["content"]}]}
-        for m in messages[1:]
-    ]
+        messages = build_author_messages(
+            author_id=body.author_id,
+            world_context=world_context,
+            story_summary=context_summary,
+            memos=memos,
+            author_history=author_history,
+            prev_questions=prev_questions,
+            user_input=body.content,
+        )
+        system_prompt = messages[0]["content"]
+        contents = [
+            {"role": "user" if m["role"] == "user" else "model",
+             "parts": [{"text": m["content"]}]}
+            for m in messages[1:]
+        ]
 
     raw = await llm.generate(system_prompt, contents, json_mode=False)
     reply = (raw or "").strip()
 
-    # 히스토리 저장
     await append_author_history(chat_id, body.author_id, "user", body.content)
     await append_author_history(chat_id, body.author_id, "ai", reply)
 
@@ -144,6 +160,120 @@ async def send_author_message(
         messageId=f"amsg_{uuid.uuid4().hex[:8]}",
         content=reply,
     )
+
+
+@router.post("/{chat_id}/author/rewrite")
+async def generate_rewrite(
+    chat_id: str,
+    body: AuthorRewriteRequest,
+    db: AsyncSession = Depends(get_db),
+) -> AuthorMessageResponse:
+    """
+    피드백을 반영한 추천 문장 생성.
+    - original: 사용자 원문
+    - feedback: 방금 받은 피드백 텍스트
+    """
+    world_context, _ = await _get_story_context(chat_id, db)
+
+    system_prompt = build_rewrite_prompt(
+        persona_id=body.author_id,
+        original=body.original,
+        feedback=body.feedback,
+        world_context=world_context,
+    )
+    contents = [{"role": "user", "parts": [{"text": "위 원문과 피드백을 바탕으로 추천 문장을 작성해줘."}]}]
+
+    raw = await llm.generate(system_prompt, contents, json_mode=False)
+    reply = (raw or "").strip()
+
+    logger.info("추천문장 생성 - chat_id=%s author=%s: %s", chat_id, body.author_id, reply[:60])
+
+    return AuthorMessageResponse(
+        messageId=f"amsg_{uuid.uuid4().hex[:8]}",
+        content=reply,
+    )
+
+
+class TasteRecommendRequest(BaseModel):
+    user_id: str
+
+
+class TasteRecommendResponse(BaseModel):
+    narration: str
+    dialogue: str
+    reason: str
+
+
+@router.post("/{chat_id}/author/taste-recommend")
+async def taste_recommend(
+    chat_id: str,
+    body: TasteRecommendRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TasteRecommendResponse:
+    """취향저격 AI - 사용자 취향 + 소설 상황 + 이전 대화 기반 다음 문장 추천."""
+    # 1. 취향 프로필 조회
+    taste_profile: dict = {}
+    try:
+        uid = uuid.UUID(body.user_id)
+        row = (await db.execute(
+            select(UserTasteProfile).where(UserTasteProfile.user_id == uid)
+        )).scalar_one_or_none()
+        if row and row.taste_profile:
+            taste_profile = row.taste_profile
+    except Exception as e:
+        logger.warning("취향 프로필 조회 실패: %s", e)
+
+    # 2. 소설 컨텍스트 (세계관 + 줄거리 요약)
+    world_context, story_summary = await _get_story_context(chat_id, db)
+
+    # 3. 최근 대화 (DB, 최근 10개 역순 → 시간순 정렬)
+    recent_dialogues: list[dict] = []
+    try:
+        sid = uuid.UUID(chat_id)
+        rows = (await db.execute(
+            select(Dialogue)
+            .where(Dialogue.session_id == sid)
+            .order_by(Dialogue.created_at.desc())
+            .limit(10)
+        )).scalars().all()
+        recent_dialogues = [
+            {
+                "role": "user" if r.speaker_type == SpeakerType.USER else "character",
+                "content": r.content,
+            }
+            for r in reversed(rows)
+        ]
+    except Exception as e:
+        logger.warning("대화 기록 조회 실패: %s", e)
+
+    # 4. 프롬프트 조립
+    system_prompt = TASTE_RECOMMEND_SYSTEM.format(
+        taste_section=build_taste_section(taste_profile),
+        novel_section=build_novel_section(world_context, story_summary),
+        dialogue_section=build_dialogue_section(recent_dialogues),
+    )
+    contents = [{"role": "user", "parts": [{"text": "취향에 맞는 다음 문장을 추천해주세요."}]}]
+
+    # 5. LLM 호출 + JSON 파싱
+    try:
+        raw = await llm.generate(system_prompt, contents, json_mode=True)
+        if not raw:
+            raise ValueError("LLM 빈 응답")
+        text = raw if isinstance(raw, str) else json.dumps(raw)
+        text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        parsed = json.loads(text)
+        result = TasteRecommendResponse(
+            narration=str(parsed.get("narration", "")),
+            dialogue=str(parsed.get("dialogue", "")),
+            reason=str(parsed.get("reason", "")),
+        )
+    except Exception as e:
+        logger.error("취향저격 LLM 실패: %s", e)
+        raise HTTPException(status_code=500, detail="AI 추천 생성에 실패했습니다.")
+
+    logger.info("취향저격 추천 - chat_id=%s narration=%s dialogue=%s",
+                chat_id, result.narration[:40], result.dialogue[:40])
+    return result
 
 
 @router.get("/{chat_id}/author/history")

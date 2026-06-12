@@ -78,3 +78,19 @@ export async function getDashboard(userId) {
     if (!res.ok) throw new Error('대시보드 조회 실패');
     return res.json();
 }
+
+export async function getTasteProfile(userId) {
+    const res = await fetch(`${BASE}/taste?user_id=${userId}`);
+    if (!res.ok) return { selected_works: [], taste_profile: {} };
+    return res.json();
+}
+
+export async function setupTasteProfile(userId, selectedWorks) {
+    const res = await fetch(`${BASE}/taste/setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, selected_works: selectedWorks }),
+    });
+    if (!res.ok) throw new Error('취향 분석 실패');
+    return res.json();
+}
