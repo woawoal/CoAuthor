@@ -91,7 +91,7 @@ function TypedText({ text, speed = 30, step = 1, onType, onDone }) {
 }
 
 // 작가 AI 메시지 — 라이브 응답이면 나레이션→대사 순으로 타이핑, 복원된 기록은 즉시 표시
-function CharMessage({ msg, characterName, hasBookmark, onType }) {
+function CharMessage({ msg, characterName, hasBookmark, onType, onDone }) {
   const live = !!msg.narration;                       // 스트림 응답만 타이핑(복원 기록 X)
   const narration = formatText(msg.narration || msg.text || '');
   const hasDialogue = !!msg.dialogue;
@@ -104,7 +104,7 @@ function CharMessage({ msg, characterName, hasBookmark, onType }) {
         <p className="narration-text">
           {hasBookmark && !hasDialogue && <span className="bubble-bookmark">🔖</span>}
           {live
-            ? <TypedText text={narration} onType={onType} onDone={() => setNarrDone(true)} />
+            ? <TypedText text={narration} onType={onType} onDone={() => { setNarrDone(true); if (!hasDialogue) onDone?.(); }} />
             : narration}
         </p>
       )}
@@ -113,7 +113,7 @@ function CharMessage({ msg, characterName, hasBookmark, onType }) {
           <span className="badge">{charName}</span>
           <div className="bubble bubble--char">
             {hasBookmark && <span className="bubble-bookmark">🔖</span>}
-            &ldquo;{live ? <TypedText text={msg.dialogue} onType={onType} /> : msg.dialogue}&rdquo;
+            &ldquo;{live ? <TypedText text={msg.dialogue} onType={onType} onDone={onDone} /> : msg.dialogue}&rdquo;
           </div>
         </div>
       )}
@@ -121,7 +121,7 @@ function CharMessage({ msg, characterName, hasBookmark, onType }) {
   );
 }
 
-function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelected, onContextMenu, onType }) {
+function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelected, onContextMenu, onType, onDone }) {
   if (msg.role === 'system') {
     return <div className="world-info-header">{msg.text}</div>;
   }
@@ -143,7 +143,7 @@ function Bubble({ msg, persona, characterName, streaming, hasBookmark, isSelecte
             <div className="typing-dots"><span /><span /><span /></div>
           </div>
         ) : (
-          <CharMessage msg={msg} characterName={characterName} hasBookmark={hasBookmark} onType={onType} />
+          <CharMessage msg={msg} characterName={characterName} hasBookmark={hasBookmark} onType={onType} onDone={onDone} />
         )}
       </div>
     );
@@ -174,6 +174,10 @@ export default function Chat() {
   const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdRaw));
   useAuthorTheme(authorId);
   const [videoError, setVideoError] = useState(false);
+  const [reactionEmotion, setReactionEmotion] = useState(null);
+  const delayTimerRef = useRef(null);
+  const delayPlayedRef = useRef(false);
+  const pendingReactionEmotionRef = useRef(null);
 
   // manuscriptContent: state로 오면 localStorage에 저장, 없으면 localStorage에서 복원
   useEffect(() => {
@@ -576,18 +580,67 @@ export default function Chat() {
     reactionTimerRef.current = setTimeout(() => setReaction(''), 15000);
   }
 
+  function playPendingReaction() {
+    if (!pendingReactionEmotionRef.current) return;
+
+    setReactionEmotion(pendingReactionEmotionRef.current);
+    pendingReactionEmotionRef.current = null;
+  }
+
+  function resetDelayTimer() {
+    if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
+
+    delayTimerRef.current = setTimeout(() => {
+      if (!delayPlayedRef.current && !streaming) {
+        setReactionEmotion('delays');
+        delayPlayedRef.current = true;
+      }
+    }, 3 * 60 * 1000);
+  }
+
+  useEffect(() => {
+    resetDelayTimer();
+
+    return () => {
+      if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
+    };
+  }, [streaming]);
+
   async function handleSend() {
     if (!input.trim() || streaming) return;
     const userText = input.trim();
     setInput('');
 
+    const isFirstChat = messages.length === 0 && !importedNarration;
+    delayPlayedRef.current = false;
+    resetDelayTimer();
+
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
 
     // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
-    getAuthorReaction(chatId, { content: userText, character_id: currentAuthor.characterId })
-      .then(r => { if (r.reaction) showReaction(r.reaction); })
-      .catch(() => { });
+    getAuthorReaction(chatId, {
+      content: userText,
+      character_id: currentAuthor.characterId
+    })
+      .then(r => {
+        if (r.reaction) {
+          console.log(
+            `[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`
+          );
+
+          showReaction(r.reaction);
+
+          if (isFirstChat) {
+            pendingReactionEmotionRef.current = 'start';
+          } else if (r.emotion === 'joy' || r.emotion === 'tension') {
+            pendingReactionEmotionRef.current = r.emotion;
+          }
+        }
+      })
+      .catch(err => {
+        console.error('[REACTION ERROR]', err);
+      });
 
     // 맞춤법 교정 — 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     proofread(chatId, userText, currentAuthor.characterId)
@@ -752,6 +805,7 @@ export default function Chat() {
               hasBookmark={memos.some(m => m.msgId === msg.id)}
               isSelected={selectedMsgId === msg.id}
               onType={() => bottomRef.current?.scrollIntoView({ block: 'end' })}
+              onDone={playPendingReaction}
               onContextMenu={msg.role !== 'system'
                 ? e => handleBubbleContextMenu(e, msg.id)
                 : undefined}
@@ -828,11 +882,16 @@ export default function Chat() {
                 <div className="author-panel__image">
                   {!videoError ? (
                     <video
-                      key={AUTHOR_IDS[currentAuthorIdx]}
-                      src={`/assets/author${AUTHOR_IDS[currentAuthorIdx]}/default.mp4`}
+                      key={`${AUTHOR_IDS[currentAuthorIdx]}-${reactionEmotion ?? 'default'}`}
+                      src={
+                        reactionEmotion
+                          ? `/assets/author${AUTHOR_IDS[currentAuthorIdx]}/${reactionEmotion}.mp4`
+                          : `/assets/author${AUTHOR_IDS[currentAuthorIdx]}/default.mp4`
+                      }
                       autoPlay
-                      loop
+                      loop={!reactionEmotion}
                       playsInline
+                      onEnded={() => setReactionEmotion(null)}
                       onError={() => setVideoError(true)}
                     />
                   ) : (
@@ -857,8 +916,8 @@ export default function Chat() {
                     <button
                       key={tag.label}
                       className={`author-tag${(tag.label === '#세계관' && showWorldInfo) ||
-                          (tag.label === '#등장인물' && showCharInfo)
-                          ? ' author-tag--active' : ''
+                        (tag.label === '#등장인물' && showCharInfo)
+                        ? ' author-tag--active' : ''
                         }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${tag.label === '#추천' ? ' author-tag--disabled' : ''
                         }`}
                       onClick={() => handleTagClick(tag)}
