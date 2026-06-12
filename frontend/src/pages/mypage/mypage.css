@@ -563,6 +563,35 @@
 .mp-stats-val { font-size: 18px; font-weight: 700; color: var(--theme-color); }
 .mp-stats-lbl { font-size: 11px; color: var(--text-sub); }
 
+/* ── 말투 설정 카드 ──────────────────────────────────────────── */
+.mp-voice-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: color-mix(in srgb, var(--theme-color) 10%, var(--card-main, #1c1c1e));
+    border: 1px solid color-mix(in srgb, var(--theme-color) 35%, transparent);
+    border-radius: 14px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: background 0.15s;
+    margin-bottom: 16px;
+}
+.mp-voice-card:hover { background: color-mix(in srgb, var(--theme-color) 18%, var(--card-main, #1c1c1e)); }
+.mp-voice-card__left { display: flex; align-items: center; gap: 12px; }
+.mp-voice-card__icon { font-size: 22px; }
+.mp-voice-card__title { font-size: 14px; font-weight: 600; color: var(--text-main); margin-bottom: 2px; }
+.mp-voice-card__desc { font-size: 12px; color: var(--text-muted, #aaa); }
+.mp-voice-card__arrow { font-size: 13px; color: var(--theme-color); font-weight: 600; white-space: nowrap; }
+.mp-voice-card__tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 5px; }
+.mp-voice-tag {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--theme-color) 20%, transparent);
+    color: var(--theme-color);
+    border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+}
+
 /* ── 플레이스홀더 ─────────────────────────────────────────────── */
 .mp-placeholder {
     display: flex;

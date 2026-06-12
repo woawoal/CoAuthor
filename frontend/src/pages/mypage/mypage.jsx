@@ -8,6 +8,7 @@ import {
 } from '../../lib/mypageApi';
 import TasteOnboarding from './TasteOnboarding';
 import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
+import { getVoiceProfile } from '../../lib/voiceApi';
 import './mypage.css';
 
 const WORK_GOAL_CHARS = 30000;
@@ -39,6 +40,7 @@ const NAV = {
         { id: '업적',         icon: '🏆' },
     ],
     account: [
+        { id: '말투 설정', icon: '✨' },
         { id: '환경설정', icon: '⚙️' },
         { id: '알림설정', icon: '🔔' },
     ],
@@ -71,6 +73,7 @@ function MyPage() {
     const [wiki, setWiki] = useState(null);
     const [wikiTab, setWikiTab] = useState('세계관');
 
+    const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
     const [loading, setLoading] = useState(true);
 
     // 초기 로딩: 유저 확인 + 프로필 + 작품 목록
@@ -82,13 +85,15 @@ function MyPage() {
             setUserId(uid);
             setUserInfo(session.data?.user);
             try {
-                const [profileData, worksData, dashboardData, statsData, tasteData] = await Promise.all([
+                const [profileData, worksData, dashboardData, statsData, tasteData, vp] = await Promise.all([
                     getProfile(uid),
                     getWorks(uid),
                     getDashboard(uid),
                     getStats(uid),
                     getTasteProfile(uid),
+                    getVoiceProfile(),
                 ]);
+                setVoiceProfile(vp ?? null);
                 setProfile(profileData);
                 setWorks(worksData);
                 setDashboard(dashboardData);
@@ -106,6 +111,7 @@ function MyPage() {
 
     // 탭 전환 시 lazy fetch
     const handleNav = useCallback(async (tab) => {
+        if (tab === '말투 설정') { navigate('/voice-profile'); return; }
         setActive(tab);
         if (!userId) return;
         try {
@@ -217,6 +223,44 @@ function MyPage() {
                                         </div>
                                     );
                                 })()}
+
+                                {/* 말투 설정 카드 */}
+                                <div className="mp-voice-card" onClick={() => navigate('/voice-profile')}>
+                                    <div className="mp-voice-card__left">
+                                        <span className="mp-voice-card__icon">✨</span>
+                                        <div>
+                                            <div className="mp-voice-card__title">나만의 말투 설정</div>
+                                            {voiceProfile ? (
+                                                <>
+                                                    <div className="mp-voice-card__tags">
+                                                        {voiceProfile.speech_level?.value && voiceProfile.speech_level.value !== '추정 불가' && (
+                                                            <span className="mp-voice-tag">{voiceProfile.speech_level.value}</span>
+                                                        )}
+                                                        {voiceProfile.sentence_length?.value && voiceProfile.sentence_length.value !== '추정 불가' && (
+                                                            <span className="mp-voice-tag">문장 {voiceProfile.sentence_length.value}</span>
+                                                        )}
+                                                        {voiceProfile.tone?.primary?.slice(0, 2).map(t => (
+                                                            <span key={t} className="mp-voice-tag">{t}</span>
+                                                        ))}
+                                                        {voiceProfile.emoji_style?.value && voiceProfile.emoji_style.value !== '추정 불가' && (
+                                                            <span className="mp-voice-tag">이모지 {voiceProfile.emoji_style.value}</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="mp-voice-card__desc">
+                                                        {voiceProfile.summary_for_user ?? '대사 추천에 반영 중'}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div className="mp-voice-card__desc">
+                                                    말투를 설정하면 대사 추천이 내 말투로 나와요
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <span className="mp-voice-card__arrow">
+                                        {voiceProfile ? '수정 →' : '설정하기 →'}
+                                    </span>
+                                </div>
 
                                 {/* 이어쓰기 + 최근 AI 피드백 */}
                                 <div className="mp-dash-row">

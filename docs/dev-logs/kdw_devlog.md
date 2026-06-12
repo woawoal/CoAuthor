@@ -1,3 +1,38 @@
+# 2026-06-11
+
+## 오늘 한 일
+
+- `backend/app/services/tts.py` 신규 (F-AV-02)
+  - ElevenLabs eleven_multilingual_v2 모델 연동
+  - 작가별 음성 ID 매핑 (백야/차로운/한여름/김도현)
+  - 계정 2개로 API 키 분리 (ELEVENLABS_API_KEY_1 / ELEVENLABS_API_KEY_2)
+  - narration 50자 내외 2문장 추출 로직 (`extract_first_sentence()`)
+
+- `backend/app/api/v1/endpoints/chats.py` 수정 (F-AV-02)
+  - `stream_response()`에 TTS 변환 로직 추가
+  - reply 이벤트 먼저 전달 후 TTS 변환 시작
+  - 변환 완료 시 `event:audio`로 base64 음성 데이터 전달
+  - TTS 실패 시 음성 없이 정상 진행
+
+- `backend/app/api/v1/endpoints/authors.py` 수정 (F-AS-05)
+  - 작가 리액션 정적 데이터 추가 (first_input / unexpected / good_scene / stuck / chapter_done)
+  - `GET /authors/{author_id}/reactions` 전체 리액션 세트 반환
+  - `GET /authors/{author_id}/reactions/{trigger}` 특정 상황 리액션 반환
+
+## 이슈 / 막힌 점
+
+- OpenAI TTS → ElevenLabs로 전환 과정에서 여러 문제 발생
+  - ElevenLabs 무료 플랜은 라이브러리 음성 API 미지원 (402 Payment Required)
+  - Voice Design으로 직접 만든 음성으로 교체하여 해결
+  - 계정 2개로 API 키 분리하여 4명 작가 각각 할당
+- `tts.py`에서 `persona_id` 선언 순서 오류 → 수정 완료
+
+## 내일 할 일
+
+- 프롬프트 일괄 설계 — 세계관 태그분류, 일관성 검수, 창작 유도/막힘, 조연 다중반응
+
+---
+
 # 2025-06-10
 
 ## 오늘 한 일

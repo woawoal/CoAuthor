@@ -1,7 +1,6 @@
 .login-wrapper {
     width: calc(100vw - 58px);
     max-width: 384px;
-    min-height: 100vh;
     display: flex;
     flex-direction: column;
     margin: auto;
@@ -33,4 +32,68 @@
 .login-wrapper .grid {
     display: flex !important;
     flex-direction: column !important;
+}
+
+.login-layout {
+    width: 100%;
+    max-width: 1300px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 80px;
+    margin: auto;
+}
+
+.login-left {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.login-right {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.login-visual {
+    width: 100%;
+    max-width: 900px;
+    object-fit: contain;
+    border-radius: 12px;
+}
+
+@media (max-width: 1200px) {
+    .login-layout {
+        flex-direction: column;
+        justify-content: center;
+        gap: 0;
+    }
+
+    .login-wrapper {
+        min-height: auto;
+    }
+
+    .login-right {
+        width: 100%;
+    }
+
+    .login-visual {
+        width: 100%;
+        max-width: 700px;
+    }
+}
+
+.main-btn {
+    height: 66px;
+    background-color: var(--header-bg);
+    border-radius: 24px;
+    border: 1px solid;
+    border-color: var(--theme-color);
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-main);
+    cursor: pointer;
 }
