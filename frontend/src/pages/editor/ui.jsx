@@ -428,7 +428,7 @@ export default function Editor() {
                     <button
                       key={tag.label}
                       className={`author-tag${(tag.label === '#세계관' && showWorldInfo) || (tag.label === '#등장인물' && showCharInfo)
-                          ? ' author-tag--active' : ''
+                        ? ' author-tag--active' : ''
                         }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${tag.label === '#추천' ? ' author-tag--disabled' : ''
                         }`}
                       onClick={() => handleTagClick(tag)}
