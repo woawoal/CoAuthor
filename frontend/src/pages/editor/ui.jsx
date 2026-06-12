@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend } from '../../lib/chatApi';
+import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -52,6 +52,8 @@ export default function Editor() {
 
   // ── 오른쪽 패널 상태 ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(true);
+  const [panelWidth, setPanelWidth] = useState(760);    // 작가 패널 기본 너비 = 드래그 최대값(px)
+  const [isResizing, setIsResizing] = useState(false);
   const [panelView, setPanelView] = useState('author');
   const [autoFeedback, setAutoFeedback] = useState(false);
   const [authorMessages, setAuthorMessages] = useState([]);
@@ -75,7 +77,10 @@ export default function Editor() {
   // ── 메모 상태 ────────────────────────────────────────────
   const [memos, setMemos] = useState([]);
   const [memoInput, setMemoInput] = useState('');
+  const [corrections, setCorrections] = useState([]);   // 누적 교정 체크리스트 [{key,original,corrected,type,frequent,count,applied}]
+  const [proofMemo, setProofMemo] = useState('');       // 최신 작가 톤 멘트
   const memosLoadedRef = useRef(false);
+  const proofTimerRef = useRef(null);
 
   // ── Refs ─────────────────────────────────────────────────
   const authorBottomRef = useRef(null);
@@ -152,6 +157,22 @@ export default function Editor() {
     return () => window.removeEventListener('click', close);
   }, [recContextMenu.visible]);
 
+  // ── 작가 패널 너비 드래그 리사이즈 (채팅과 동일) ───────────
+  useEffect(() => {
+    if (!isResizing) return;
+    function onMove(e) {
+      // 패널은 화면 오른쪽에 도킹 → 너비 = 화면폭 - 마우스X (320~760px 제한)
+      setPanelWidth(Math.min(760, Math.max(320, window.innerWidth - e.clientX)));
+    }
+    function onUp() { setIsResizing(false); }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isResizing]);
+
   // ── 자동 저장 (2초 debounce) ─────────────────────────────
   useEffect(() => {
     if (!chatId || content === '') return;
@@ -170,6 +191,37 @@ export default function Editor() {
     feedbackTimerRef.current = setTimeout(() => handleFeedback(lastParagraph), 3000);
     return () => clearTimeout(feedbackTimerRef.current);
   }, [content, autoFeedback]);
+
+  // ── 맞춤법 교정 (2.5초 debounce, 마지막 문단을 F-QC-02로 검사) ──
+  useEffect(() => {
+    if (!chatId || !content.trim()) { setCorrections([]); return; }
+    clearTimeout(proofTimerRef.current);
+    const paras = content.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+    const last = paras[paras.length - 1] ?? content.trim();
+    proofTimerRef.current = setTimeout(() => {
+      proofread(chatId, last, currentAuthor.characterId)
+        .then(r => {
+          if (!r.errors?.length) return;
+          setProofMemo(r.memo || '');
+          // 누적: 새 오류만 추가(중복 제외), 적용완료 항목은 유지 → 체크리스트
+          setCorrections(prev => {
+            const have = new Set(prev.map(x => x.key));
+            const added = r.errors
+              .filter(e => !have.has(`${e.original}→${e.corrected}`))
+              .map(e => ({
+                key: `${e.original}→${e.corrected}`,
+                original: e.original, corrected: e.corrected,
+                type: e.type, frequent: e.frequent, count: e.count, applied: false,
+              }));
+            return [...prev, ...added];
+          });
+          setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환
+        })
+        .catch(() => { });
+    }, 2500);
+    return () => clearTimeout(proofTimerRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [content]);
 
   // ── 작가 채팅 자동 스크롤 ─────────────────────────────────
   useEffect(() => {
@@ -392,8 +444,19 @@ export default function Editor() {
           {panelOpen ? '>' : '<'}
         </button>
 
-        <div className={`author-panel-slide${panelOpen ? ' author-panel-slide--open' : ''}`}>
-          <div className="author-panel">
+        {panelOpen && (
+          <div
+            className={`author-panel-resizer${isResizing ? ' author-panel-resizer--active' : ''}`}
+            onMouseDown={e => { e.preventDefault(); setIsResizing(true); }}
+            title="드래그하여 패널 너비 조절"
+          />
+        )}
+
+        <div
+          className="author-panel-slide"
+          style={{ width: panelOpen ? panelWidth : 0, transition: isResizing ? 'none' : 'width 0.3s ease' }}
+        >
+          <div className="author-panel" style={{ width: panelWidth }}>
 
             {panelView === 'author' ? (
               <>
@@ -441,6 +504,14 @@ export default function Editor() {
                   >
                     🗒️ 메모
                     {memos.length > 0 && <span className="memo-count">{memos.length}</span>}
+                  </button>
+                  <button
+                    className={`memo-view-btn author-tag-bar__memo${panelView === 'proof' ? ' memo-view-btn--active' : ''}`}
+                    onClick={() => setPanelView('proof')}
+                  >
+                    ✏️ 교정
+                    {corrections.filter(e => !e.applied).length > 0 &&
+                      <span className="memo-count memo-count--proof">{corrections.filter(e => !e.applied).length}</span>}
                   </button>
                 </div>
 
@@ -639,6 +710,49 @@ export default function Editor() {
                   </div>
                 </div>
               </>
+            ) : panelView === 'proof' ? (
+              /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
+              <div className="memo-view">
+                <div className="memo-view__header">
+                  <span>✏️ 작가의 교정</span>
+                  <div className="memo-proof__head-actions">
+                    {corrections.length > 0 && (
+                      <button className="memo-view__back" onClick={() => { setCorrections([]); setProofMemo(''); }}>비우기</button>
+                    )}
+                    <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
+                  </div>
+                </div>
+                {proofMemo && <p className="memo-proof__memo">"{proofMemo}"</p>}
+                <div className="memo-view__list">
+                  {corrections.length === 0 && (
+                    <p className="author-chat__empty">맞춤법 오류가 없습니다 ✨<br />글을 쓰면 작가가 봐줍니다</p>
+                  )}
+                  {corrections.map(e => (
+                    <div key={e.key} className={`memo-proof__card${e.applied ? ' memo-proof__card--applied' : ''}`}>
+                      <div className={`memo-proof__err${e.frequent ? ' memo-proof__err--frequent' : ''}`}>
+                        <span className="memo-proof__wrong">{e.original}</span>
+                        <span className="memo-proof__arrow">→</span>
+                        <span className="memo-proof__right">{e.corrected}</span>
+                        <span className="memo-proof__type">{e.type}</span>
+                        {e.frequent && <span className="memo-proof__freq">자주 틀림 {e.count}회</span>}
+                      </div>
+                      <div className="memo-proof__actions">
+                        {e.applied ? (
+                          <span className="memo-proof__done">✓ 적용완료</span>
+                        ) : (
+                          <button
+                            className="memo-proof__apply"
+                            onClick={() => {
+                              setContent(prev => prev.split(e.original).join(e.corrected));
+                              setCorrections(prev => prev.map(x => x.key === e.key ? { ...x, applied: true } : x));
+                            }}
+                          >적용</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               /* 메모 뷰 */
               <div className="memo-view">
