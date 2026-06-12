@@ -23,7 +23,7 @@ from app.core.personas import AUTHOR_ID_MAP as _AUTHOR_ID_MAP
 
 # 작가별 음성 ID
 _VOICE_MAP = {
-    "baekya":     "Velz1FYYWzS1Ro8Ln77l",
+    "baekya":     "XTqHG68XyHm3iAxC18O2",
     "charoun":    "x1VfcAsjwQX6oXjHOffX",
     "hanyeoreum": "DheTGeQX8ACNXdfZwHSe",
     "kimdohyeon": "icPpEDRQnftyC8bLxQht",
@@ -31,7 +31,7 @@ _VOICE_MAP = {
 
 # 작가별 API 키 매핑 (계정 2개로 분리)
 _API_KEY_MAP = {
-    "baekya":     "ELEVENLABS_API_KEY_2",
+    "baekya":     "ELEVENLABS_API_KEY_1",
     "charoun":    "ELEVENLABS_API_KEY_1",
     "hanyeoreum": "ELEVENLABS_API_KEY_1",
     "kimdohyeon": "ELEVENLABS_API_KEY_2",
