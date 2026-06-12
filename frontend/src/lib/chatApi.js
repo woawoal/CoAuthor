@@ -32,11 +32,13 @@ export async function proofread(chatId, text, characterId = 'baekya') {
 
 export function connectChatStream(
   chatId,
-  { content, character_id, mode = "author", world_context = "", check_consistency = false },
+  { content, character_id, mode = "author", world_context = "", speaker = "", check_consistency = false },
   onToken,
   onDone,
 ) {
   const params = new URLSearchParams({ content, character_id, mode, world_context });
+  // @등장인물: 이 턴을 해당 인물의 시점·서사로 전개하도록 백엔드에 화자 전달
+  if (speaker) params.set("speaker", speaker);
   // 일관성 검수(F-QC-01)를 켜면 응답에 consistency.violations 가 채워져 아바타가 짚어줄 수 있다.
   if (check_consistency) params.set("check_consistency", "true");
   const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream?${params}`);
