@@ -19,6 +19,17 @@ export async function getAuthorReaction(chatId, payload) {
   return res.json();
 }
 
+// 맞춤법/오탈자 검사 — F-QC-02 정답지 기반. errors:[{original,corrected,type,frequent,count}], memo:작가 톤 한 줄
+export async function proofread(chatId, text, characterId = 'baekya') {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/proofread`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, character_id: characterId }),
+  });
+  if (!res.ok) return { errors: [], memo: '', count: 0 };
+  return res.json();
+}
+
 export function connectChatStream(
   chatId,
   { content, character_id, mode = "author", world_context = "", check_consistency = false },

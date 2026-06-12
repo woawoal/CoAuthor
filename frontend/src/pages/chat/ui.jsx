@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
-  getMemos, saveMemos, getAuthorReaction, getTasteRecommend,
+  getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
@@ -204,6 +204,7 @@ export default function Chat() {
 
   // ── 스토리 채팅 상태 ───────────────────────────────────────
   const [messages, setMessages] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(!!chatId && chatId !== 'room_001');   // 채팅 기록 로딩 표시
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
   const [reaction, setReaction] = useState('');     // F-AS-05 작가 리액션 자막
@@ -221,7 +222,7 @@ export default function Chat() {
 
   // ── 오른쪽 패널 상태 ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(true);
-  const [panelWidth, setPanelWidth] = useState(400);    // 작가 패널 너비(드래그로 조절, px)
+  const [panelWidth, setPanelWidth] = useState(760);    // 작가 패널 기본 너비 = 드래그 최대값(px)
   const [isResizing, setIsResizing] = useState(false);
   const [panelView, setPanelView] = useState('author'); // 'author' | 'memo'
   const [authorMessages, setAuthorMessages] = useState([]);
@@ -230,6 +231,7 @@ export default function Chat() {
 
   // ── 메모 상태 ────────────────────────────────────────────
   const [memos, setMemos] = useState([]);
+  const [corrections, setCorrections] = useState([]);   // 맞춤법 교정 결과(작가 메모로 표시)
   const [selectedMsgId, setSelectedMsgId] = useState(null);
   const [memoInput, setMemoInput] = useState('');
   const [editingMemoId, setEditingMemoId] = useState(null);
@@ -297,7 +299,8 @@ export default function Chat() {
 
   // ── 세션/세계관 로드 ──────────────────────────────────────
   useEffect(() => {
-    if (!chatId || chatId === 'room_001') return;
+    if (!chatId || chatId === 'room_001') { setLoadingHistory(false); return; }
+    setLoadingHistory(true);
     getSession(chatId)
       .then(session => {
         if (session?.author_id) setAuthorId(session.author_id);  // 진짜 작가 id로 테마 확정
@@ -322,7 +325,8 @@ export default function Chat() {
           setMessages(restored);
         }
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setLoadingHistory(false));
   }, [chatId]);
 
   // ── 자동 스크롤 ──────────────────────────────────────────
@@ -639,6 +643,16 @@ export default function Chat() {
         console.error('[REACTION ERROR]', err);
       });
 
+    // 맞춤법 교정 — 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
+    proofread(chatId, userText, currentAuthor.characterId)
+      .then(r => {
+        if (r.errors?.length) {
+          setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
+          setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
+        }
+      })
+      .catch(() => {});
+
     await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
 
     const streamMsgId = `stream_${Date.now()}`;
@@ -770,6 +784,9 @@ export default function Chat() {
   // ── 렌더 ─────────────────────────────────────────────────
   return (
     <div className="chat-layout">
+      {converting && (
+        <div className="convert-loading">소설로 변환하는 중...</div>
+      )}
 
       {/* 왼쪽: 스토리 채팅 */}
       <div className="chat-main">
@@ -796,10 +813,13 @@ export default function Chat() {
         <div className="chat-messages">
           {importedNarration && (
             <div className="narration-import-block">
-              <span className="narration-import-block__label">✍ 집필형 원고</span>
+              <span className="narration-import-block__label">원고</span>
               <div className="narration-import-block__text">{importedNarration}</div>
               <div className="narration-import-block__divider">— 여기서부터 참여형 대화 —</div>
             </div>
+          )}
+          {loadingHistory && (
+            <div className="chat-loading">채팅을 불러오는 중...</div>
           )}
           {messages.map(msg => (
             <Bubble
@@ -937,6 +957,14 @@ export default function Chat() {
                   >
                     🗒️ 메모
                     {memos.length > 0 && <span className="memo-count">{memos.length}</span>}
+                  </button>
+                  <button
+                    className={`memo-view-btn author-tag-bar__memo${panelView === 'proof' ? ' memo-view-btn--active' : ''}`}
+                    onClick={() => setPanelView('proof')}
+                  >
+                    ✏️ 교정
+                    {corrections.reduce((n, c) => n + c.errors.length, 0) > 0 &&
+                      <span className="memo-count memo-count--proof">{corrections.reduce((n, c) => n + c.errors.length, 0)}</span>}
                   </button>
                 </div>
 
@@ -1143,6 +1171,39 @@ export default function Chat() {
                   </div>
                 </div>
               </>
+            ) : panelView === 'proof' ? (
+              /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
+              <div className="memo-view">
+                <div className="memo-view__header">
+                  <span>✏️ 작가의 교정</span>
+                  <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
+                </div>
+                <div className="memo-view__list">
+                  {corrections.length === 0 && (
+                    <p className="author-chat__empty">맞춤법 오류가 없습니다 ✨<br />대화하면 작가가 봐줍니다</p>
+                  )}
+                  {corrections.map(c => (
+                    <div key={c.id} className="memo-proof__card">
+                      {c.memo && <p className="memo-proof__memo">“{c.memo}”</p>}
+                      <ul className="memo-proof__list">
+                        {c.errors.map((e, i) => (
+                          <li key={i} className={`memo-proof__err${e.frequent ? ' memo-proof__err--frequent' : ''}`}>
+                            <span className="memo-proof__wrong">{e.original}</span>
+                            <span className="memo-proof__arrow">→</span>
+                            <span className="memo-proof__right">{e.corrected}</span>
+                            <span className="memo-proof__type">{e.type}</span>
+                            {e.frequent && <span className="memo-proof__freq">자주 틀림 {e.count}회</span>}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        className="memo-proof__dismiss"
+                        onClick={() => setCorrections(prev => prev.filter(x => x.id !== c.id))}
+                      >넘기기</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               /* 메모 뷰 */
               <div className="memo-view">
