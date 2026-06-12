@@ -3,8 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
-  getSuggestions, sendAuthorMessage, getMemos, saveMemos,
+  getSuggestions, getVoiceSuggestions, sendAuthorMessage, getMemos, saveMemos,
 } from '../../lib/chatApi';
+import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -469,6 +470,25 @@ export default function Chat() {
 
   async function fetchSuggestions() {
     if (!chatId || chatId === 'room_001') return;
+
+    if (userId) {
+      try {
+        const voiceProfile = await getVoiceProfile();
+        if (voiceProfile) {
+          const lastCharMsg = [...messages].reverse().find(m => m.role === 'character');
+          const npcDialogue = lastCharMsg?.dialogue || lastCharMsg?.narration || '';
+          const data = await getVoiceSuggestions(chatId, {
+            npc_dialogue: npcDialogue,
+            genre: world?.genre || '',
+          });
+          if (data.suggestions?.length) {
+            setSuggestions(data.suggestions);
+            return;
+          }
+        }
+      } catch { /* 폴백 */ }
+    }
+
     const worldContext = buildWorldContext(world, dbCharacters);
     const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
     setSuggestions(data.suggestions ?? []);
@@ -527,13 +547,20 @@ export default function Chat() {
 
         {suggestions.length > 0 && !streaming && (
           <div className="chat-suggestions">
-            {suggestions.map((s, i) => (
-              <button
-                key={i}
-                className="suggestion-chip"
-                onClick={() => { setInput(s); setSuggestions([]); }}
-              >{s}</button>
-            ))}
+            {suggestions.map((s, i) => {
+              const text = typeof s === 'string' ? s : s.text;
+              const label = typeof s === 'object' ? s.label : null;
+              return (
+                <button
+                  key={i}
+                  className="suggestion-chip"
+                  onClick={() => { setInput(text); setSuggestions([]); }}
+                >
+                  {label && <span className="suggestion-chip__label">{label}</span>}
+                  {text}
+                </button>
+              );
+            })}
           </div>
         )}
 
