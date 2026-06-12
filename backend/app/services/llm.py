@@ -186,11 +186,11 @@ def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: lis
                  "completion_tokens": getattr(u, "completion_tokens", 0) or 0}
         return (resp.choices[0].message.content or ""), usage
     # gemini
-    resp = _gemini_model(model, key, system_prompt).generate_content(
-        contents,
-        generation_config=_gemini_gen_config(json_mode),
-        request_options={"timeout": 40},
-    )
+    # request_options(timeout)는 google-generativeai 전용 인자 — Vertex SDK의 generate_content는 안 받음
+    _gen_kwargs = {"generation_config": _gemini_gen_config(json_mode)}
+    if not settings.USE_VERTEX:
+        _gen_kwargs["request_options"] = {"timeout": 40}
+    resp = _gemini_model(model, key, system_prompt).generate_content(contents, **_gen_kwargs)
     meta = getattr(resp, "usage_metadata", None)
     usage = {"model": model,
              "prompt_tokens": getattr(meta, "prompt_token_count", 0) or 0,

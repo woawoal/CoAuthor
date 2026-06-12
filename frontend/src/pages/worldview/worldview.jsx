@@ -194,7 +194,7 @@ function Worldview() {
                 characters: validCharacters,
                 authorId,
             });
-            navigate('/editor', { state: { worldId, chatId: sessionId, authorId } });
+            navigate('/chat', { state: { worldId, chatId: sessionId, authorId } });
         } catch (err) {
             alert(`저장 실패: ${err.message}`);
         } finally {

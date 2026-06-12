@@ -242,6 +242,7 @@ export default function Chat() {
 
   // ── 자동 피드백 상태 ─────────────────────────────────────
   const [autoFeedback, setAutoFeedback] = useState(false);
+  const [realtimeProof, setRealtimeProof] = useState(false);   // 실시간 교정 ON/OFF
 
   // ── 문장 저장 상태 ───────────────────────────────────────
   const [userId, setUserId] = useState(null);
@@ -643,15 +644,17 @@ export default function Chat() {
         console.error('[REACTION ERROR]', err);
       });
 
-    // 맞춤법 교정 — 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
-    proofread(chatId, userText, currentAuthor.characterId)
-      .then(r => {
-        if (r.errors?.length) {
-          setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
-          setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
-        }
-      })
-      .catch(() => { });
+    // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
+    if (realtimeProof) {
+      proofread(chatId, userText, currentAuthor.characterId)
+        .then(r => {
+          if (r.errors?.length) {
+            setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
+            setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
+          }
+        })
+        .catch(() => {});
+    }
 
     await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
 
@@ -988,6 +991,13 @@ export default function Chat() {
                   >
                     {autoFeedback ? 'ON' : 'OFF'}
                   </button>
+                  <span className="auto-feedback-bar__label auto-feedback-bar__label--proof">실시간 교정</span>
+                  <button
+                    className={`auto-feedback-toggle${realtimeProof ? ' auto-feedback-toggle--on' : ''}`}
+                    onClick={() => setRealtimeProof(prev => !prev)}
+                  >
+                    {realtimeProof ? 'ON' : 'OFF'}
+                  </button>
                   {!autoFeedback && (
                     <button
                       className="feedback-btn"
@@ -1186,7 +1196,7 @@ export default function Chat() {
               /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
               <div className="memo-view">
                 <div className="memo-view__header">
-                  <span>✏️ 작가의 교정</span>
+                  <span>{storyAuthor.displayName}의 교정</span>
                   <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
                 </div>
                 <div className="memo-view__list">

@@ -772,6 +772,14 @@
   padding: 8px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 15%, transparent);
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* 자동 피드백 / 실시간 교정 토글 사이 구분선 */
+.auto-feedback-bar__label--proof {
+  margin-left: 4px;
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--theme-color) 18%, transparent);
 }
 
 .auto-feedback-bar__label {
