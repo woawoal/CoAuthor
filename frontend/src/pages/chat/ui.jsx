@@ -14,24 +14,24 @@ import './ui.css';
 const AUTHOR_IDS = [1, 2, 3, 4];
 
 const AUTHOR_TAGS = [
-  { label: '#세계관',   prompt: null },
+  { label: '#세계관', prompt: null },
   { label: '#등장인물', prompt: null },
   { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
-  { label: '#추천',     prompt: null },
+  { label: '#추천', prompt: null },
 ];
 
 const AUTHOR_RECOMMEND_GREETING = {
-  baekya:      '...어떤 추천이 필요한가요.',
-  charoun:     '어떤 방향의 추천을 드릴까요?',
-  hanyeoreum:  '어떤 거 추천해드릴까요~?',
-  kimdohyeon:  '어떤 추천이 필요해요?',
+  baekya: '...어떤 추천이 필요한가요.',
+  charoun: '어떤 방향의 추천을 드릴까요?',
+  hanyeoreum: '어떤 거 추천해드릴까요~?',
+  kimdohyeon: '어떤 추천이 필요해요?',
 };
 
 const NARRATION_KEYWORDS = ['지문', '대사', '문장', '씬', '장면', '선택지', '다음', '행동', '추천'];
 
 const AUTHOR_MAP = {
-  1: { characterId: 'baekya',      displayName: '백야',   image: '/assets/author1/author1.png' },
-  2: { characterId: 'charoun',     displayName: '차로운', image: '/assets/author2/author2.png' },
+  1: { characterId: 'baekya', displayName: '백야', image: '/assets/author1/author1.png' },
+  2: { characterId: 'charoun', displayName: '차로운', image: '/assets/author2/author2.png' },
   3: { characterId: 'hanyeoreum', displayName: '한여름', image: '/assets/author3/author3.png' },
   4: { characterId: 'kimdohyeon', displayName: '김도현', image: '/assets/author4/author4.png' },
 };
@@ -39,11 +39,11 @@ const AUTHOR_MAP = {
 function buildWorldContext(world, characters) {
   if (!world) return '';
   const lines = [];
-  if (world.title)       lines.push(`제목: ${world.title}`);
-  if (world.genre)       lines.push(`장르: ${world.genre}`);
+  if (world.title) lines.push(`제목: ${world.title}`);
+  if (world.genre) lines.push(`장르: ${world.genre}`);
   if (world.description) lines.push(`배경: ${world.description}`);
-  if (world.setting)     lines.push(`공간: ${world.setting}`);
-  if (world.rules)       lines.push(`규칙: ${world.rules}`);
+  if (world.setting) lines.push(`공간: ${world.setting}`);
+  if (world.rules) lines.push(`규칙: ${world.rules}`);
   if (characters.length > 0) {
     lines.push('등장인물:');
     characters.forEach(c => {
@@ -127,6 +127,7 @@ export default function Chat() {
   const chatId = chatIdFromState ?? worldId ?? 'room_001';
   const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdRaw));
   useAuthorTheme(authorId);
+  const [videoError, setVideoError] = useState(false);
 
   // manuscriptContent: state로 오면 localStorage에 저장, 없으면 localStorage에서 복원
   useEffect(() => {
@@ -145,6 +146,10 @@ export default function Chat() {
     initialAuthorIdx !== -1 ? initialAuthorIdx : 0
   );
   const currentAuthor = AUTHOR_MAP[AUTHOR_IDS[currentAuthorIdx]];
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [currentAuthorIdx]);
 
   // ── 스토리 채팅 상태 ───────────────────────────────────────
   const [messages, setMessages] = useState([]);
@@ -573,7 +578,21 @@ export default function Chat() {
               <>
                 {/* 작가 이미지 + 스위처 오버레이 */}
                 <div className="author-panel__image">
-                  <img src={currentAuthor.image} alt={currentAuthor.displayName} />
+                  {!videoError ? (
+                    <video
+                      key={AUTHOR_IDS[currentAuthorIdx]}
+                      src={`/assets/author${AUTHOR_IDS[currentAuthorIdx]}/default.mp4`}
+                      autoPlay
+                      loop
+                      playsInline
+                      onError={() => setVideoError(true)}
+                    />
+                  ) : (
+                    <img
+                      src={currentAuthor.image}
+                      alt={currentAuthor.displayName}
+                    />
+                  )}
                   <div className="author-switcher author-panel__switcher-overlay">
                     <button className="author-switch-btn" onClick={prevAuthor}>‹</button>
                     <span className="author-name-badge">{currentAuthor.displayName}</span>
