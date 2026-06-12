@@ -9,10 +9,16 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from fastapi import HTTPException
 from app.database import get_db
 from app.models.session import Session
 from app.models.world import World
 from app.models.character import Character
+from app.models.dialogue import Dialogue, SpeakerType
+from app.models.user_taste_profile import UserTasteProfile
+from app.core.taste_recommend_prompt import (
+    TASTE_RECOMMEND_SYSTEM, build_taste_section, build_novel_section, build_dialogue_section,
+)
 from app.services.chat_context import (
     redis_client,
     get_author_history, append_author_history, get_prev_user_questions,
@@ -186,6 +192,88 @@ async def generate_rewrite(
         messageId=f"amsg_{uuid.uuid4().hex[:8]}",
         content=reply,
     )
+
+
+class TasteRecommendRequest(BaseModel):
+    user_id: str
+
+
+class TasteRecommendResponse(BaseModel):
+    narration: str
+    dialogue: str
+    reason: str
+
+
+@router.post("/{chat_id}/author/taste-recommend")
+async def taste_recommend(
+    chat_id: str,
+    body: TasteRecommendRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TasteRecommendResponse:
+    """취향저격 AI - 사용자 취향 + 소설 상황 + 이전 대화 기반 다음 문장 추천."""
+    # 1. 취향 프로필 조회
+    taste_profile: dict = {}
+    try:
+        uid = uuid.UUID(body.user_id)
+        row = (await db.execute(
+            select(UserTasteProfile).where(UserTasteProfile.user_id == uid)
+        )).scalar_one_or_none()
+        if row and row.taste_profile:
+            taste_profile = row.taste_profile
+    except Exception as e:
+        logger.warning("취향 프로필 조회 실패: %s", e)
+
+    # 2. 소설 컨텍스트 (세계관 + 줄거리 요약)
+    world_context, story_summary = await _get_story_context(chat_id, db)
+
+    # 3. 최근 대화 (DB, 최근 10개 역순 → 시간순 정렬)
+    recent_dialogues: list[dict] = []
+    try:
+        sid = uuid.UUID(chat_id)
+        rows = (await db.execute(
+            select(Dialogue)
+            .where(Dialogue.session_id == sid)
+            .order_by(Dialogue.created_at.desc())
+            .limit(10)
+        )).scalars().all()
+        recent_dialogues = [
+            {
+                "role": "user" if r.speaker_type == SpeakerType.USER else "character",
+                "content": r.content,
+            }
+            for r in reversed(rows)
+        ]
+    except Exception as e:
+        logger.warning("대화 기록 조회 실패: %s", e)
+
+    # 4. 프롬프트 조립
+    system_prompt = TASTE_RECOMMEND_SYSTEM.format(
+        taste_section=build_taste_section(taste_profile),
+        novel_section=build_novel_section(world_context, story_summary),
+        dialogue_section=build_dialogue_section(recent_dialogues),
+    )
+    contents = [{"role": "user", "parts": [{"text": "취향에 맞는 다음 문장을 추천해주세요."}]}]
+
+    # 5. LLM 호출 + JSON 파싱
+    try:
+        raw = await llm.generate(system_prompt, contents, json_mode=True)
+        if not raw:
+            raise ValueError("LLM 빈 응답")
+        text = raw if isinstance(raw, str) else json.dumps(raw)
+        text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        parsed = json.loads(text)
+        result = TasteRecommendResponse(
+            narration=str(parsed.get("narration", "")),
+            dialogue=str(parsed.get("dialogue", "")),
+            reason=str(parsed.get("reason", "")),
+        )
+    except Exception as e:
+        logger.error("취향저격 LLM 실패: %s", e)
+        raise HTTPException(status_code=500, detail="AI 추천 생성에 실패했습니다.")
+
+    logger.info("취향저격 추천 - chat_id=%s narration=%s dialogue=%s",
+                chat_id, result.narration[:40], result.dialogue[:40])
+    return result
 
 
 @router.get("/{chat_id}/author/history")

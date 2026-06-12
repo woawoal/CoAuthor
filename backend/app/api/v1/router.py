@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     users, worlds, characters, sessions, dialogues,
-    novels, chats, authors, api_logs, world_examples, author_chat, mypage,
+    novels, chats, authors, api_logs, world_examples, author_chat, mypage, taste,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -18,3 +18,4 @@ router.include_router(authors.router,        prefix="/authors",                 
 router.include_router(api_logs.router,       prefix="/api-logs",                          tags=["api-logs"])
 router.include_router(world_examples.router, prefix="/world-examples",                    tags=["world-examples"])
 router.include_router(mypage.router,         prefix="/mypage",                             tags=["mypage"])
+router.include_router(taste.router,          prefix="/chats",                              tags=["taste"])

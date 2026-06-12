@@ -108,3 +108,13 @@ export async function saveMemos(chatId, memos) {
     body: JSON.stringify({ memos }),
   });
 }
+
+export async function getTasteRecommend(chatId, userId) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/author/taste-recommend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) throw new Error('취향저격 추천 실패');
+  return res.json();
+}

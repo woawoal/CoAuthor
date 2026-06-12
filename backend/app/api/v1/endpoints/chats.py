@@ -176,8 +176,8 @@ async def stream_response(
 ):
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     context = await get_context(chat_id, db)
-    if context["history"] and context["history"][0].get("role") == "user":
-        context["history"] = context["history"][1:]
+    if context["history"] and context["history"][-1].get("role") == "user":
+        context["history"] = context["history"][:-1]
     if not world_context:
         world_context = await _build_world_context(chat_id, db)
 
