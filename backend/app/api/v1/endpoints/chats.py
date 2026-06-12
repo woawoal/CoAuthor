@@ -90,6 +90,20 @@ def key_turn(chat_id: str) -> str:
 def key_memos(chat_id: str) -> str:
     return f"session:{chat_id}:memos"
 
+async def _read_memos(chat_id: str) -> list:
+    """memos 키를 저장 방식에 관계없이 안전하게 list로 읽는다.
+    save_memos(PUT)는 SET(JSON 문자열), 옛 add_memo(POST)는 Redis LIST로 저장하므로
+    한쪽 타입으로만 읽으면 WRONGTYPE 500이 난다 → 키 타입을 보고 분기."""
+    k = key_memos(chat_id)
+    try:
+        if await redis_client.type(k) == "list":
+            return await redis_client.lrange(k, 0, -1)
+        raw = await redis_client.get(k)
+        return json.loads(raw) if raw else []
+    except Exception as e:  # 메모 읽기 실패는 대화/조회를 막지 않는다
+        logger.warning("memos 읽기 실패(빈 목록) - chat_id=%s: %s", chat_id, e)
+        return []
+
 
 # ── Redis 조회 헬퍼 (DB fallback 포함) ────────────────────
 async def get_context(chat_id: str, db: AsyncSession) -> dict:
@@ -142,7 +156,7 @@ async def get_context(chat_id: str, db: AsyncSession) -> dict:
             logger.warning("history DB fallback 실패 - chat_id=%s: %s", chat_id, e)
 
     history = [json.loads(item) for item in history_raw]
-    memos = await redis_client.lrange(key_memos(chat_id), 0, -1)
+    memos = await _read_memos(chat_id)
     return {
         "history":    history,
         "state":      state,
@@ -214,7 +228,7 @@ def build_messages(
     if context["summary"]:
         context_parts.append(f"[사건 요약]\n{context['summary']}")
     if context.get("memos"):
-        memo_lines = "\n".join(f"- {m}" for m in context["memos"])
+        memo_lines = "\n".join(f"- {m.get('text', '') if isinstance(m, dict) else m}" for m in context["memos"])
         context_parts.append(f"[작가 메모 — 반드시 반영할 것]\n{memo_lines}")
     if relevant_memories:
         mem_lines = "\n".join(f"- {m}" for m in relevant_memories)
@@ -590,7 +604,7 @@ async def add_memo(chat_id: str, body: MemoRequest):
 @router.get("/{chat_id}/memos")
 async def list_memos(chat_id: str):
     """현재 세션의 작가 메모 목록."""
-    return {"memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}
+    return {"memos": await _read_memos(chat_id)}
 
 
 # ── AI 어시스턴트: 다음 전개 제안 (F-AS-01~03) ─────────────
