@@ -24,6 +24,11 @@
   justify-content: space-between;
 }
 
+/* 마이페이지(내 서재)로 이동 — 헤더 오른쪽 끝 */
+.storylist-mypage-btn {
+  margin-left: auto;
+}
+
 .back-btn {
   background: none;
   border: 1px solid color-mix(in srgb, var(--text-main) 15%, transparent);
