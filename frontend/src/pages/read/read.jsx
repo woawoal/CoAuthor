@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getNovel } from '../../lib/chatApi';
 import { getSession, getWorld } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
+import LoadingVideo from '../../components/loadingVideo';
 import './read.css';
 
 const CHAPTER_SIZE = 5;
@@ -44,14 +45,14 @@ export default function ReadNovel() {
   const [novel, setNovel] = useState(null);
   const [session, setSession] = useState(null);
   const [world, setWorld] = useState(null);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [videoEnded, setVideoEnded] = useState(false);
   const [error, setError] = useState(null);
   const [fontSize, setFontSize] = useState(16);
   const [fontPanelOpen, setFontPanelOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [progress, setProgress] = useState(0);
   const [activeChapter, setActiveChapter] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [showLoading, setShowLoading] = useState(true);
 
   const chapterRefs = useRef([]);
 
@@ -72,7 +73,7 @@ export default function ReadNovel() {
       } catch (err) {
         setError(err.message);
       } finally {
-        setDataLoaded(true);
+        setLoading(false);
       }
     }
     load();
@@ -109,31 +110,7 @@ export default function ReadNovel() {
     URL.revokeObjectURL(url);
   };
 
-  const showLoading = !(dataLoaded && videoEnded);
-  const loadingAuthorId = session?.author_id;
-  const loadingVideoSrc = loadingAuthorId ? `/assets/author${loadingAuthorId}/loading.mp4` : null;
-
-  if (showLoading) {
-    return (
-      <div className="read-page">
-        <div className="read-loading-video-wrap">
-          {loadingVideoSrc && (
-            <video
-              key={loadingVideoSrc}
-              className="read-loading-video"
-              src={loadingVideoSrc}
-              autoPlay
-              playsInline
-              onEnded={() => setVideoEnded(true)}
-              onError={() => setVideoEnded(true)}
-            />
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !novel) {
+  if (!loading && (error || !novel)) {
     return (
       <div className="read-page">
         <div className="read-empty">
@@ -144,18 +121,26 @@ export default function ReadNovel() {
     );
   }
 
-  const chapters = parseChapters(novel.content);
-  const wordCount = novel.content.replace(/\s+/g, '').length;
+  const content = novel?.content ?? '';
+  const chapters = parseChapters(content);
+  const wordCount = content.replace(/\s+/g, '').length;
   const readingMins = Math.max(1, Math.ceil(wordCount / 350));
 
   return (
     <div className="read-page" onClick={() => setFontPanelOpen(false)}>
+      {showLoading && (
+        <LoadingVideo
+          loading={loading}
+          onFinish={() => setShowLoading(false)}
+        />
+      )}
+
       <div className="read-top-bar">
         <div className="read-top-bar__left">
           <button className="read-back-btn" onClick={() => navigate('/storylist')}>
             ← 돌아가기
           </button>
-          <span className="read-doc-title">{novel.title}</span>
+          <span className="read-doc-title">{novel?.title ?? ''}</span>
         </div>
         <div className="read-top-bar__right" onClick={e => e.stopPropagation()}>
           <div style={{ position: 'relative' }}>
@@ -233,7 +218,7 @@ export default function ReadNovel() {
           </div>
           <div className="read-meta-row">
             <span>작성일</span>
-            <span className="read-meta-val">{formatDate(novel.created_at)}</span>
+            <span className="read-meta-val">{novel?.created_at ? formatDate(novel.created_at) : '—'}</span>
           </div>
         </aside>
 
@@ -243,7 +228,7 @@ export default function ReadNovel() {
               <span className="read-persona-badge__dot" />
               AI 빙의작가 {AUTHOR_NAME[session?.author_id] ?? 'AI'}
             </div>
-            <h1 className="read-novel-title">{novel.title}</h1>
+            <h1 className="read-novel-title">{novel?.title ?? ''}</h1>
             {world?.description && (
               <p className="read-novel-subtitle">
                 {world.description.length > 60
