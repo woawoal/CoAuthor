@@ -17,10 +17,10 @@ import './ui.css';
 const AUTHOR_IDS = [1, 2, 3, 4];
 
 const AUTHOR_TAGS = [
-  { label: '#세계관',     prompt: null },
-  { label: '#등장인물',   prompt: null },
-  { label: '#에피소드',   prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
-  { label: '#추천',       prompt: null },
+  { label: '#세계관', prompt: null },
+  { label: '#등장인물', prompt: null },
+  { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
+  { label: '#추천', prompt: null },
   { label: '#취향저격ai', prompt: null },
 ];
 
@@ -30,17 +30,17 @@ const TASTE_LABELS = {
 };
 
 const AUTHOR_RECOMMEND_GREETING = {
-  baekya:      '...어떤 추천이 필요한가요.',
-  charoun:     '어떤 방향의 추천을 드릴까요?',
-  hanyeoreum:  '어떤 거 추천해드릴까요~?',
-  kimdohyeon:  '어떤 추천이 필요해요?',
+  baekya: '...어떤 추천이 필요한가요.',
+  charoun: '어떤 방향의 추천을 드릴까요?',
+  hanyeoreum: '어떤 거 추천해드릴까요~?',
+  kimdohyeon: '어떤 추천이 필요해요?',
 };
 
 const NARRATION_KEYWORDS = ['지문', '대사', '문장', '씬', '장면', '선택지', '다음', '행동', '추천'];
 
 const AUTHOR_MAP = {
-  1: { characterId: 'baekya',      displayName: '백야',   image: '/assets/author1/author1.png' },
-  2: { characterId: 'charoun',     displayName: '차로운', image: '/assets/author2/author2.png' },
+  1: { characterId: 'baekya', displayName: '백야', image: '/assets/author1/author1.png' },
+  2: { characterId: 'charoun', displayName: '차로운', image: '/assets/author2/author2.png' },
   3: { characterId: 'hanyeoreum', displayName: '한여름', image: '/assets/author3/author3.png' },
   4: { characterId: 'kimdohyeon', displayName: '김도현', image: '/assets/author4/author4.png' },
 };
@@ -48,11 +48,11 @@ const AUTHOR_MAP = {
 function buildWorldContext(world, characters) {
   if (!world) return '';
   const lines = [];
-  if (world.title)       lines.push(`제목: ${world.title}`);
-  if (world.genre)       lines.push(`장르: ${world.genre}`);
+  if (world.title) lines.push(`제목: ${world.title}`);
+  if (world.genre) lines.push(`장르: ${world.genre}`);
   if (world.description) lines.push(`배경: ${world.description}`);
-  if (world.setting)     lines.push(`공간: ${world.setting}`);
-  if (world.rules)       lines.push(`규칙: ${world.rules}`);
+  if (world.setting) lines.push(`공간: ${world.setting}`);
+  if (world.rules) lines.push(`규칙: ${world.rules}`);
   if (characters.length > 0) {
     lines.push('등장인물:');
     characters.forEach(c => {
@@ -173,6 +173,7 @@ export default function Chat() {
   const chatId = chatIdFromState ?? worldId ?? 'room_001';
   const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdRaw));
   useAuthorTheme(authorId);
+  const [videoError, setVideoError] = useState(false);
 
   // manuscriptContent: state로 오면 localStorage에 저장, 없으면 localStorage에서 복원
   useEffect(() => {
@@ -192,8 +193,13 @@ export default function Chat() {
   );
   const currentAuthor = AUTHOR_MAP[AUTHOR_IDS[currentAuthorIdx]];
 
+  useEffect(() => {
+    setVideoError(false);
+  }, [currentAuthorIdx]);
+
   // ── 스토리 채팅 상태 ───────────────────────────────────────
   const [messages, setMessages] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(!!chatId && chatId !== 'room_001');   // 채팅 기록 로딩 표시
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
   const [reaction, setReaction] = useState('');     // F-AS-05 작가 리액션 자막
@@ -261,7 +267,7 @@ export default function Chat() {
         getTaste(chatId, uid).then(data => {
           if (data.works?.length) setTasteWorks(data.works);
           if (data.taste_profile && Object.keys(data.taste_profile).length) setTasteProfile(data.taste_profile);
-        }).catch(() => {});
+        }).catch(() => { });
       }
     });
   }, []);
@@ -288,7 +294,8 @@ export default function Chat() {
 
   // ── 세션/세계관 로드 ──────────────────────────────────────
   useEffect(() => {
-    if (!chatId || chatId === 'room_001') return;
+    if (!chatId || chatId === 'room_001') { setLoadingHistory(false); return; }
+    setLoadingHistory(true);
     getSession(chatId)
       .then(session => {
         if (session?.author_id) setAuthorId(session.author_id);  // 진짜 작가 id로 테마 확정
@@ -313,7 +320,8 @@ export default function Chat() {
           setMessages(restored);
         }
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setLoadingHistory(false));
   }, [chatId]);
 
   // ── 자동 스크롤 ──────────────────────────────────────────
@@ -523,7 +531,7 @@ export default function Chat() {
     } else {
       setTasteProfile(null);
       if (userId && chatId && chatId !== 'room_001') {
-        analyzeTaste(chatId, { user_id: userId, works: [] }).catch(() => {});
+        analyzeTaste(chatId, { user_id: userId, works: [] }).catch(() => { });
       }
     }
   }
@@ -579,13 +587,14 @@ export default function Chat() {
     // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
     getAuthorReaction(chatId, { content: userText, character_id: currentAuthor.characterId })
       .then(r => { if (r.reaction) showReaction(r.reaction); })
-      .catch(() => {});
+      .catch(() => { });
 
     // 맞춤법 교정 — 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     proofread(chatId, userText, currentAuthor.characterId)
       .then(r => {
         if (r.errors?.length) {
           setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
+          setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
         }
       })
       .catch(() => {});
@@ -696,6 +705,9 @@ export default function Chat() {
   // ── 렌더 ─────────────────────────────────────────────────
   return (
     <div className="chat-layout">
+      {converting && (
+        <div className="convert-loading">소설로 변환하는 중...</div>
+      )}
 
       {/* 왼쪽: 스토리 채팅 */}
       <div className="chat-main">
@@ -722,10 +734,13 @@ export default function Chat() {
         <div className="chat-messages">
           {importedNarration && (
             <div className="narration-import-block">
-              <span className="narration-import-block__label">✍ 집필형 원고</span>
+              <span className="narration-import-block__label">원고</span>
               <div className="narration-import-block__text">{importedNarration}</div>
               <div className="narration-import-block__divider">— 여기서부터 참여형 대화 —</div>
             </div>
+          )}
+          {loadingHistory && (
+            <div className="chat-loading">채팅을 불러오는 중...</div>
           )}
           {messages.map(msg => (
             <Bubble
@@ -811,7 +826,21 @@ export default function Chat() {
               <>
                 {/* 작가 이미지 + 스위처 오버레이 */}
                 <div className="author-panel__image">
-                  <img src={currentAuthor.image} alt={currentAuthor.displayName} />
+                  {!videoError ? (
+                    <video
+                      key={AUTHOR_IDS[currentAuthorIdx]}
+                      src={`/assets/author${AUTHOR_IDS[currentAuthorIdx]}/default.mp4`}
+                      autoPlay
+                      loop
+                      playsInline
+                      onError={() => setVideoError(true)}
+                    />
+                  ) : (
+                    <img
+                      src={currentAuthor.image}
+                      alt={currentAuthor.displayName}
+                    />
+                  )}
                   {reaction && (
                     <div className="author-reaction-subtitle" key={reaction}>- {reaction}</div>
                   )}
@@ -827,13 +856,11 @@ export default function Chat() {
                   {AUTHOR_TAGS.map(tag => (
                     <button
                       key={tag.label}
-                      className={`author-tag${
-                        (tag.label === '#세계관' && showWorldInfo) ||
-                        (tag.label === '#등장인물' && showCharInfo)
+                      className={`author-tag${(tag.label === '#세계관' && showWorldInfo) ||
+                          (tag.label === '#등장인물' && showCharInfo)
                           ? ' author-tag--active' : ''
-                      }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${
-                        tag.label === '#추천' ? ' author-tag--disabled' : ''
-                      }`}
+                        }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${tag.label === '#추천' ? ' author-tag--disabled' : ''
+                        }`}
                       onClick={() => handleTagClick(tag)}
                       disabled={authorLoading || tag.label === '#추천' || (tag.label === '#취향저격ai' && tasteRecommending)}
                     >{tag.label === '#취향저격ai' && tasteRecommending ? '추천 중...' : tag.label}</button>
@@ -844,6 +871,14 @@ export default function Chat() {
                   >
                     🗒️ 메모
                     {memos.length > 0 && <span className="memo-count">{memos.length}</span>}
+                  </button>
+                  <button
+                    className={`memo-view-btn author-tag-bar__memo${panelView === 'proof' ? ' memo-view-btn--active' : ''}`}
+                    onClick={() => setPanelView('proof')}
+                  >
+                    ✏️ 교정
+                    {corrections.reduce((n, c) => n + c.errors.length, 0) > 0 &&
+                      <span className="memo-count memo-count--proof">{corrections.reduce((n, c) => n + c.errors.length, 0)}</span>}
                   </button>
                 </div>
 
@@ -1050,6 +1085,39 @@ export default function Chat() {
                   </div>
                 </div>
               </>
+            ) : panelView === 'proof' ? (
+              /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
+              <div className="memo-view">
+                <div className="memo-view__header">
+                  <span>✏️ 작가의 교정</span>
+                  <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
+                </div>
+                <div className="memo-view__list">
+                  {corrections.length === 0 && (
+                    <p className="author-chat__empty">맞춤법 오류가 없습니다 ✨<br />대화하면 작가가 봐줍니다</p>
+                  )}
+                  {corrections.map(c => (
+                    <div key={c.id} className="memo-proof__card">
+                      {c.memo && <p className="memo-proof__memo">“{c.memo}”</p>}
+                      <ul className="memo-proof__list">
+                        {c.errors.map((e, i) => (
+                          <li key={i} className={`memo-proof__err${e.frequent ? ' memo-proof__err--frequent' : ''}`}>
+                            <span className="memo-proof__wrong">{e.original}</span>
+                            <span className="memo-proof__arrow">→</span>
+                            <span className="memo-proof__right">{e.corrected}</span>
+                            <span className="memo-proof__type">{e.type}</span>
+                            {e.frequent && <span className="memo-proof__freq">자주 틀림 {e.count}회</span>}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        className="memo-proof__dismiss"
+                        onClick={() => setCorrections(prev => prev.filter(x => x.id !== c.id))}
+                      >넘기기</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               /* 메모 뷰 */
               <div className="memo-view">
@@ -1057,36 +1125,6 @@ export default function Chat() {
                   <span>🗒️ 메모</span>
                   <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
                 </div>
-
-                {/* ✏️ 작가의 교정(오탈자) — 밑줄 대신 메모로, 자주 틀리면 콕 짚어줌 */}
-                {corrections.length > 0 && (
-                  <div className="memo-proof">
-                    <div className="memo-proof__header">
-                      <span>✏️ 작가의 교정</span>
-                      <button className="memo-proof__clear" onClick={() => setCorrections([])}>모두 넘기기</button>
-                    </div>
-                    {corrections.map(c => (
-                      <div key={c.id} className="memo-proof__card">
-                        {c.memo && <p className="memo-proof__memo">“{c.memo}”</p>}
-                        <ul className="memo-proof__list">
-                          {c.errors.map((e, i) => (
-                            <li key={i} className={`memo-proof__err${e.frequent ? ' memo-proof__err--frequent' : ''}`}>
-                              <span className="memo-proof__wrong">{e.original}</span>
-                              <span className="memo-proof__arrow">→</span>
-                              <span className="memo-proof__right">{e.corrected}</span>
-                              <span className="memo-proof__type">{e.type}</span>
-                              {e.frequent && <span className="memo-proof__freq">자주 틀림 {e.count}회</span>}
-                            </li>
-                          ))}
-                        </ul>
-                        <button
-                          className="memo-proof__dismiss"
-                          onClick={() => setCorrections(prev => prev.filter(x => x.id !== c.id))}
-                        >넘기기</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
                 {selectedMsgId && (
                   <div className="memo-context">
                     <div className="memo-context__header">
