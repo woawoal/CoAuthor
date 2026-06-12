@@ -423,8 +423,6 @@ async def stream_response(
             try:
                 session_uuid = uuid.UUID(chat_id)
                 async with AsyncSessionLocal() as save_session:
-                    session_result = await save_session.execute(select(Session).where(Session.id == session_uuid))
-                    if session_result.scalar_one_or_none():
                     session_result = await save_session.execute(
                         select(Session).where(Session.id == session_uuid)
                     )
@@ -786,6 +784,10 @@ async def author_reaction(chat_id: str, body: ReactionRequest):
         await redis_client.set(key_last_reaction(chat_id), reaction)
     logger.info("작가 리액션 - chat_id=%s emotion=%s → %s", chat_id, emotion, reaction)
     return {"reaction": reaction, "emotion": emotion}
+
+class MemosBody(BaseModel):
+    memos: list = []
+
 
 @router.put("/{chat_id}/memos", status_code=200)
 async def save_memos(chat_id: str, body: MemosBody):
