@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getSessions, deleteSession } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import './storylist.css';
+import LoadingVideo from '../../components/loadingVideo';
 
 const STATUS_LABEL = {
   active: '진행 중',
@@ -36,6 +37,7 @@ export default function StoryList() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showLoading, setShowLoading] = useState(true);
 
   useAuthorTheme(resolveAuthorId(null));
 
@@ -68,14 +70,19 @@ export default function StoryList() {
 
   return (
     <div className="storylist-container">
+      {showLoading && (
+        <LoadingVideo
+          loading={loading}
+          onFinish={() => setShowLoading(false)}
+        />
+      )}
+
       <div className="storylist-wrapper">
         <header className="storylist-header">
           <button className="back-btn" onClick={() => navigate('/')}>← 돌아가기</button>
           <h2 className="storylist-title">내 소설 목록</h2>
           <button className="back-btn storylist-mypage-btn" onClick={() => navigate('/mypage')}>📚 내 서재</button>
         </header>
-
-        {loading && <p className="storylist-empty">불러오는 중...</p>}
 
         {!loading && sessions.length === 0 && (
           <p className="storylist-empty">아직 작성한 소설이 없어요.<br />작가를 선택해 첫 세계관을 만들어보세요.</p>

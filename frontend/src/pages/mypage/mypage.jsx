@@ -10,6 +10,7 @@ import TasteOnboarding from './TasteOnboarding';
 import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import './mypage.css';
+import LoadingVideo from '../../components/loadingVideo';
 
 const WORK_GOAL_CHARS = 30000;
 
@@ -30,14 +31,14 @@ function formatRelativeTime(iso) {
 
 const NAV = {
     library: [
-        { id: '대시보드',     icon: '🏠' },
-        { id: '최근 작업',    icon: '🕐' },
-        { id: '취향 프로필',  icon: '✨' },
-        { id: '설정집',       icon: '🗂️' },
-        { id: '문장 보관함',  icon: '💾' },
+        { id: '대시보드', icon: '🏠' },
+        { id: '최근 작업', icon: '🕐' },
+        { id: '취향 프로필', icon: '✨' },
+        { id: '설정집', icon: '🗂️' },
+        { id: '문장 보관함', icon: '💾' },
         { id: 'AI 작가 기록', icon: '🤖' },
-        { id: '내 작품',      icon: '📚' },
-        { id: '업적',         icon: '🏆' },
+        { id: '내 작품', icon: '📚' },
+        { id: '업적', icon: '🏆' },
     ],
     account: [
         { id: '말투 설정', icon: '✨' },
@@ -75,6 +76,7 @@ function MyPage() {
 
     const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
     const [loading, setLoading] = useState(true);
+    const [showLoading, setShowLoading] = useState(true);
 
     // 초기 로딩: 유저 확인 + 프로필 + 작품 목록
     useEffect(() => {
@@ -115,10 +117,10 @@ function MyPage() {
         setActive(tab);
         if (!userId) return;
         try {
-            if (tab === '최근 작업'    && !recent)        setRecent(await getRecent(userId));
-            if (tab === '문장 보관함'  && !sentences)     setSentences(await getSentences(userId));
+            if (tab === '최근 작업' && !recent) setRecent(await getRecent(userId));
+            if (tab === '문장 보관함' && !sentences) setSentences(await getSentences(userId));
             if (tab === 'AI 작가 기록' && !authorRecords) setAuthorRecords(await getAuthorRecords(userId));
-            if (tab === '업적'         && !achievements)  setAchievements(await getAchievements(userId));
+            if (tab === '업적' && !achievements) setAchievements(await getAchievements(userId));
         } catch (e) {
             console.error(e);
         }
@@ -148,10 +150,15 @@ function MyPage() {
         } catch (e) { console.error(e); }
     };
 
-    if (loading) return <div className="mp-loading">내 서재 불러오는 중...</div>;
-
     return (
         <div className="mp">
+            {showLoading && (
+                <LoadingVideo
+                    loading={loading}
+                    onFinish={() => setShowLoading(false)}
+                />
+            )}
+
             {/* 사이드바 */}
             <aside className="mp-sidebar">
                 <button className="mp-back" onClick={() => navigate('/')}>← 메인</button>
@@ -206,7 +213,7 @@ function MyPage() {
                 {/* ── 대시보드 ── */}
                 {active === '대시보드' && (
                     <div className="mp-dashboard">
-                        {dashboard ? (
+                        {dashboard && profile && works ? (
                             <>
                                 {/* 오늘의 작가 편지 */}
                                 {(() => {
@@ -389,7 +396,7 @@ function MyPage() {
                     return (
                         <div className="mp-works">
                             {completed.length === 0 ? (
-                                <p className="mp-empty">완결된 작품이 없어요.<br/>집필을 마무리하면 여기에 쌓여요.</p>
+                                <p className="mp-empty">완결된 작품이 없어요.<br />집필을 마무리하면 여기에 쌓여요.</p>
                             ) : completed.map(w => (
                                 <div
                                     key={w.session_id}
@@ -462,7 +469,7 @@ function MyPage() {
                                 {/* 선택한 작품 chips */}
                                 <div className="mp-taste__section-label">선택한 작품</div>
                                 <div className="mp-taste__chips">
-                                    {['book','movie','drama'].map(cat => {
+                                    {['book', 'movie', 'drama'].map(cat => {
                                         const catWorks = tasteWorks.filter(w => w.category === cat);
                                         if (!catWorks.length) return null;
                                         const catLabel = { book: '책', movie: '영화', drama: '드라마' }[cat];
@@ -554,10 +561,10 @@ function MyPage() {
 
                                     {wikiTab === '세계관' && wiki.world && (
                                         <dl className="mp-dl">
-                                            {wiki.world.genre       && <><dt>장르</dt><dd>{wiki.world.genre}</dd></>}
-                                            {wiki.world.setting     && <><dt>배경</dt><dd>{wiki.world.setting}</dd></>}
+                                            {wiki.world.genre && <><dt>장르</dt><dd>{wiki.world.genre}</dd></>}
+                                            {wiki.world.setting && <><dt>배경</dt><dd>{wiki.world.setting}</dd></>}
                                             {wiki.world.description && <><dt>설명</dt><dd>{wiki.world.description}</dd></>}
-                                            {wiki.world.rules       && <><dt>규칙</dt><dd>{wiki.world.rules}</dd></>}
+                                            {wiki.world.rules && <><dt>규칙</dt><dd>{wiki.world.rules}</dd></>}
                                         </dl>
                                     )}
 
@@ -632,7 +639,7 @@ function MyPage() {
                 {active === '문장 보관함' && (
                     <div className="mp-sentences">
                         {!sentences || sentences.length === 0 ? (
-                            <p className="mp-empty">저장된 문장이 없어요.<br/>AI 피드백 버블의 💾 버튼으로 저장할 수 있어요.</p>
+                            <p className="mp-empty">저장된 문장이 없어요.<br />AI 피드백 버블의 💾 버튼으로 저장할 수 있어요.</p>
                         ) : sentences.map(s => (
                             <div key={s.id} className="mp-sentence">
                                 <div className="mp-sentence__top">

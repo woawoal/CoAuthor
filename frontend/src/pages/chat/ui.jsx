@@ -12,6 +12,7 @@ import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
 import { saveSentence } from '../../lib/mypageApi';
 import { getTaste, analyzeTaste } from '../../lib/tasteApi';
+import { applyGlobalVideoVolume, VIDEO_VOLUME_EVENT } from '../../lib/videoVolume';
 import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
@@ -755,6 +756,31 @@ export default function Chat() {
     setSuggestions(data.suggestions ?? []);
   }
 
+  const authorVideoRef = useRef(null);
+  // ── 볼륨 설정 ─────────────────────────────────────────────────
+  useEffect(() => {
+    const video = authorVideoRef.current;
+    if (!video) return;
+
+    applyGlobalVideoVolume(video);
+
+    const handleVolumeChange = () => {
+      applyGlobalVideoVolume(authorVideoRef.current);
+    };
+
+    window.addEventListener(
+      VIDEO_VOLUME_EVENT,
+      handleVolumeChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        VIDEO_VOLUME_EVENT,
+        handleVolumeChange
+      );
+    };
+  }, [currentAuthorIdx, reactionEmotion]);
+
   // ── 렌더 ─────────────────────────────────────────────────
   return (
     <div className="chat-layout">
@@ -882,6 +908,7 @@ export default function Chat() {
                 <div className="author-panel__image">
                   {!videoError ? (
                     <video
+                      ref={authorVideoRef}
                       key={`${AUTHOR_IDS[currentAuthorIdx]}-${reactionEmotion ?? 'default'}`}
                       src={
                         reactionEmotion
