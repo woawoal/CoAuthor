@@ -3,6 +3,55 @@
 
 ---
 
+## 2026-06-12
+
+> 시연 안정화 — Cloud Run 배포본에서 **작가 AI 응답이 안 나오던 장애를 로그로 끝까지 추적·복구**(원인 2종: memos Redis 타입 충돌 · Vertex SDK 인자 비호환). 채팅 타자기 효과·소설 읽기 무한로딩 등 체감/안정성 폴리시, 기능정의서·README 문서 현행화.
+
+### 작업 내역
+
+#### 1. Cloud Run "작가 답변 안 옴" 장애 디버깅·복구 (오늘 가장 큰 건)
+
+배포는 성공하는데 채팅 응답이 안 와서, `gcloud run services logs read`로 실제 트레이스백을 까서 원인 2개를 잡음.
+
+- **(주범1) memos Redis 키 타입 충돌(WRONGTYPE)** — `session:{id}:memos`를 `save_memos`(PUT)는 `SET`(문자열 JSON), `get_context`·`list_memos`는 `LRANGE`(리스트)로 접근 → 메모를 한 번 저장한 세션은 이후 `lrange`가 `WRONGTYPE` 500. **채팅도 매 메시지 `get_context`가 같은 lrange를 타서 AI 응답까지 통째로 죽던 것.** → `_read_memos()`(키 타입 보고 list/string 분기) 도입, `get_context`·`list_memos` 교체 + 프롬프트 렌더가 dict 메모(`m['text']`)도 처리
+- **(주범2) Vertex SDK가 `request_options` 인자를 안 받음** — `llm._gen_once`가 `generate_content(..., request_options={"timeout":40})` 호출. `request_options`는 **google-generativeai(AI Studio) 전용** → `vertexai`는 거부 → 두 모델 다 실패 + 폴백 없음(`LLM_PROVIDER_CHAIN` 미설정 → gemini 단독)으로 무응답. **인증/SA 문제 아님(Vertex 연결은 정상).** 로컬은 vertexai 버전이 받아줘 통과한 **버전 드리프트** → `USE_VERTEX`면 `request_options` 미전달로 수정
+- **F-AS-05 `reactions` import 복구** — 머지 때 chats.py import 블록이 origin/dev 걸로 덮이며 `from app.core.reactions import EMOTIONS, pick_reaction`가 증발 → `/reaction` 호출 시 NameError. import 복구
+- 각 수정 후 **Cloud Run 재배포**(`backend/`에서 `--source .` = Dockerfile 빌드, env/시크릿 보존) → 로그로 응답 복구 확인. (배포 함정: `.env`는 이미지에 안 올라감·루트에서 배포하면 Buildpacks로 실패·Vertex는 런타임 SA로 인증 — `server-ops.md`에 정리)
+
+#### 2. 채팅 응답 타자기(typewriter) 효과
+
+- 백엔드가 응답을 통째로(구조화 JSON) 보내 토큰 스트리밍이 어려우므로 **프론트에서 받은 텍스트를 한 글자씩 노출**(`TypedText`/`CharMessage`) — 나레이션 타이핑 → 끝나면 대사 타이핑, 타이핑 중 자동 스크롤 추종. **복원된 과거 대화는 즉시 표시**(재타이핑 X). "한 번에 뜨는 팝" 제거로 체감 개선, 속도는 기본값으로 조절
+
+#### 3. 말풍선 줄바꿈 · 소설 읽기 무한로딩 수정
+
+- **말풍선 한글이 글자 단위로 세로 쪼개지던 버그** — `.bubble`·`.narration-text`에 `word-break: keep-all` + `overflow-wrap: anywhere` + `width: fit-content`로 **어절 단위** 줄바꿈. 깨진 CSS 주석(`\*`)도 정리
+- **소설 읽기 무한 로딩 수정** — 읽기 페이지가 작가별 `loading.mp4`가 끝나야(`onEnded`) 본문을 보이는데, 작가 1·2·4엔 파일이 없어 404 → `onEnded` 미발화 → 무한 로딩. `<video>`에 **`onError` + 6초 안전 타임아웃 폴백** 추가로 어느 작가든 멈추지 않게(+ 로딩 작가 id 기본값 보정)
+
+#### 4. 프론트 기동 복구 + Vertex 로컬 인증
+
+- **`@neondatabase/neon-js` 미설치로 프론트 먹통** — 머지로 추가된 로그인 의존성이 node_modules에 부분 손상(우산 패키지만 누락). `node_modules` 삭제 후 **클린 재설치**로 복구(서브경로 `auth/react`·`ui/css` 확인)
+- **Vertex 로컬 ADC 재인증** — `gcloud auth application-default login` + `set-quota-project`로 로컬에서도 Groq 폴백 없이 Gemini 사용
+
+#### 5. 문서 현행화
+
+- **기능정의서 전면 동기화** — 엔진 표기 Groq→**Vertex**, 완료분 상태 갱신(F-WD-06·F-CH-09·F-CH-10·F-AS-05·F-QC-02·F-NV-07·F-SY-11 등 ✅), 신규 **F-PR-03/04**(개인화·관심사 추천 RAG, **비식별화=키워드만**) 추가, §4 업무분담은 중복 스냅샷 제거 후 `업무분담.md` 포인터로 분리, §5 잔여/차별점·비식별화(평가 요구) 명시
+- **README 전면 재작성** — 옛 기획안(CoAuthor·PERSO·파인튜닝·Render)을 **실제 구현**(Vertex·Neon·Upstash·RAG 3종·React/Vite·Cloud Run)으로 교체. 차별점 3축·작가 4인·아키텍처·로컬 실행·구조·팀
+- **server-ops.md** — 06-12 Cloud Run 장애(원인 2종 + 배포 함정) 기록
+
+#### 6. TTS 진단 (F-AV-02, 동완 기능)
+
+- ElevenLabs TTS 무음 원인 진단 — `backend/.env`에 `ELEVENLABS_API_KEY_1/_2`가 없음(키 없으면 `synthesize`가 빈 음성 반환 → `event:audio` 미전송 → 무음). 키 추가 위치·작가별 매핑(`_1`/`_2`)·voice ID 계정 확인 가이드
+
+#### 7. (설계) 리액션 영상 자막 매핑
+
+- 작가 리액션 영상에 영상 대사와 맞는 자막을 **영상→자막 하드코딩 맵**으로 붙이는 방향 설계 — `/reaction` API 텍스트 대신 영상 매칭 자막으로 교체하는 구조(영상 목록·트리거 확정 대기)
+
+### 검증
+
+- Cloud Run 로그로 작가 응답 복구 확인 · 프론트 빌드/기동 정상 · `chats.py`·`llm.py` 문법 검사 OK
+
+---
+
 ## 2026-06-11
 
 > 시연일 — 팀 PR 5건 머지·마이그레이션 정리로 dev 안정화, Cloud Run **공개 배포 게이트 해제**, 데모용 우회·아바타 협업 UI, F-AS-05 리액션 자막을 dev/배포본까지 연결, 채팅 페이지 UI 전면 폴리시.
