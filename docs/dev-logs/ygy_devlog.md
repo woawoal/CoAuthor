@@ -2,6 +2,108 @@
 
 ---
 
+## 2026-06-12
+
+### 작업 내용
+
+#### 1. chats.py merge conflict 해결
+
+**문제**: `feature/ygy`와 `dev` 브랜치가 동시에 `chats.py`를 수정해 충돌 마커 잔존.
+
+**해결**: HEAD(feature/ygy) 유지. Redis 헬퍼들이 `chat_context.py`로 분리된 구조를 살리고, incoming 브랜치의 Redis 인라인 코드 블록 제거.
+
+---
+
+#### 2. Voice Mirroring — 채팅 대사 추천 voice-suggest 연동
+
+**배경**: 말투 프로파일이 있는 사용자에게 `/voice-suggest` 엔드포인트 기반 맞춤 대사를 추천하도록 연동. 기존 일반 suggestions는 폴백으로 유지.
+
+**추가 함수 (`chatApi.js`)**
+```javascript
+export async function getVoiceSuggestions(chatId, payload) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/voice-suggest`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) return { suggestions: [] };
+  return res.json();
+}
+```
+
+**`fetchSuggestions` 수정 흐름 (`chat/ui.jsx`)**
+```
+말투 프로파일 있음 → voice-suggest 호출 → 추천 있으면 사용
+           ↓ (실패 or 추천 없음)
+           폴백: 기존 getSuggestions 호출
+```
+
+**추천 칩 렌더 개선**: voice-suggest 응답은 `{label, text}` 오브젝트 — `label`(예: "솔직하게 답하기")을 칩 위에 작게 표시. 기존 문자열 응답과 하위 호환 유지.
+
+```jsx
+{label && <span className="suggestion-chip__label">{label}</span>}
+{text}
+```
+
+**수정 파일**
+- `frontend/src/lib/chatApi.js` — `getVoiceSuggestions` 추가
+- `frontend/src/pages/chat/ui.jsx` — `fetchSuggestions` voice-suggest 분기, 칩 렌더 개선
+- `frontend/src/pages/chat/ui.css` — `.suggestion-chip__label` 스타일 추가
+
+---
+
+#### 3. 소설 목록 → 마이페이지 버튼 추가
+
+소설 목록(storylist) 헤더에 마이페이지 이동 버튼 추가.
+
+**수정 파일**
+- `frontend/src/pages/storylist/storylist.jsx` — 헤더에 `<button onClick={() => navigate('/mypage')}>마이페이지 →</button>` 추가
+- `frontend/src/pages/storylist/storylist.css` — `.storylist-header`에 `justify-content: space-between` 추가
+
+---
+
+#### 4. 마이페이지 말투 설정 카드 + 네비게이션 추가
+
+**말투 설정 카드**: 말투 프로파일 로드 상태에 따라 분기.
+- 프로파일 없음: "설정하기 →" 안내
+- 프로파일 있음: `speech_level`, `sentence_length`, `tone.primary[:2]`, `emoji_style` 분석 태그 + `summary_for_user` 한 줄 표시 + "수정 →" 버튼
+
+**NAV 연결**: 사이드 네비게이션에 `{ id: '말투 설정', icon: '✨' }` 추가 → 클릭 시 `/voice-profile`로 이동.
+
+**수정 파일**
+- `frontend/src/pages/mypage/mypage.jsx` — voice profile 상태 로딩, 카드 렌더, NAV 항목 추가
+- `frontend/src/pages/mypage/mypage.css` — `.mp-voice-card`, `.mp-voice-tag` 등 스타일 추가
+
+---
+
+#### 5. 말투 설정 폼 — localStorage 저장·복원 + 수정 모드
+
+**배경**: 폼을 작성하다 나가거나 재진입 시 처음부터 다시 써야 하는 문제 해결.
+
+**구현**
+- 모든 폼 상태(`requiredAnswers`, `optionalChecked`, `optionalAnswers`, `selectedGenres`, `genreAnswers`, `userSamples`, `optionalContext`)를 `useEffect`로 변경 시마다 `localStorage`에 자동 저장
+- 초기 렌더 시 `loadSaved()`로 복원 (없으면 빈 기본값)
+- `selectedGenres`(`Set`)은 `[...selectedGenres]`로 직렬화 후 복원 시 `new Set()` 변환
+- 완료 화면에 "수정하기" 버튼 추가 — 클릭 시 `setDone(false)`로 폼으로 복귀
+
+**수정 파일**
+- `frontend/src/pages/voice/voice.jsx` — `STORAGE_KEY`, `loadSaved()`, `useEffect` 자동저장, 수정하기 버튼 추가
+- `frontend/src/pages/voice/voice.css` — `.voice-btn-secondary` 스타일 추가
+
+---
+
+### 남은 작업
+
+- [x] Voice Mirroring — voice-suggest 채팅 연동
+- [x] 소설 목록 마이페이지 버튼
+- [x] 마이페이지 말투 카드 + NAV 연결
+- [x] 말투 설정 폼 localStorage 저장·복원
+- [ ] personas.py few-shot 수정 (사용자 시나리오 기반)
+- [ ] personas.py baekya 신체반응 금지 원칙 추가
+- [ ] 채팅 입력 Enter 오작동 수정
+
+---
+
 ## 2026-06-11
 
 ### 작업 내용

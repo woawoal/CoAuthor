@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { saveVoiceProfile } from '../../lib/voiceApi';
 import './voice.css';
+
+const STORAGE_KEY = 'voice_profile_answers';
 
 const REQUIRED_QUESTIONS = [
   { id: 'shock',   emotion: '당황',   text: '카페 화장실을 썼는데 변기가 막혀서 너무 당황했다.' },
@@ -36,33 +38,49 @@ const GENRE_LABELS = [
   { key: 'daily',   label: '일상/에세이' },
 ];
 
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 function VoiceProfile() {
   const navigate = useNavigate();
+  const saved = loadSaved();
 
-  // 필수 5개 답변
   const [requiredAnswers, setRequiredAnswers] = useState(
-    Object.fromEntries(REQUIRED_QUESTIONS.map(q => [q.id, '']))
+    saved?.requiredAnswers ?? Object.fromEntries(REQUIRED_QUESTIONS.map(q => [q.id, '']))
   );
-
-  // 선택 문항: 체크 여부 + 답변
   const [optionalChecked, setOptionalChecked] = useState(
-    Object.fromEntries(OPTIONAL_QUESTIONS.map(q => [q.id, false]))
+    saved?.optionalChecked ?? Object.fromEntries(OPTIONAL_QUESTIONS.map(q => [q.id, false]))
   );
   const [optionalAnswers, setOptionalAnswers] = useState(
-    Object.fromEntries(OPTIONAL_QUESTIONS.map(q => [q.id, '']))
+    saved?.optionalAnswers ?? Object.fromEntries(OPTIONAL_QUESTIONS.map(q => [q.id, '']))
   );
-
-  // 장르 선택 (다중)
-  const [selectedGenres, setSelectedGenres] = useState(new Set());
-  const [genreAnswers, setGenreAnswers] = useState({});
-
-  // 자유 문장 + 방향
-  const [userSamples, setUserSamples] = useState('');
-  const [optionalContext, setOptionalContext] = useState('');
+  const [selectedGenres, setSelectedGenres] = useState(
+    new Set(saved?.selectedGenres ?? [])
+  );
+  const [genreAnswers, setGenreAnswers] = useState(saved?.genreAnswers ?? {});
+  const [userSamples, setUserSamples] = useState(saved?.userSamples ?? '');
+  const [optionalContext, setOptionalContext] = useState(saved?.optionalContext ?? '');
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  // 폼 변경 시마다 localStorage 자동 저장
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      requiredAnswers,
+      optionalChecked,
+      optionalAnswers,
+      selectedGenres: [...selectedGenres],
+      genreAnswers,
+      userSamples,
+      optionalContext,
+    }));
+  }, [requiredAnswers, optionalChecked, optionalAnswers, selectedGenres, genreAnswers, userSamples, optionalContext]);
 
   const handleToggleOptional = (id) => {
     setOptionalChecked(prev => ({ ...prev, [id]: !prev[id] }));
@@ -122,6 +140,9 @@ function VoiceProfile() {
           </p>
           <button className="voice-btn-primary" onClick={() => navigate('/')}>
             메인으로 돌아가기
+          </button>
+          <button className="voice-btn-secondary" onClick={() => setDone(false)}>
+            수정하기
           </button>
         </div>
       </div>
