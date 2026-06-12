@@ -1592,3 +1592,21 @@
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+
+/* memo-proof: 작가의 교정(오탈자) — 메모 패널 */
+.memo-proof { margin: 8px 0 4px; padding: 8px; background: rgba(255,255,255,0.04); border-radius: 10px; }
+.memo-proof__header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; opacity: 0.9; margin-bottom: 6px; }
+.memo-proof__clear { background: none; border: none; color: inherit; opacity: 0.6; font-size: 12px; cursor: pointer; }
+.memo-proof__card { padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; background: rgba(0,0,0,0.18); border-left: 3px solid var(--author-accent, #c9a227); }
+.memo-proof__memo { font-size: 13px; line-height: 1.5; margin: 0 0 6px; opacity: 0.92; }
+.memo-proof__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.memo-proof__err { display: flex; align-items: center; gap: 6px; font-size: 13px; flex-wrap: wrap; }
+.memo-proof__wrong { color: #e57373; text-decoration: line-through; opacity: 0.85; }
+.memo-proof__arrow { opacity: 0.5; }
+.memo-proof__right { color: #81c784; font-weight: 600; }
+.memo-proof__type { font-size: 11px; opacity: 0.55; }
+.memo-proof__freq { font-size: 11px; color: #ffb74d; background: rgba(255,183,77,0.12); padding: 1px 6px; border-radius: 8px; margin-left: auto; }
+.memo-proof__err--frequent .memo-proof__right { text-shadow: 0 0 6px rgba(255,183,77,0.4); }
+.memo-proof__dismiss { margin-top: 6px; background: none; border: 1px solid rgba(255,255,255,0.15); color: inherit; opacity: 0.7; font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; }
+.memo-proof__dismiss:hover { opacity: 1; }

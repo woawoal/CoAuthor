@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
-  getMemos, saveMemos, getAuthorReaction, getTasteRecommend,
+  getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
@@ -220,6 +220,7 @@ export default function Chat() {
 
   // ── 메모 상태 ────────────────────────────────────────────
   const [memos, setMemos] = useState([]);
+  const [corrections, setCorrections] = useState([]);   // 맞춤법 교정 결과(작가 메모로 표시)
   const [selectedMsgId, setSelectedMsgId] = useState(null);
   const [memoInput, setMemoInput] = useState('');
   const [editingMemoId, setEditingMemoId] = useState(null);
@@ -578,6 +579,15 @@ export default function Chat() {
     // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
     getAuthorReaction(chatId, { content: userText, character_id: currentAuthor.characterId })
       .then(r => { if (r.reaction) showReaction(r.reaction); })
+      .catch(() => {});
+
+    // 맞춤법 교정 — 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
+    proofread(chatId, userText, currentAuthor.characterId)
+      .then(r => {
+        if (r.errors?.length) {
+          setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
+        }
+      })
       .catch(() => {});
 
     await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
@@ -1047,6 +1057,36 @@ export default function Chat() {
                   <span>🗒️ 메모</span>
                   <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
                 </div>
+
+                {/* ✏️ 작가의 교정(오탈자) — 밑줄 대신 메모로, 자주 틀리면 콕 짚어줌 */}
+                {corrections.length > 0 && (
+                  <div className="memo-proof">
+                    <div className="memo-proof__header">
+                      <span>✏️ 작가의 교정</span>
+                      <button className="memo-proof__clear" onClick={() => setCorrections([])}>모두 넘기기</button>
+                    </div>
+                    {corrections.map(c => (
+                      <div key={c.id} className="memo-proof__card">
+                        {c.memo && <p className="memo-proof__memo">“{c.memo}”</p>}
+                        <ul className="memo-proof__list">
+                          {c.errors.map((e, i) => (
+                            <li key={i} className={`memo-proof__err${e.frequent ? ' memo-proof__err--frequent' : ''}`}>
+                              <span className="memo-proof__wrong">{e.original}</span>
+                              <span className="memo-proof__arrow">→</span>
+                              <span className="memo-proof__right">{e.corrected}</span>
+                              <span className="memo-proof__type">{e.type}</span>
+                              {e.frequent && <span className="memo-proof__freq">자주 틀림 {e.count}회</span>}
+                            </li>
+                          ))}
+                        </ul>
+                        <button
+                          className="memo-proof__dismiss"
+                          onClick={() => setCorrections(prev => prev.filter(x => x.id !== c.id))}
+                        >넘기기</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {selectedMsgId && (
                   <div className="memo-context">
                     <div className="memo-context__header">
