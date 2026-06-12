@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +18,25 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 llm_router = LLMRouter()
+
+
+def _strip_world_suggestion(text: str) -> tuple[str, list[str]]:
+    """소설 본문에서 '[세계관 추가 제안]' 블록을 분리 → (깨끗한 본문, 제안 리스트).
+
+    build_novel_system 프롬프트가 초안 맨 아래에 '---/[세계관 추가 제안]/• ...'를 붙이는데,
+    그게 원고 본문에 섞이지 않도록 떼어낸다.
+    """
+    idx = text.find("[세계관 추가 제안]")
+    if idx == -1:
+        return text.strip(), []
+    story = re.sub(r"\n*-{2,}\s*$", "", text[:idx]).rstrip()
+    suggestions = []
+    for ln in text[idx + len("[세계관 추가 제안]"):].splitlines():
+        s = ln.strip()
+        if not s or set(s) <= {"-"}:   # 빈 줄 / --- 구분선 제외
+            continue
+        suggestions.append(re.sub(r"^[•\-*]\s*", "", s).strip())
+    return story, [s for s in suggestions if s]
 
 
 @router.get("/{session_id}/novel", response_model=NovelResponse)
@@ -80,6 +100,8 @@ async def generate_novel(
 
     if not content:
         content = "\n\n".join(d.content for d in dialogues)
+
+    content, _ = _strip_world_suggestion(content)   # [세계관 추가 제안] 블록 분리 → 원고 깨끗하게
 
     novel = Novel(
         session_id=session_id,
@@ -163,6 +185,9 @@ async def convert_dialogues_to_novel(
         except Exception as e:
             logger.error("소설 변환 LLM 실패 (session=%s): %s", session_id, e)
             content = "\n\n".join(d.content for d in dialogues)
+
+    if content:
+        content, _ = _strip_world_suggestion(content)   # [세계관 추가 제안] 블록 분리 → 원고 깨끗하게
 
     existing = await db.execute(select(Novel).where(Novel.session_id == session_id))
     novel = existing.scalar_one_or_none()

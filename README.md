@@ -1,170 +1,173 @@
-# AI 빙의작가 (CoAuthor)
+<!-- markdownlint-disable MD022 MD031 MD032 MD040 MD060 -->
+# NodeVelture
 
-> 장르별 성격 강한 AI 페르소나와 함께 소설을 쓰는 창작 플랫폼  
-> AI휴먼 캠프 4기 | 2026.06.01
-
----
-
-## 프로젝트 소개
-
-**AI 빙의작가**는 글을 쓰고 싶지만 막막한 사람들에게, 장르별 감성 강화 AI 작가가 친구처럼 옆에서 함께 창작을 도와주는 협업 플랫폼입니다.
-
-기존 ChatGPT가 "도구"라면, 우리 페르소나는 **동료 작가 경험**을 제공합니다.
+> **AI 빙의작가** — 작가 캐릭터와 놀듯 대화하면, 진짜 *내 소설*이 되는 협업 창작 서비스
+> AI휴먼 캠프 4기 · 1팀(woawoal)
 
 ---
 
-## 페르소나 소개
+## 한 줄 소개
 
-| 이름 | 장르 | 성격 | 첫 인사 |
-|------|------|------|---------|
-| **백야 (白夜)** | 호러 / 미스터리 | 짧은 문장, 침묵의 미학. "공포는 보여주는 것이 아니라 안 보여주는 것이다" | "...오셨군요. 무엇을 쓰고 싶으십니까." |
-| **차로운** | 본격 추리 | 논리적, 까칠함, 디테일 집착. "독자는 항상 작가보다 영리하다고 가정해라" | "시간 없으니 바로 시작하죠." |
-| **한여름** | 로맨스 | 감각적 묘사, 감정선 풍부. "심장이 두근거려야 페이지를 넘긴다" | "어떤 설레는 이야기를 써볼까요?" |
-| **김도현** | 일상 / 에세이 | 담담함, 사색적. "특별한 하루보다 평범한 순간이 더 문학적이다" | "오늘 어떤 하루였어요?" |
+성격·문체가 뚜렷한 **AI 작가 4인** 중 하나를 골라, 내가 주인공이 되어 대화하듯 이야기를 만들면 → 그 대화가 **작가의 문체로 쓰인 단편 소설**로 완성됩니다.
+
+> **ChatGPT가 "밖에서 지시하는 도구"라면, NodeVelture는 "이야기 안에서 함께 쓰는 동료 작가"입니다.**
+> - character.ai = 캐릭터 놀이는 있지만 *결과물(소설)*이 없다
+> - Sudowrite = 창작 도구지만 *캐릭터와 노는 재미*가 없다
+> - **NodeVelture = 둘을 잇는 다리** — "놀듯 대화 → 진짜 내 소설"
+
+서비스의 **척추**는 *진지한 창작 도구*("혼자 쓰는 것보다 좋은 소설이 나온다"), **껍데기**는 *엔터테인먼트*(작가 페르소나·테마·아바타)로 사용자를 끌어들입니다.
 
 ---
 
-## 핵심 기능
+## 서비스 흐름
 
-### 1. 협업 모드
+```
+[1단계] 작가 선택 + 세계관 작성        작가 4인 중 선택 → 장르·배경·등장인물 입력
+   │                                  (작가별 테마 적용 / 세계관 태그 자동분류)
+   ▼
+[2단계] 대화형 창작                     사용자 = 1인칭 주인공으로 대화
+   │                                  → AI가 작가 문체로 서술/대사 응답
+   │                                  → RAG 일관성 · 어시스턴트 유도 · 작가 리액션
+   ▼
+[3단계] 소설 변환 → 읽기                채팅 종료 → 작가 문체 단편 소설로 변환
+                                      → 일관성 검수 → 읽기(챕터·txt 내보내기)
+```
 
-막막한 첫 문장을 페르소나가 먼저 질문을 던지며 함께 써 내려가는 경험
+---
 
-### 2. 장르 비교
-동일한 한 줄 입력 → 4개 페르소나의 결과물 비교  
-*(발표·수업 핵심 장면: 한 입력 → 4가지 출력 비교)*
+## 작가 4인 (페르소나)
 
-### 3. 코칭 모드
-사용자가 직접 쓴 글에 대해 장르 전문 페르소나가 심층 피드백 제공
+| 작가 | 장르 | 문체·성격 |
+|------|------|-----------|
+| **백야** | 호러 / 미스터리 | 짧고 단절적인 문장, 여백과 침묵의 미학. 감정을 직접 말하지 않는다 |
+| **차로운** | 본격 추리 | 관찰자 시점, 행동·사실 먼저, 치밀한 복선. 논리적이고 까칠함 |
+| **한여름** | 로맨스 | 신체 반응·감각 묘사(심장·호흡·시선), 감정선과 여운 |
+| **김도현** | 일상 / 에세이 | 낮은 시선, 작은 디테일, 담담함. 결론을 내지 않는 사색 |
+
+각 작가는 말투·가치관·문체·금기가 정의된 리치 프롬프트(`personas.py`)와 문체 샘플로 구동됩니다.
+
+---
+
+## 핵심 차별점 (3축)
+
+### 1. RAG 3종 — "길어져도 안 까먹는다"
+
+| 모듈 | 역할 |
+|------|------|
+| **기억** (`memory.py`) | 누적 요약 + **의미검색(top-K)** 으로 과거 설정·사건을 검색해 주입 → 긴 대화에서도 세계관 일관성 유지 |
+| **검수** (`consistency.py`) | 새 응답을 확립된 설정·기억과 대조해 **모순 탐지**(LLM JSON) |
+| **문체** (`style.py`) | 작가별 문체 샘플 중 장면과 가장 가까운 예시를 **few-shot 검색**해 소설 변환에 주입 |
+
+> 임베딩(Gemini `text-multilingual-embedding-002`, 768차원) + 인앱 코사인 유사도. 대규모 시 pgvector로 확장 가능.
+
+### 2. AI 어시스턴트 — "혼자 쓰는 것보다 낫다"
+
+- **다음 전개 제안**(`/suggest`) · **막힘 도움**(`/stuck`) — 막혔을 때 행동/대사 후보 제시
+- **작가 리액션**(`/reaction`) — 사용자 대사에 작가가 즉각 짧게 반응('흥미로운데?')
+- **조연 다중 반응**(`/npc-react`) — 여러 조연이 각자 페르소나로 동시 반응
+
+### 3. 정량 근거 — "맨손 작성 vs 우리 서비스"
+
+- LLM-as-Judge 4축(세계관·캐릭터 일관성, 문체 뚜렷함, 완성도) 채점(`evaluate.py`)
+- 페르소나 구분도 측정(`scripts/persona_eval.py`) · 근거 리포트(`scripts/evidence_report.py`)
+
+---
+
+## 주요 기능
+
+- 🎭 **작가별 테마** — 작가 선택 시 전 화면 색/분위기 전환(새로고침에도 유지)
+- ⌨️ **타자기 효과** — 응답이 한 글자씩 흘러나와 "함께 쓰는" 느낌
+- 🗣️ **TTS 낭독** — 응답 첫 문장을 음성으로(`tts.py`, SSE `event:audio`)
+- 💬 **작가 리액션 자막** — 사용자 대사에 작가가 즉각 반응(사진 위 영화 자막 스타일)
+- 📝 **작가 메모** — 메모를 작성하면 이후 응답 프롬프트에 즉시 주입
+- 🔍 **일관성 검수** — 설정 모순을 잡아 알려줌
+- 📊 **토큰 사용량 분석**(`/api-logs`) — 세션·모델별 토큰/비용 집계
+- 🔐 **로그인** — Neon Auth(이메일 OTP)
+- 📖 **소설 읽기** — 챕터 목차·글자 크기·진행률·**txt 내보내기**
 
 ---
 
 ## 기술 스택
 
-| 영역 | 기술 선택 | 이유 |
-|------|-----------|------|
-| Frontend | React + JavaScript | 컴포넌트 재사용, 스트리밍 처리 용이 |
-| Backend | FastAPI (Python) | 비동기 스트리밍, AI 라이브러리 연동 최적 |
-| DB | PostgreSQL | 대화 기록, 세션 저장 |
-| Cache | Redis | API 호출 절감 |
-| 모델 실행 | Hugging Face Transformers | 파인튜닝, 평가 파이프라인 |
-| 데이터 | 공유 마당, Project Gutenberg | 저작권 만료 오픈소스 소설 텍스트 |
-| 배포 | Render / Railway 무료 티어 | 3주 내 실제 배포 목표 |
-| 버전 관리 | GitHub + GitHub Projects | 브랜치 전략, 이슈 트래킹 |
-
----
-
-## 응답 엔진 구조
-
-```
-사용자 입력
-     │
-     ▼
-┌────────────────────┐
-│ 캐시 레이어 (Redis) │  ← 동일 입력 해시 → TTL 캐싱
-└────────────────────┘
-     │ miss
-     ▼
-┌─────────────────────────────────────────────────┐
-│  라우터                                          │
-│  단순 이어쓰기 → 자체 파인튜닝 모델 (80%)          │
-│  복잡한 피드백  → PERSO API (15%)                │
-│  최종 발표·시연  → PERSO API (5%)                │
-└─────────────────────────────────────────────────┘
-     │
-     ▼
-LLM-as-Judge → 페르소나 일관성 자동 평가
-```
-
-### 응답 엔진 레이어
-
-| 레이어 | 역할 | 기술 | 비고 |
-|--------|------|------|---------|
-| 기본 응답 생성 | 사용자 입력 기반 1차 답변 생성 | Gemini 2.5 Flash | 메인 생성 모델 |
-| 스타일 변환 (자체) | 페르소나별 장르 문체 특화 (소설화) | 모방학습 기반 경량 파인튜닝 모델 | 2차 문체화 파이프라인 |
-| 코칭 모드 (평가) | 사용자 글 및 결과물 심층 피드백 | LLM-as-Judge | 코칭 API 전용 |
-
----
-
-## 팀 구성
-
-| 역할 | 이름 |
+| 영역 | 기술 |
 |------|------|
-| PM / 기획 | 지윤정 (유건혁) |
-| AI 엔지니어 (1) - (페르소나 프롬프트 설계, PERSO API 연동, 평가 지표 구현) | 김동완 |
-| AI 엔지니어 (2) - (파인튜닝 실험, 모방학습 모델 설계, LLM-as-Judge) | 신유득 (박가은) |
-| 백엔드 | 윤가연 (김동완, 신유득, 지윤정) |
-| 프론트엔드 | 박가은, 유건혁 (윤가연) |
+| **Frontend** | React 19 + Vite, react-router, react-markdown, Neon Auth(`@neondatabase/neon-js`) |
+| **Backend** | FastAPI (Python 3.11), SQLAlchemy(async) + asyncpg, Alembic, Pydantic |
+| **DB** | PostgreSQL — **Neon**(클라우드 공용) |
+| **Cache / 세션** | Redis — **Upstash** |
+| **LLM 엔진** | **Vertex AI Gemini 2.5 Flash-lite**(ADC) — Groq / OpenAI 폴백(`LLM_PROVIDER_CHAIN`) |
+| **임베딩 / RAG** | Gemini `text-multilingual-embedding-002` + 인앱 코사인 |
+| **배포** | GCP **Cloud Run**(Dockerfile + Secret Manager, Vertex는 ADC 자동) |
+
+### 아키텍처
+
+```
+                         ┌──────────────────────────────┐
+  React + Vite  ──────▶  │   FastAPI (app.main)         │
+  (작가/세계관/채팅/읽기)  │   · /chats /sessions /novels │
+        ▲                │   · RAG(기억·검수·문체)        │
+        │  SSE/REST      │   · 어시스턴트·리액션·TTS       │
+        │                └──────┬───────────┬───────────┘
+   Neon Auth                    │           │
+   (로그인)             ┌────────▼──┐   ┌────▼─────────┐   ┌──────────────┐
+                        │ PostgreSQL│   │  Redis        │   │ Vertex AI     │
+                        │  (Neon)   │   │ (Upstash)     │   │ Gemini 2.5    │
+                        │ 영속 데이터 │   │ 대화 컨텍스트   │   │ 생성·임베딩    │
+                        └───────────┘   └───────────────┘   └──────────────┘
+```
+
+LLM 호출(`services/llm.py`)은 **프로바이더 체인 → 모델 → 키 순회 + 429/auth/transient 분기·쿨다운·폴백**을 일원화하고, 채팅 응답은 JSON 모드(서술/대사 구조화)로 받습니다.
 
 ---
 
-## 평가 지표
-
-### 정량 지표
-
-| 지표 | 정의 | 목표치 |
-|------|------|--------|
-| 페르소나 일관성 | LLM-as-Judge 5점 척도 | 평균 4.0 이상 |
-| 장르 구분도 | 4명 결과물 코사인 유사도 역산 | 페르소나 간 유사도 < 0.6 |
-| 응답 품질 (BLEU) | 장르별 참조 텍스트 비교 | 베이스라인 +15% |
-| 응답 지연 | P95 latency | < 5,000ms |
-| 캐시 히트율 | 중복 호출 절감 | > 30% |
-
-### 정성 지표 (휴먼 평가, n≥10)
-
-| 지표 | 질문 예시 | 척도 |
-|------|----------|------|
-| 함께 만족도 | 이 작가와 함께 쓰고 싶다는 느낌이 들었나요? | 5점 리커트 |
-| 페르소나 몰입도 | 이 작가는 캐릭터답게 느껴졌나요? | 5점 리커트 |
-| 자연스러움 | 대화가 자연스러웠나요? | 5점 리커트 |
-| 재사용 의향 | 다음에도 이 서비스를 쓸 것 같나요? | 5점 리커트 |
-
----
-
-## 3주 개발 일정
-
-| 주차 | 기간 | 핵심 목표 | 산출물 |
-|------|------|-----------|--------|
-| 1주차 | 6/2 ~ 6/8 | 기획 확정 + 환경 구축 + 페르소나 설계 | 페르소나 카드 4종, 시스템 프롬프트 초안, 개발 환경 |
-| 2주차 | 6/9 ~ 6/15 | 코어 기능 구현 + 자체 모델 실험 | 참여 모드, 파인튜닝 실험 1회차 |
-| 3주차 | 6/16 ~ 6/19 | 통합 + 평가 + 발표 준비 | 장르 비교 데모, 평가 리포트, 시연 영상, 발표자료 |
-
----
-
-## 로컬 실행 방법
+## 로컬 실행
 
 ### 사전 준비
-
-- Python 3.11
-- Node.js 24+
-- (선택) Redis
+- Python 3.11 (conda 권장)
+- Node.js 18+
+- Neon(PostgreSQL) · Upstash(Redis) 계정 — 또는 로컬 docker
+- LLM: GCP 프로젝트 + Vertex(ADC) **또는** Gemini/Groq API 키
 
 ### 백엔드
-
 ```bash
 conda create -n nodevelture python=3.11 -y
 conda activate nodevelture
 cd backend
 pip install -r requirements.txt
-copy .env.example .env
-# cp .env.example .env  # macOS / Linux
-uvicorn app.main:app --reload
+
+# .env 작성 (아래 예시 참고)
+alembic upgrade head            # 테이블 마이그레이션
+python -m uvicorn app.main:app --reload   # http://localhost:8000
 ```
 
-### 프론트엔드
+`backend/.env` 예시:
+```dotenv
+DATABASE_URL=postgresql+asyncpg://<user>:<pw>@<neon-host>/<db>?ssl=require
+REDIS_URL=rediss://<upstash-url>
 
+# LLM — Vertex 사용 시 (키 불필요, ADC)
+USE_VERTEX=true
+GOOGLE_CLOUD_PROJECT=<gcp-project-id>
+GOOGLE_CLOUD_LOCATION=us-central1
+GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_FALLBACK_MODEL=gemini-2.5-flash
+LLM_PROVIDER=gemini
+LLM_PROVIDER_CHAIN=gemini,groq      # 폴백 체인
+# GROQ_API_KEY / OPENAI_API_KEY ... (폴백용)
+```
+> Vertex(ADC) 인증·트러블슈팅은 [`backend/docs/server-ops.md`](backend/docs/server-ops.md) 참고.
+
+### 프론트엔드
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev                      # http://localhost:5173
 ```
 
-### 환경 변수 설정
-
-```bash
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-# .env에 PERSO_API_KEY, DATABASE_URL 등 입력
+`frontend/.env` 예시:
+```dotenv
+VITE_API_BASE_URL=http://localhost:8000/
+VITE_NEON_AUTH_URL=https://<neon-auth-endpoint>/neondb/auth
 ```
 
 ---
@@ -172,17 +175,42 @@ cp frontend/.env.example frontend/.env
 ## 프로젝트 구조
 
 ```
-CoAuthor/
-├── backend/          # FastAPI 서버
-├── frontend/         # React + JavaScript 클라이언트
-├── model/            # 파인튜닝 및 평가 파이프라인
-├── data/             # 학습 데이터 수집·전처리
-├── docs/             # 기획서, 페르소나 카드, API 명세
-└── scripts/          # 배포·운영 유틸리티
+NodeVelture/
+├── backend/                 # FastAPI 서버
+│   ├── app/
+│   │   ├── api/v1/endpoints/ # chats · sessions · novels · worlds · characters · authors · users · api_logs
+│   │   ├── core/            # config · personas · reactions
+│   │   ├── models/          # SQLAlchemy 모델 (user·session·world·character·dialogue·novel·api_log)
+│   │   ├── services/        # llm · memory(RAG) · consistency · style · evaluate · tts · llm_router
+│   │   └── prompts/         # 시스템 프롬프트
+│   ├── scripts/             # e2e_smoke · persona_eval · evidence_report
+│   ├── alembic/             # DB 마이그레이션
+│   └── docs/                # setup · server-ops · architecture · api · models
+├── frontend/                # React + Vite (src/pages · src/lib · src/hooks)
+├── data/                    # world_tags.json 등 데이터
+├── docs/                    # 기능정의서 · 업무분담 · 사용자_시나리오 · scrum · personas
+└── model/                   # (실험) 파인튜닝 스텁
 ```
-
-자세한 구조는 각 디렉터리의 README를 참고하세요.
 
 ---
 
-> AI휴먼 캠프 4기 | AI 빙의 작가 팀
+## 팀 — 1팀(woawoal)
+
+| 역할 | 담당 |
+|------|------|
+| 백엔드 · LLM 파이프라인 · RAG | 지윤정, 윤가연 |
+| 프론트엔드 | 박가은, 유건혁 |
+| AI — 프롬프트 설계 | 김동완 |
+| AI — 데이터 · 콘텐츠 | 신유득 |
+
+> **기능 단위 책임제** — 한 기능(F-ID)을 한 사람이 백엔드·DB·프론트·프롬프트까지 end-to-end로 담당.
+
+---
+
+## 문서
+
+- [기능정의서](docs/기능정의서.md) — 전체 기능(F-ID)·정의·상태
+- [업무분담](docs/업무분담.md) — 담당자별 진행 현황
+- [사용자 시나리오](docs/사용자_시나리오.md)
+- [서버 운영·트러블슈팅](backend/docs/server-ops.md) · [셋업](backend/docs/setup.md)
+- [스크럼 기록](docs/scrum/scrum.md)

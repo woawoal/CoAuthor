@@ -1698,13 +1698,61 @@
 }
 
 @keyframes avatar-pop {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
+
+
+/* memo-proof: 작가의 교정(오탈자) — 메모 패널 */
+.memo-proof { margin: 8px 0 4px; padding: 8px; background: rgba(255,255,255,0.04); border-radius: 10px; }
+.memo-proof__header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; opacity: 0.9; margin-bottom: 6px; }
+.memo-proof__clear { background: none; border: none; color: inherit; opacity: 0.6; font-size: 12px; cursor: pointer; }
+.memo-proof__card { padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; background: rgba(0,0,0,0.18); border-left: 3px solid var(--author-accent, #c9a227); }
+.memo-proof__memo { font-size: 13px; line-height: 1.5; margin: 0 0 6px; opacity: 0.92; }
+.memo-proof__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.memo-proof__err { display: flex; align-items: center; gap: 6px; font-size: 13px; flex-wrap: wrap; }
+.memo-proof__wrong { color: #e57373; text-decoration: line-through; opacity: 0.85; }
+.memo-proof__arrow { opacity: 0.5; }
+.memo-proof__right { color: #81c784; font-weight: 600; }
+.memo-proof__type { font-size: 11px; opacity: 0.55; }
+.memo-proof__freq { font-size: 11px; color: #ffb74d; background: rgba(255,183,77,0.12); padding: 1px 6px; border-radius: 8px; margin-left: auto; }
+.memo-proof__err--frequent .memo-proof__right { text-shadow: 0 0 6px rgba(255,183,77,0.4); }
+.memo-proof__dismiss { margin-top: 6px; background: none; border: 1px solid rgba(255,255,255,0.15); color: inherit; opacity: 0.7; font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; }
+.memo-proof__dismiss:hover { opacity: 1; }
+
+
+/* 메모/교정 버튼 우측 정렬 — 메모만 margin-left:auto, 교정은 바로 옆에 붙임 */
+.author-tag-bar__memo ~ .author-tag-bar__memo { margin-left: 0; }
+
+/* 교정 카드 액션 (적용/넘기기) */
+.memo-proof__actions { display: flex; gap: 8px; margin-top: 8px; }
+.memo-proof__actions .memo-proof__dismiss { margin-top: 0; }
+.memo-proof__apply { background: var(--theme-color); border: none; color: #fff; font-size: 12px; font-weight: 600; padding: 4px 16px; border-radius: 6px; cursor: pointer; }
+.memo-proof__apply:hover { filter: brightness(1.12); }
+
+
+/* 교정 체크리스트: 적용완료 표시 */
+.memo-proof__head-actions { display: flex; gap: 8px; align-items: center; }
+.memo-proof__card--applied { opacity: 0.5; }
+.memo-proof__done { font-size: 12px; font-weight: 600; color: #81c784; white-space: nowrap; }
+
+
+/* 적용완료 카드: 흐릿하지 않게(가독성↑) — 초록 테두리/틴트로 완료 표시 */
+.memo-proof__card--applied { opacity: 1; background: rgba(129, 199, 132, 0.08); border-left-color: #81c784; }
+
+
+/* 채팅 기록 로딩 표시 */
+.chat-loading { text-align: center; padding: 24px 0; color: var(--text-muted); font-size: 14px; }
+
+
+/* chat→editor 변환 중 전체화면 오버레이 */
+.convert-loading {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff; font-size: 20px; font-weight: 600; letter-spacing: 0.5px;
+}
+
+
+/* 로딩 텍스트에 자막 폰트(마루부리) 적용 */
+.convert-loading, .chat-loading { font-family: 'MaruBuri', 'Nanum Myeongjo', serif; }

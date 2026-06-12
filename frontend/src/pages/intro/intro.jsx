@@ -1,11 +1,12 @@
 /* src/pages/intro/intro.jsx */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import '../../index.css';
 import './intro.css';
 import { ExitIcon, ChevronRight } from '../../components/icons';
 import { getAuthor } from '../../lib/authorsApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
+import { applyGlobalVideoVolume, VIDEO_VOLUME_EVENT } from '../../lib/videoVolume';
 
 function Intro() {
     const location = useLocation();
@@ -34,7 +35,26 @@ function Intro() {
         if (authorId) {
             fetchData();
         }
-    }, [authorId]);
+    }, [authorId, navigate]);
+
+    const videoRef = useRef(null);
+    /* 비디오 볼륨 설정 */
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        applyGlobalVideoVolume(video);
+
+        const handleVolumeChange = () => {
+            applyGlobalVideoVolume(video);
+        };
+
+        window.addEventListener(VIDEO_VOLUME_EVENT, handleVolumeChange);
+
+        return () => {
+            window.removeEventListener(VIDEO_VOLUME_EVENT, handleVolumeChange);
+        };
+    }, [selectedAuthor?.video]);
 
     const handleCancel = () => {
         navigate('/');
@@ -69,6 +89,7 @@ function Intro() {
                     <div className="large-video-container">
                         {selectedAuthor?.video ? (
                             <video
+                                ref={videoRef}
                                 src={selectedAuthor.video}
                                 className="large-video"
                                 autoPlay
