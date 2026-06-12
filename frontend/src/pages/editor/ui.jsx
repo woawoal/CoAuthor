@@ -10,17 +10,17 @@ import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
 const AUTHOR_MAP = {
-  1: { characterId: 'baekya',      displayName: '백야',   image: '/assets/author1/author1.png' },
-  2: { characterId: 'charoun',     displayName: '차로운', image: '/assets/author2/author2.png' },
+  1: { characterId: 'baekya', displayName: '백야', image: '/assets/author1/author1.png' },
+  2: { characterId: 'charoun', displayName: '차로운', image: '/assets/author2/author2.png' },
   3: { characterId: 'hanyeoreum', displayName: '한여름', image: '/assets/author3/author3.png' },
   4: { characterId: 'kimdohyeon', displayName: '김도현', image: '/assets/author4/author4.png' },
 };
 
 const AUTHOR_TAGS = [
-  { label: '#세계관',     prompt: null },
-  { label: '#등장인물',   prompt: null },
-  { label: '#에피소드',   prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
-  { label: '#추천',       prompt: null },
+  { label: '#세계관', prompt: null },
+  { label: '#등장인물', prompt: null },
+  { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
+  { label: '#추천', prompt: null },
   { label: '#취향저격ai', prompt: null },
 ];
 
@@ -61,6 +61,7 @@ export default function Editor() {
   const [authorLoading, setAuthorLoading] = useState(false);
   const [showWorldInfo, setShowWorldInfo] = useState(false);
   const [showCharInfo, setShowCharInfo] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [recContextMenu, setRecContextMenu] = useState({ visible: false, x: 0, y: 0, content: '' });
 
   // ── 취향 패널 상태 ────────────────────────────────────────
@@ -94,10 +95,14 @@ export default function Editor() {
         getTaste(chatId, uid).then(data => {
           if (data.works?.length) setTasteWorks(data.works);
           if (data.taste_profile && Object.keys(data.taste_profile).length) setTasteProfile(data.taste_profile);
-        }).catch(() => {});
+        }).catch(() => { });
       }
     });
   }, []);
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [currentAuthorIdx]);
 
   // ── 세션/세계관 로드 ──────────────────────────────────────
   useEffect(() => {
@@ -117,7 +122,7 @@ export default function Editor() {
     fetch(`/api/v1/sessions/${chatId}/novel`)
       .then(r => r.ok ? r.json() : null)
       .then(novel => { if (novel?.content) setContent(novel.content); })
-      .catch(() => {});
+      .catch(() => { });
   }, [chatId]);
 
   // ── 메모 로드/저장 ────────────────────────────────────────
@@ -315,7 +320,7 @@ export default function Editor() {
       await runTasteAnalysis(newWorks);
     } else {
       setTasteProfile(null);
-      if (userId && chatId) analyzeTaste(chatId, { user_id: userId, works: [] }).catch(() => {});
+      if (userId && chatId) analyzeTaste(chatId, { user_id: userId, works: [] }).catch(() => { });
     }
   }
 
@@ -392,7 +397,22 @@ export default function Editor() {
               <>
                 {/* 작가 이미지 + 스위처 오버레이 */}
                 <div className="author-panel__image">
-                  <img src={currentAuthor.image} alt={currentAuthor.displayName} />
+                  {!videoError ? (
+                    <video
+                      key={AUTHOR_IDS[currentAuthorIdx]}
+                      src={`/assets/author${AUTHOR_IDS[currentAuthorIdx]}/default.mp4`}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      onError={() => setVideoError(true)}
+                    />
+                  ) : (
+                    <img
+                      src={currentAuthor.image}
+                      alt={currentAuthor.displayName}
+                    />
+                  )}
                   <div className="author-switcher author-panel__switcher-overlay">
                     <button className="author-switch-btn" onClick={prevAuthor}>‹</button>
                     <span className="author-name-badge">{currentAuthor.displayName}</span>
@@ -405,12 +425,10 @@ export default function Editor() {
                   {AUTHOR_TAGS.map(tag => (
                     <button
                       key={tag.label}
-                      className={`author-tag${
-                        (tag.label === '#세계관' && showWorldInfo) || (tag.label === '#등장인물' && showCharInfo)
+                      className={`author-tag${(tag.label === '#세계관' && showWorldInfo) || (tag.label === '#등장인물' && showCharInfo)
                           ? ' author-tag--active' : ''
-                      }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${
-                        tag.label === '#추천' ? ' author-tag--disabled' : ''
-                      }`}
+                        }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${tag.label === '#추천' ? ' author-tag--disabled' : ''
+                        }`}
                       onClick={() => handleTagClick(tag)}
                       disabled={authorLoading || tag.label === '#추천' || (tag.label === '#취향저격ai' && tasteRecommending)}
                     >{tag.label === '#취향저격ai' && tasteRecommending ? '추천 중...' : tag.label}</button>
