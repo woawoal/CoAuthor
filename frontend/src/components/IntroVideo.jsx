@@ -1,6 +1,7 @@
-// src/components/loadingVideo.jsx
-import { useEffect, useMemo, useRef, useState } from 'react';
+// src/components/IntroVideo.jsx
+import { useEffect, useRef, useState } from 'react';
 import { getGlobalVideoVolume, setGlobalVideoVolume, applyGlobalVideoVolume } from '../lib/videoVolume';
+import { ExitIcon, ChevronRight } from './icons';
 
 const wrapStyle = {
     position: 'fixed',
@@ -41,15 +42,57 @@ const volumeStyle = {
     color: '#fff',
 };
 
-function LoadingVideo({ loading = true, minDuration = 3000, onFinish }) {
-    const startTimeRef = useRef(Date.now());
+const buttonStyle = {
+    position: 'absolute',
+    left: '50%',
+    bottom: '20px',
+    transform: 'translateX(-50%)',
+    zIndex: 2,
+    display: 'flex',
+    gap: '12px',
+};
+
+const cancelButtonStyle = {
+    minWidth: '180px',
+    height: '56px',
+    padding: '0 24px',
+    borderRadius: '8px',
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    transition: 'opacity 0.2s',
+    background: '#222',
+    border: '1px solid rgba(255, 255, 255, 0.15)',
+    color: '#ccc',
+};
+
+const submitButtonStyle = {
+    minWidth: '180px',
+    height: '56px',
+    padding: '0 24px',
+    borderRadius: '8px',
+    fontSize: '1.1rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    transition: 'opacity 0.2s',
+    background: 'var(--theme-color)',
+    border: 'none',
+    color: '#fff',
+};
+
+function IntroVideo({ authorId, onCancel, onSelect }) {
     const videoRef = useRef(null);
     const [volume, setVolume] = useState(() => getGlobalVideoVolume());
 
-    const videoSrc = useMemo(() => {
-        const authorId = Math.floor(Math.random() * 4) + 1;
-        return `/assets/author${authorId}/loading.mp4`;
-    }, []);
+    const videoSrc = `/assets/author${authorId}/intro.mp4`;
 
     useEffect(() => {
         const video = videoRef.current;
@@ -58,19 +101,6 @@ function LoadingVideo({ loading = true, minDuration = 3000, onFinish }) {
         setGlobalVideoVolume(volume);
         applyGlobalVideoVolume(video);
     }, [volume]);
-
-    useEffect(() => {
-        if (loading) return;
-
-        const elapsed = Date.now() - startTimeRef.current;
-        const remain = Math.max(0, minDuration - elapsed);
-
-        const timer = setTimeout(() => {
-            onFinish?.();
-        }, remain);
-
-        return () => clearTimeout(timer);
-    }, [loading, minDuration, onFinish]);
 
     return (
         <div style={wrapStyle}>
@@ -95,9 +125,19 @@ function LoadingVideo({ loading = true, minDuration = 3000, onFinish }) {
                         onChange={(e) => setVolume(Number(e.target.value))}
                     />
                 </div>
+
+                <div style={buttonStyle}>
+                    <button style={cancelButtonStyle} onClick={onCancel}>
+                        <ExitIcon /> 취소
+                    </button>
+
+                    <button style={submitButtonStyle} onClick={onSelect}>
+                        선택 <ChevronRight />
+                    </button>
+                </div>
             </div>
         </div>
     );
 }
 
-export default LoadingVideo;
+export default IntroVideo;
