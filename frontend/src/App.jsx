@@ -29,7 +29,6 @@ function App() {
       <Routes>
         <Route path="/" element={<Main />} />
         <Route path="/worldview" element={<Worldview />} />
-        <Route path="/intro" element={<Intro />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/editor" element={<Editor />} />
         <Route path="/storylist" element={<StoryList />} />
