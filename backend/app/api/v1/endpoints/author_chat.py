@@ -198,10 +198,15 @@ class TasteRecommendRequest(BaseModel):
     user_id: str
 
 
-class TasteRecommendResponse(BaseModel):
+class RecommendationItem(BaseModel):
+    type: str
     narration: str
     dialogue: str
     reason: str
+
+
+class TasteRecommendResponse(BaseModel):
+    recommendations: list[RecommendationItem]
 
 
 @router.post("/{chat_id}/author/taste-recommend")
@@ -262,17 +267,23 @@ async def taste_recommend(
         text = raw if isinstance(raw, str) else json.dumps(raw)
         text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         parsed = json.loads(text)
+        items = parsed.get("recommendations", [])
         result = TasteRecommendResponse(
-            narration=str(parsed.get("narration", "")),
-            dialogue=str(parsed.get("dialogue", "")),
-            reason=str(parsed.get("reason", "")),
+            recommendations=[
+                RecommendationItem(
+                    type=str(item.get("type", "")),
+                    narration=str(item.get("narration", "")),
+                    dialogue=str(item.get("dialogue", "")),
+                    reason=str(item.get("reason", "")),
+                )
+                for item in items
+            ]
         )
     except Exception as e:
         logger.error("취향저격 LLM 실패: %s", e)
         raise HTTPException(status_code=500, detail="AI 추천 생성에 실패했습니다.")
 
-    logger.info("취향저격 추천 - chat_id=%s narration=%s dialogue=%s",
-                chat_id, result.narration[:40], result.dialogue[:40])
+    logger.info("취향저격 추천 - chat_id=%s 추천수=%d", chat_id, len(result.recommendations))
     return result
 
 

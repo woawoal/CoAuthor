@@ -488,9 +488,7 @@ export default function Chat() {
       role: 'ai',
       type: 'taste-recommend',
       loading: true,
-      narration: '',
-      dialogue: '',
-      reason: '',
+      recommendations: [],
     }]);
     try {
       const data = await getTasteRecommend(chatId, userId);
@@ -899,26 +897,33 @@ export default function Chat() {
                               <div className="typing-dots"><span /><span /><span /></div>
                             </div>
                           ) : (
-                            <div className="author-msg author-msg--taste-rec">
-                              {msg.narration && (
-                                <p className="taste-rec__narration">{msg.narration}</p>
-                              )}
-                              {msg.dialogue && (
-                                <p className="taste-rec__dialogue">"{msg.dialogue}"</p>
-                              )}
-                              {msg.reason && (
-                                <p className="taste-rec__reason">💡 {msg.reason}</p>
-                              )}
-                              <button
-                                className="taste-rec__use-btn"
-                                onClick={() => {
-                                  const parts = [
-                                    msg.narration,
-                                    msg.dialogue ? `"${msg.dialogue}"` : '',
-                                  ].filter(Boolean);
-                                  setInput(prev => prev ? `${prev}\n${parts.join('\n')}` : parts.join('\n'));
-                                }}
-                              >이 문장 사용하기 →</button>
+                            <div className="author-msg--taste-rec-list">
+                              {(msg.recommendations || []).map((rec, i) => (
+                                <div key={i} className="author-msg author-msg--taste-rec taste-rec__card">
+                                  {rec.type && (
+                                    <span className="taste-rec__type-badge">{rec.type}</span>
+                                  )}
+                                  {rec.narration && (
+                                    <p className="taste-rec__narration">{rec.narration}</p>
+                                  )}
+                                  {rec.dialogue && (
+                                    <p className="taste-rec__dialogue">"{rec.dialogue}"</p>
+                                  )}
+                                  {rec.reason && (
+                                    <p className="taste-rec__reason">💡 {rec.reason}</p>
+                                  )}
+                                  <button
+                                    className="taste-rec__use-btn"
+                                    onClick={() => {
+                                      const parts = [
+                                        rec.narration,
+                                        rec.dialogue ? `"${rec.dialogue}"` : '',
+                                      ].filter(Boolean);
+                                      setInput(prev => prev ? `${prev}\n${parts.join('\n')}` : parts.join('\n'));
+                                    }}
+                                  >이 문장 사용하기 →</button>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
