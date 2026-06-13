@@ -1,26 +1,24 @@
 <!-- markdownlint-disable MD022 MD032 MD031 MD036 MD060 MD040 -->
 # NodeVelture 프로젝트 현황
 
-> 최종 갱신: 2026-06-09 (2주차) — **핵심 경로(작가선택→세계관→채팅→소설변환→읽기) E2E 동작**
-> Node + Novel + Adventure — AI와 함께 세계관을 만들고, 그 세계관 속 등장인물이 되어 소설을 완성하는 협업 창작 플랫폼
+> 최종 갱신: 2026-06-14 (3주차) — **클라우드 풀스택 라이브**(백엔드 Cloud Run · 프론트 Vercel · Neon · Upstash · Vertex). 코어 6단계 + RAG 3종 + 오탈자 교정 + @등장인물 멘션까지 동작.
+> Node + Novel + Adventure — AI(작가 페르소나)와 놀듯 대화하면, 그 대화가 진짜 *내 소설*이 되는 협업 창작 플랫폼.
 
-분야(백엔드 / 프론트엔드 / AI)별로 **현재 진행상황과 다음 할 일**을 정리한 문서입니다.
+분야(백엔드 / 프론트엔드 / AI)별 **현재 진행상황과 다음 할 일**. 기능 상세는 [기능정의서.md](기능정의서.md), 담당은 [업무분담.md](업무분담.md).
 
 ---
 
 ## 1. 서비스 한눈에 보기
 
-3단계 흐름으로 동작하는 창작 플랫폼:
-
 ```
-1단계 세계관 설정     → AI(작가 페르소나)와 함께 장르/배경/등장인물 잡기
-2단계 대화형 창작     → 사용자=주인공 / AI=조연들, 입력에 따라 이야기 분기
-3단계 소설 변환       → 대화 로그를 소설 문체로 자동 변환
+1단계 작가 선택 → 세계관 설정   (작가 페르소나 + 세계관 폼/프리셋 + 태그 자동분류)
+2단계 대화형 창작              (사용자=주인공 / @등장인물로 다른 인물도 연기 / AI 응답 + RAG 일관성 + 어시스턴트 유도)
+3단계 소설 변환 → 검수 → 읽기  (대화 로그 → 작가 문체 소설 → 일관성 검수 → read 화면)
 ```
 
 작가 페르소나 4명: **백야**(호러·미스터리) / **차로운**(추리) / **한여름**(로맨스) / **김도현**(일상·에세이)
 
-마감: 2026-06-19. 1주차(6/2~6/8) / 2주차(6/9~6/15) / 마지막주(6/16~6/19)
+마감: 2026-06-19. 현재 **시연/발표 준비 단계**.
 
 ---
 
@@ -28,73 +26,61 @@
 
 | 영역 | 채택 기술 | 상태 |
 |------|-----------|------|
-| 프론트엔드 | React 19 + Vite + react-router-dom | main/worldview/intro/chat/chatlist/read 6페이지 |
-| 백엔드 | FastAPI (Python 3.11, conda) | v1 API 완성, E2E 동작 |
-| AI 엔진 | **Groq (Llama 3.3) 기본 + Gemini 토글** | `LLM_PROVIDER`로 전환 + 모델/키 폴백 (Groq 무료 한도 넉넉) |
-| DB | **PostgreSQL only** + SQLAlchemy + Alembic | 통일 완료 (MongoDB 제거) |
-| 캐시/세션 | Redis (도커 ↔ Upstash 클라우드 토글) | 프롬프트 컨텍스트 관리 동작 |
-| 자체 모델 | Qwen2.5 (파인튜닝 예정) | 스텁만 존재 |
-| 평가 | LLM-as-Judge (Gemini) | 구현됨 |
-| 배포 | Render / Railway (예정) | 미착수 |
+| 프론트엔드 | React 19 + Vite + react-router-dom | main/worldview/intro/chat/editor/storylist/read/mypage/voice/login/dashboard 등, **Vercel 배포** |
+| 백엔드 | FastAPI (Python 3.11) | v1 API 완성, **Cloud Run 배포(라이브)** |
+| AI 엔진 | **Vertex AI Gemini 2.5 Flash-lite** (`USE_VERTEX`) | thinking off로 ~2s·언어누수 해결. Groq/Gemini/OpenAI 폴백 유지(`.env` 한 줄) |
+| DB | **Neon PostgreSQL**(공유) + SQLAlchemy + Alembic | asyncpg·SSL 자동. 마이그레이션 head = `j0k1l2m3n4o5` |
+| 캐시/세션 | **Upstash Redis**(클라우드) | 프롬프트 컨텍스트·최근 대화 관리 |
+| RAG | Gemini 임베딩 + in-app 코사인 top-K | 기억·검수·문체 3종 (별도 벡터DB 없이 단편 규모 충분) |
+| 음성(TTS) | ElevenLabs(작가별 음성ID) | 프론트 연동 ✅ · ⚠️ 무료플랜 클라우드 IP 차단(401) |
+| 평가 | LLM-as-Judge(4축) + 정량 리포트 | `evaluate.py` · `scripts/` 데모/리포트 |
+| 자체 모델 | Qwen2.5 (파인튜닝) | 스텁(우선순위 하락 — API 허용) |
 
-> ✅ **저장소 단일화 완료**: 기존 PostgreSQL/MongoDB/Redis 3중 구조 → **PostgreSQL(원본) + Redis(프롬프트 캐시)**로 정리됨 (강사님 6/5 스크럼 피드백 반영).
+> ✅ **클라우드 풀스택 라이브**: 백엔드(Cloud Run, us-central1) + 프론트(Vercel) + Neon + Upstash + Vertex. 팀 전원 같은 데이터.
 
 ---
 
 ## 3. 분야별 현황 & 다음 할 일
 
-### 🟦 백엔드 (jyj · 가연님)
+### 🟦 백엔드 · LLM · RAG · 배포 (윤정 · 가연님)
 
 **현재 (대부분 완료 ✅)**
-- v1 CRUD API 완성: users / worlds / characters / sessions / dialogues / novels / authors / chats / **api_logs** (PostgreSQL)
-- 채팅 본류(`chats.py`): Redis 컨텍스트 + AI 스트리밍 + 대화 PG 저장 (SSE `event: token`)
-- **엔진 추상화 `services/llm.py`** — Groq↔Gemini 토글 + 모델/키 폴백 (llm_router·chats 모두 위임)
-- **소설 변환 실연결** — `novels.py` → `generate_novel`, **작가 문체**(author_id→persona). E2E 검증
-- **author_id 세션 저장** (마이그레이션 적용) + **API Log**(토큰/비용 기록·조회)
-- **DB 포트 5433 이전**(네이티브 PostgreSQL 충돌 회피) + pool_pre_ping
-- **E2E 스모크**(`scripts/e2e_smoke.py`) — 9단계 전 체인 통과
-- 인프라: docker-compose, Redis 도커↔Upstash 토글, Alembic, ngrok, conda
+- v1 CRUD + 채팅 본류(SSE `reply`/`audio`/`done`) + 소설 변환(작가 문체) + API Log(토큰/비용)
+- **엔진 Vertex 전환**(`USE_VERTEX`) — 8s→2s·언어누수 해결, 폴백 체인 유지
+- **RAG 3종** — ① 기억(`memory.py` 누적요약+의미검색) · ② 검수(`consistency.py`) · ③ 문체(`style.py` few-shot)
+- **오탈자 교정**(`proofread.py`) — 단어단위 diff + **창작 고유명사 보호**(등장인물·세계관 제목 + **하이브리드 용어집** LLM 자동추출/넘기기 누적) + 자모·늘임 무시 + checker_ok 가드. 개인 오답노트(`error_profile`)
+- **@등장인물 멘션** — `stream?speaker=`로 그 인물 시점 전개
+- 작가 리액션(F-AS-05) · 증분 요약·컨텍스트 윈도우(토큰 절약) · 토큰 분석 대시보드 API
+- **배포** — Cloud Run(Dockerfile·Secret Manager·조직 DRS override) + 마이그레이션 운영
 
 **다음 할 일**
-- [ ] **메모 백엔드 주입** (F-CH-11) — 프론트 mock → 세션 컨텍스트 주입 (가은님 합의)
-- [ ] **AI 오프닝** (F-CH-04) — 비용 절약 위해 세계관 텍스트 기반 무료 템플릿
-- [ ] 전역 에러 핸들링 미들웨어 — **가연님 담당**
-- [ ] `/users/register` bcrypt 버그 (`bcrypt==4.0.1` 핀)
-- [ ] 정리: `sync_to_db` 빈 스텁
-- [ ] (후순위) JWT 인증, 배포(Dockerfile/Render)
+- [ ] **비식별화(PII 마스킹)** — RAG 적재 전 마스킹(평가 요구) 🔥
+- [ ] **F-AV-04 응답 감정 API** — 응답에 emotion 부착(자막 연동)
+- [ ] **F-CH-04 AI 오프닝** — 세계관 기반 첫 상황 자동
+- [ ] TTS 클라우드 — ElevenLabs 유료 전환 or 로컬 시연 **결정**
 
-### 🟩 프론트엔드 (가은님 · 건혁님)
+### 🟩 프론트엔드 (가은님 · 건혁님 · 윤정)
 
-**현재 (전체 플로우 연결됨 ✅)**
-- 6페이지: **main**(작가선택+테마) / **worldview**(세계관 폼) / intro / **chat** / **chatlist** / **read**(소설 읽기)
-- 작가 4인 디자인·자기소개 영상, 작가별 테마(data-author)
-- 채팅 UI: 말풍선, 메모 패널(*mock*), SSE 실시간 렌더, DB 세계관/캐릭터 연동, **대화 이어쓰기 복원**(getDialogues)
-- **소설 읽기 화면**: 챕터 목차·글자크기·북마크·**txt 내보내기**·진행률
-- API 클라이언트 4종(chatApi/worldviewApi/authorsApi/apiBase), Vite 프록시
+**현재 (전체 플로우 + 폴리시 ✅)**
+- 작가선택(테마·**프로필 카드**)/세계관 폼·프리셋/채팅(타자기·리액션 자막·메모/✏️교정 탭·자동피드백/실시간교정 토글·**@멘션**·패널 리사이즈)/집필형 에디터/소설 읽기(목차·글자크기·txt 내보내기)/**마이페이지**(대시보드·취향·설정집·문장보관함·**오답노트**·AI작가기록·업적)
+- **UX 폴리시** — alert→**토스트**(13곳)·로딩 배경·프로필 즉시표시(캐시)·**문구 톤 통일**·탭 메타(lang/title/favicon)
+- **Vercel 배포** — `apiBase` 배포 시 절대URL로 백엔드 직접 호출
 
 **다음 할 일**
-- [ ] 메모 실제 전송 (백엔드 주입과 연동)
-- [ ] read 페이지 footer 작가명 — `world.title` → `session.author_id` 매핑(한여름 등)
-- [ ] 알림/컨펌 공통 컴포넌트
-- [ ] (선택) AI 오프닝 상황 표시
+- [ ] F-AV-01 작가 아바타 립싱크(Live Portrait 조사) · F-AV-04 감정 자막 UI
+- [ ] F-AS-01/04 어시스턴트(자동완성) · F-CH-16 무입력 멘트
+- [ ] F-PR 개인화 온보딩·관심사 추천 RAG(UI)
 
-### 🟪 AI 엔지니어 (동완님-프롬프트)
+### 🟪 AI 프롬프트 (동완님 · 유득님)
 
-**현재**
-- **Groq(Llama 3.3) 연동** — 무료 한도 넉넉, 쿼터 스트레스 해소 (Gemini 무료 20/day 한계로 전환)
-- 페르소나 프롬프트 4종(`core/personas.py`) — WORLD/CHARACTER RULE + GUARD RAIL + FEW-SHOT + 대사/속마음/서술 입력형식 규칙, 실사용
-- **작가별 문체 소설 변환**(`build_novel_system`) — author_id→persona 연동
-- LLM-as-Judge 구현(`model/evaluation/llm_judge.py`) — 페르소나 일관성 채점 (목표 4.0)
-- 파인튜닝(`model/finetune/train.py`) — Qwen2.5-1.5B 타겟, Trainer 미구현 스텁
-- ✅ 런타임 프롬프트 3종을 `core/personas.py`로 통합 (1-1 세계관 / 1-2 대화 / 1-3 초안) + 죽은 `model/prompts/system_prompts.py` 정리 — [프롬프트 설계](프롬프트_설계.md)
+**현재 ✅**
+- 페르소나 리치 프롬프트 4종 · 세계관 태그 자동분류 · 일관성/유도/막힘/조연 다중반응 프롬프트 · 채점 루브릭
+- 작가별 ElevenLabs 음성ID·키 매핑(백야 v1)
+- F-QC-02 맞춤법 검사 모듈(유득) · F-WD-07 프리셋 콘텐츠 · F-EV-06 샘플
 
-**다음 할 일 (2주차)**
-- [ ] **🔥 세계관 일관성 RAG (장기 기억)** — 차별점 (메모·이전 설정을 검색·주입해 일관성 유지, 제미나이 설정붕괴 보완 / RAG-lite 우선)
-- [ ] 등장인물 모드 프롬프트 강화 (조연 여러 명 동시 반응)
-- [ ] 소설 변환 전용 프롬프트 품질
-- [ ] LLM-as-Judge로 4명 프롬프트 일관성 측정 → 개선 루프
-- [ ] 모델 학습 필요성 재검토 — 강사님 "상용 API OK"로 완화돼 자체모델 우선순위 하락 가능
-- [x] system_prompts.py 깨진 참조 정리 + 런타임 프롬프트 personas.py로 통합 (완료)
+**다음 할 일**
+- [ ] F-PR-02 사용자 취향 → 작가 추천 반영 프롬프트
+- [ ] (여유) Qwen2.5 파인튜닝
 
 ---
 
@@ -102,35 +88,30 @@
 
 | 리스크 | 내용 | 대응 |
 |--------|------|------|
-| **RAG 부재** | 차별점 "세계관 일관성 RAG(장기 기억)" 미구현. 발표 차별점인데 코드 없음 | RAG-lite 우선, 여유 시 pgvector |
-| **메모 미연결** | 프론트 메모가 mock — AI에 안 들어감. "작가 기능" 차별점 미완 | 백엔드 컨텍스트 주입 연결 (가은님 합의) |
-| **자체 모델 미착수** | train.py 스텁, 강사님 API 허용으로 우선순위 하락 | 발표 비중 결정 필요 |
-| **register bcrypt 버그** | passlib+bcrypt 충돌로 회원가입 막힘 (인증 후순위) | `bcrypt==4.0.1` 핀 |
+| **TTS 클라우드 무음** | ElevenLabs **무료플랜이 클라우드/데이터센터 IP 차단**(401). 로컬 200 / Cloud Run 401 | 유료 전환 or 로컬 시연 결정 |
+| **비식별화 미구현** | RAG에 원문 적재 — 평가 요구(PII 마스킹) | RAG 적재 전 마스킹 추가 |
+| **발표 수치 신뢰성** | 정량 근거가 06-09 Groq 기준(변동·언어누수) | GPT + 긴 시나리오 + 다회 평균으로 갱신 |
+| **마이그레이션 정합** | 새 코드 배포 시 마이그레이션 누락하면 worlds 조회 500(06-13 incident) | 배포 = `alembic upgrade head` 동반 |
 
-> ✅ **해소됨**: AI 쿼터 지옥(Gemini 20/day → **Groq 무료**) · 채팅 경로 이원화(→ `llm.py`로 통합) · 소설 변환 스텁(→ 실연결) · DB 포트 충돌(→ 5433)
+> ✅ **해소됨**: RAG 부재(→3종 구현) · 메모 미연결(→백엔드+프론트) · AI 쿼터·언어누수(→Vertex) · 배포 미착수(→Cloud Run+Vercel 라이브) · Vercel 로그인 user_id 불일치(→Neon Auth 도메인 등록) · 작가 답변 장애(→memos 타입·Vertex 인자 복구)
 
 ---
 
-## 5. 발표 차별점 방어 논리 (6/8 확정)
+## 5. 발표 차별점 방어 논리
 
-> "ChatGPT/제미나이에 채팅하는 것과 뭐가 다른가" → 발표 때 반드시 나올 질문
+> "ChatGPT/제미나이에 채팅하는 것과 뭐가 다른가" → 발표 핵심 질문. **수치로 증명** ([발표_정량근거.md](발표_정량근거.md))
 
-1. **사용자가 1인칭 주인공으로 이야기에 들어감** — "지시하는 도구"가 아니라 "들어가는 무대"
-2. **작가 페르소나와 협업 + 대화 → 소설 자동 변환** (결과물이 남음)
-3. **세계관 일관성 RAG (장기 기억)** — 긴 이야기에서 설정이 안 무너짐
-4. (확장) 동기부여 시스템 / 삽화 자동 생성
-
-> ※ 6/2 스크럼의 "캐릭터별 비밀정보 분리(서로 모르는 상태)"는 추리극 오해 기반이라 채택 안 함 — [scrum.md](dev-logs/scrum.md) 참고
+1. **세계관 일관성 RAG(장기 기억)** — 6턴 전 비밀도 정확 회상(OFF=0/ON=정확). ChatGPT가 흘리는 설정을 안 까먹음 🔥
+2. **독자 입장 검수** — 설정 모순("형사가 의사였다")을 AI가 대신 잡아줌
+3. **작가 문체 RAG** — 작가 4인 문체를 few-shot으로 더 살림(3회 평균 +1.00/20)
+4. **들어가는 무대** — 1인칭 주인공 + @등장인물로 다른 인물도 연기 → 결과물(소설)이 남음
+5. **개인화 보조** — 오답노트·취향 추천 등 (소설 문체엔 개인 정체성 주입 X, 코치/추천 층만)
 
 ---
 
 ## 6. 참고 문서
-- **기능정의서**: [docs/기능정의서.md](기능정의서.md) (·[발표용 html](기능정의서.html))
+- **기능정의서**: [docs/기능정의서.md](기능정의서.md) · **업무분담**: [docs/업무분담.md](업무분담.md)
+- **발표 정량근거**: [docs/발표_정량근거.md](발표_정량근거.md) · **RAG 성능지표**: [docs/rag/성능지표.md](rag/성능지표.md)
 - **사용자 시나리오**: [docs/사용자_시나리오.md](사용자_시나리오.md)
-- 프롬프트 설계: [docs/프롬프트_설계.md](프롬프트_설계.md) · 문체모델: [docs/문체모델_연동_설계.md](문체모델_연동_설계.md)
-- 기획서: [docs/planning/NodeVelture.md](planning/NodeVelture.md)
-- 페르소나 카드: [docs/personas/persona_cards.md](personas/persona_cards.md)
-- 강사님 스크럼 기록: [docs/dev-logs/scrum.md](dev-logs/scrum.md)
-- 백엔드 상세: [backend/docs/](../backend/docs/) (architecture / api / models / setup / coding-rules)
-- 백엔드 실행 가이드: [backend/docs/setup.md](../backend/docs/setup.md)
+- 운영/배포: [backend/docs/server-ops.md](../backend/docs/server-ops.md) · 실행: [backend/docs/setup.md](../backend/docs/setup.md)
 - 개발일지: [docs/dev-logs/](dev-logs/)

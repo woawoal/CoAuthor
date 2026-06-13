@@ -25,9 +25,9 @@
 [1단계] 작가 선택 + 세계관 작성        작가 4인 중 선택 → 장르·배경·등장인물 입력
    │                                  (작가별 테마 적용 / 세계관 태그 자동분류)
    ▼
-[2단계] 대화형 창작                     사용자 = 1인칭 주인공으로 대화
+[2단계] 대화형 창작                     사용자 = 1인칭 주인공 (@등장인물로 다른 인물도 연기)
    │                                  → AI가 작가 문체로 서술/대사 응답
-   │                                  → RAG 일관성 · 어시스턴트 유도 · 작가 리액션
+   │                                  → RAG 일관성 · 어시스턴트 유도 · 작가 리액션 · 오탈자 교정
    ▼
 [3단계] 소설 변환 → 읽기                채팅 종료 → 작가 문체 단편 소설로 변환
                                       → 일관성 검수 → 읽기(챕터·txt 내보내기)
@@ -81,6 +81,10 @@
 - 💬 **작가 리액션 자막** — 사용자 대사에 작가가 즉각 반응(사진 위 영화 자막 스타일)
 - 📝 **작가 메모** — 메모를 작성하면 이후 응답 프롬프트에 즉시 주입
 - 🔍 **일관성 검수** — 설정 모순을 잡아 알려줌
+- ✏️ **오탈자 교정 / 오답노트** — 작가가 '여백 메모'처럼 맞춤법을 짚어줌. **창작 고유명사(등장인물·세계관) 보호**·실시간 토글·마이페이지 개인 오답노트
+- 🎭 **@등장인물 멘션** — `@이름`으로 주인공 외 다른 인물로도 대사 입력 → 작가AI가 그 인물 시점·서사로 전개
+- 📚 **마이페이지(내 서재)** — 대시보드·취향 프로필·설정집·문장 보관함·오답노트·AI 작가 기록
+- ✒️ **집필형 에디터** — 채팅↔원고 전환, 자동저장·실시간 교정·작가 피드백
 - 📊 **토큰 사용량 분석**(`/api-logs`) — 세션·모델별 토큰/비용 집계
 - 🔐 **로그인** — Neon Auth(이메일 OTP)
 - 📖 **소설 읽기** — 챕터 목차·글자 크기·진행률·**txt 내보내기**
@@ -97,7 +101,7 @@
 | **Cache / 세션** | Redis — **Upstash** |
 | **LLM 엔진** | **Vertex AI Gemini 2.5 Flash-lite**(ADC) — Groq / OpenAI 폴백(`LLM_PROVIDER_CHAIN`) |
 | **임베딩 / RAG** | Gemini `text-multilingual-embedding-002` + 인앱 코사인 |
-| **배포** | GCP **Cloud Run**(Dockerfile + Secret Manager, Vertex는 ADC 자동) |
+| **배포** | 백엔드 GCP **Cloud Run**(Dockerfile + Secret Manager, Vertex는 ADC 자동) · 프론트 **Vercel**(정적 SPA·CDN) |
 
 ### 아키텍처
 
@@ -166,7 +170,7 @@ npm run dev                      # http://localhost:5173
 
 `frontend/.env` 예시:
 ```dotenv
-VITE_API_BASE_URL=http://localhost:8000/
+VITE_API_BASE_URL=http://localhost:8000/api    # 배포 시엔 Cloud Run 주소(…/api)
 VITE_NEON_AUTH_URL=https://<neon-auth-endpoint>/neondb/auth
 ```
 
@@ -178,10 +182,10 @@ VITE_NEON_AUTH_URL=https://<neon-auth-endpoint>/neondb/auth
 NodeVelture/
 ├── backend/                 # FastAPI 서버
 │   ├── app/
-│   │   ├── api/v1/endpoints/ # chats · sessions · novels · worlds · characters · authors · users · api_logs
+│   │   ├── api/v1/endpoints/ # chats · sessions · novels · worlds · characters · authors · users · api_logs · proofread · mypage · taste
 │   │   ├── core/            # config · personas · reactions
 │   │   ├── models/          # SQLAlchemy 모델 (user·session·world·character·dialogue·novel·api_log)
-│   │   ├── services/        # llm · memory(RAG) · consistency · style · evaluate · tts · llm_router
+│   │   ├── services/        # llm · memory(RAG) · consistency · style · evaluate · tts · proofread · llm_router
 │   │   └── prompts/         # 시스템 프롬프트
 │   ├── scripts/             # e2e_smoke · persona_eval · evidence_report
 │   ├── alembic/             # DB 마이그레이션
