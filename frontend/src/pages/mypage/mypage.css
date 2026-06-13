@@ -17,8 +17,8 @@
 
 /* ── 사이드바 ────────────────────────────────────────────────── */
 .mp-sidebar {
-    width: 220px;
-    min-width: 220px;
+    width: 260px;
+    min-width: 260px;
     background: rgba(255,255,255,0.03);
     border-right: 1px solid rgba(255,255,255,0.07);
     display: flex;
@@ -126,9 +126,11 @@
 
 /* ── 메인 콘텐츠 ─────────────────────────────────────────────── */
 .mp-main {
-    flex: 1;
+    flex: 0 1 1000px;        /* 760px 고정폭 + 화면 좁으면 줄어듦 */
     padding: 36px 40px 60px;
-    max-width: 760px;
+    max-width: 1000px;
+         /* 사이드바 오른쪽 남는 공간에서 중앙 정렬 */
+    min-width: 0;
 }
 
 .mp-page-title {
