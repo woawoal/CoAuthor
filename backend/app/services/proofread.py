@@ -14,7 +14,7 @@ import asyncio
 import difflib
 import logging
 
-from f_qc_02_spell_checker import check_korean_grammar
+from f_qc_02_spell_checker import check_korean_grammar_status
 
 logger = logging.getLogger(__name__)
 
@@ -83,22 +83,27 @@ def _diff_errors(original: str, corrected: str) -> list[dict]:
     return errors
 
 
-async def proofread(text: str) -> list[dict]:
-    """text의 맞춤법/오탈자 오류쌍 리스트를 반환. 오류 없거나 검사 실패 시 [].
+async def proofread(text: str) -> tuple[list[dict], bool]:
+    """**(오류쌍 리스트, checker_ok)** 를 반환.
 
-    F-QC-02는 동기(requests) → 이벤트 루프 안 막게 thread로 실행.
+    - checker_ok=False = **네이버 검사기가 못 돈 것**(변경/차단/네트워크). 이때도 errors=[]지만,
+      "검사했는데 깨끗함"과 구분돼서 호출부가 '조용히 안 됨'을 알 수 있다(가드의 핵심).
+    - F-QC-02는 동기(requests) → 이벤트 루프 안 막게 thread로 실행.
     """
     text = (text or "").strip()
     if not text:
-        return []
+        return [], True
     try:
-        corrected = await asyncio.to_thread(check_korean_grammar, text)
-    except Exception as e:  # noqa: BLE001 - 검사 실패는 '오류 없음'으로 흡수(흐름 안 막음)
+        corrected, ok = await asyncio.to_thread(check_korean_grammar_status, text)
+    except Exception as e:  # noqa: BLE001 - 예외는 '검사 실패'로 흡수(흐름 안 막음)
         logger.warning("맞춤법 검사 실패(교정 생략): %s", e)
-        return []
+        return [], False
+    if not ok:
+        logger.warning("⚠️ 맞춤법 검사기 동작 실패 — 네이버 변경/차단 의심(교정 미수행, errors=[]로 오인 주의)")
+        return [], False
     if not corrected or corrected.strip() == text:
-        return []
-    return _diff_errors(text, corrected)
+        return [], True
+    return _diff_errors(text, corrected), True
 
 
 # ── 개인 오답노트(error_profile) 누적/매칭 ────────────────────

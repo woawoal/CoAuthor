@@ -83,7 +83,7 @@ async def proofread_chat(
     - 개인 error_profile 누적 → 같은 실수 재등장 시 frequent=True.
     - **자동 수정하지 않는다** — 프론트는 '제안'만 표시하고 적용/넘기기는 사용자가.
     """
-    errors = await pf.proofread(body.text)
+    errors, checker_ok = await pf.proofread(body.text)
 
     flagged = [{**e, "frequent": False, "count": 1} for e in errors]
     user = await _resolve_user(chat_id, db)
@@ -93,7 +93,8 @@ async def proofread_chat(
         await db.commit()
 
     memo = await _author_memo(body.character_id, errors) if body.persona_memo else ""
-    return {"errors": flagged, "memo": memo, "count": len(flagged)}
+    # checker_ok=False = 네이버 맞춤법기가 동작 못 함 → 프론트는 errors=[]를 '깨끗함'으로 오인하면 안 됨
+    return {"errors": flagged, "memo": memo, "count": len(flagged), "checker_ok": checker_ok}
 
 
 @router.get("/users/{user_id}/error-notebook")
