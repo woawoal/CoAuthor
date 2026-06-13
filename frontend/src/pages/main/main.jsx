@@ -5,6 +5,7 @@ import '../../index.css';
 import './main.css';
 import { ExitIcon } from '../../components/icons';
 import { getAuthors } from '../../lib/authorsApi';
+import { getProfile } from '../../lib/mypageApi';
 import { authClient, syncCurrentUser } from '../../lib/auth';
 
 const FALLBACK_AUTHORS = [
@@ -89,6 +90,7 @@ function Main() {
     const [hoveredAuthorId, setHoveredAuthorId] = useState(null);
     const [authors, setAuthors] = useState([]);
     const [userId, setUserId] = useState(null);
+    const [profile, setProfile] = useState(null);   // 사이드바 프로필 카드(닉네임·작품수)
     const [isLoading, setIsLoading] = useState(true);
     const [showVoicePopup, setShowVoicePopup] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -110,6 +112,8 @@ function Main() {
                 } catch (error) {
                     console.error(error);
                 }
+
+                getProfile(authUserId).then(setProfile).catch(() => { });   // 사이드바 프로필 카드용
 
                 const popupKey = `voice_popup_seen_${authUserId}`;
                 if (!localStorage.getItem(popupKey)) {
@@ -279,6 +283,16 @@ function Main() {
                 className="author-panel-slide"
             >
                 <div className="author-panel">
+                    {profile && (
+                        <div className="main-profile-card">
+                            <div className="main-profile-avatar">{profile.username?.[0]?.toUpperCase() ?? '?'}</div>
+                            <div className="main-profile-name">{profile.username}</div>
+                            <div className="main-profile-stats">
+                                <span>{profile.stats.total_works} 작품</span>
+                                <span>{profile.stats.total_chars.toLocaleString()}자</span>
+                            </div>
+                        </div>
+                    )}
                     <button
                         className="btn"
                         onClick={() => {
