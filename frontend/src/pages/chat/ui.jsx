@@ -1265,7 +1265,7 @@ export default function Chat() {
                 </div>
                 <div className="memo-view__list">
                   {corrections.length === 0 && (
-                    <p className="author-chat__empty">맞춤법 오류가 없습니다 ✨<br />대화하면 작가가 봐줍니다</p>
+                    <p className="author-chat__empty">맞춤법 오류가 없어요 ✨<br />대화하면 작가가 봐줍니다</p>
                   )}
                   {corrections.map(c => (
                     <div key={c.id} className="memo-proof__card">
@@ -1326,7 +1326,7 @@ export default function Chat() {
 
                 <div className="memo-view__list">
                   {memos.length === 0 && (
-                    <p className="author-chat__empty">메모가 없습니다<br />말풍선을 우클릭해 추가하세요</p>
+                    <p className="author-chat__empty">메모가 없어요<br />말풍선을 우클릭해 추가하세요</p>
                   )}
                   {memos.map(memo => (
                     <div

@@ -734,7 +734,7 @@ export default function Editor() {
                 {proofMemo && <p className="memo-proof__memo">"{proofMemo}"</p>}
                 <div className="memo-view__list">
                   {corrections.length === 0 && (
-                    <p className="author-chat__empty">맞춤법 오류가 없습니다 ✨<br />글을 쓰면 작가가 봐줍니다</p>
+                    <p className="author-chat__empty">맞춤법 오류가 없어요 ✨<br />글을 쓰면 작가가 봐줍니다</p>
                   )}
                   {corrections.map(e => (
                     <div key={e.key} className={`memo-proof__card${e.applied ? ' memo-proof__card--applied' : ''}`}>
@@ -782,7 +782,7 @@ export default function Editor() {
                 </div>
                 <div className="memo-view__list">
                   {memos.length === 0 && (
-                    <p className="author-chat__empty">메모가 없습니다</p>
+                    <p className="author-chat__empty">메모가 없어요</p>
                   )}
                   {memos.map(memo => (
                     <div key={memo.id} className="memo-item memo-item--manual">

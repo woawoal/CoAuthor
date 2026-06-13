@@ -227,7 +227,7 @@ function Main() {
         return (
             <div className="app-container">
                 <div className="app-wrapper flex-center">
-                    <p style={{ color: 'white' }}>작가 목록을 불러오는 중입니다...</p>
+                    <p style={{ color: 'white' }}>작가 목록을 불러오는 중...</p>
                 </div>
             </div>
         );

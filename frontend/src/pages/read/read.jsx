@@ -228,7 +228,7 @@ export default function ReadNovel() {
           <div className="read-novel-cover">
             <div className="read-persona-badge">
               <span className="read-persona-badge__dot" />
-              AI 빙의작가 {AUTHOR_NAME[session?.author_id] ?? 'AI'}
+              AI 작가 {AUTHOR_NAME[session?.author_id] ?? 'AI'}
             </div>
             <h1 className="read-novel-title">{novel?.title ?? ''}</h1>
             {world?.description && (
@@ -273,14 +273,14 @@ export default function ReadNovel() {
           <div className="read-end-card">
             <div className="read-end-symbol">— 끝 —</div>
             <p className="read-end-text">
-              이 소설은 AI 빙의작가 <strong>{AUTHOR_NAME[session?.author_id] ?? 'AI'}</strong>와 함께 작성되었습니다.
+              이 소설은 AI 작가 <strong>{AUTHOR_NAME[session?.author_id] ?? 'AI'}</strong>와 함께 작성되었습니다.
             </p>
             <div className="read-end-actions">
               <button
                 className="read-end-btn read-end-btn--primary"
                 onClick={() => navigate('/chat', { state: { chatId: storyId } })}
               >
-                이어 쓰기
+                이어쓰기
               </button>
               <button
                 className="read-end-btn read-end-btn--secondary"

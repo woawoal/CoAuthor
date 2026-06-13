@@ -138,7 +138,7 @@ function Worldview() {
 
     const validateCurrentStep = () => {
         if (currentStep === 2 && !title.trim()) {
-            toast('세계관 제목을 입력해 주세요.');
+            toast('세계관 제목을 입력해주세요.');
             return false;
         }
 
@@ -169,7 +169,7 @@ function Worldview() {
 
     const handleSave = async () => {
         if (!title.trim()) {
-            toast('세계관 제목을 입력해 주세요!');
+            toast('세계관 제목을 입력해주세요.');
             const titleStep = questions.find(q => q.field === 'title')?.step || 2;
             setCurrentStep(titleStep);
             return;
@@ -177,7 +177,7 @@ function Worldview() {
 
         const protagonist = characters[0];
         if (!protagonist || !protagonist.name.trim()) {
-            toast('주인공의 이름을 반드시 입력해야 세계관을 생성할 수 있습니다.');
+            toast('주인공의 이름을 반드시 입력해야 합니다.');
             const characterStep = questions.find(q => q.field === 'characters')?.step || 6;
             setCurrentStep(characterStep);
             return;
