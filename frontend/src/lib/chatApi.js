@@ -19,6 +19,17 @@ export async function getAuthorReaction(chatId, payload) {
   return res.json();
 }
 
+// 교정 '넘기기' → 그 단어를 세계관 보호 용어집에 영구 추가(다음 교정부터 제외)
+export async function addGlossaryTerm(chatId, term) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/glossary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ term }),
+  });
+  if (!res.ok) throw new Error('용어집 추가 실패');
+  return res.json();
+}
+
 // 맞춤법/오탈자 검사 — F-QC-02 정답지 기반. errors:[{original,corrected,type,frequent,count}], memo:작가 톤 한 줄
 export async function proofread(chatId, text, characterId = 'baekya') {
   const res = await fetch(`${API_BASE_URL}/chats/${chatId}/proofread`, {

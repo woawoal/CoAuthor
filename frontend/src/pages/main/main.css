@@ -190,12 +190,19 @@
 }
 
 .author-panel-slide {
-    flex: 0 0 400px;
+    flex: 0 0 300px;
     min-height: 100vh;
     overflow: hidden;
     background: var(--card-main);
     border-left: 1px solid rgba(255, 255, 255, 0.12);
     transition: none;
+}
+
+/* 라이트 테마(한여름·김도현): 오른쪽 사이드바를 배경색과 맞춤(흰 카드 → 배경) */
+:root[data-author="author3"] .author-panel-slide,
+:root[data-author="author4"] .author-panel-slide {
+    background: var(--bg-main);
+    border-left: 1px solid color-mix(in srgb, var(--theme-color) 22%, transparent);
 }
 
 .author-panel {
