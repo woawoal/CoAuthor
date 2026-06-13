@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.session import Session
 from app.models.user import User
+from app.models.character import Character
+from app.models.world import World
 from app.services import proofread as pf
 from app.services import llm
 
@@ -47,6 +49,40 @@ async def _resolve_user(chat_id: str, db: AsyncSession) -> User | None:
     if session is None or not session.user_id:
         return None
     return (await db.execute(select(User).where(User.id == session.user_id))).scalar_one_or_none()
+
+
+async def _protected_terms(chat_id: str, db: AsyncSession) -> set[str]:
+    """세션의 등장인물 이름 + 세계관 제목을 '보호어'로 모은다(맞춤법 검사 제외 대상).
+
+    일반 맞춤법기가 모르는 창작 고유명사를 오류로 잡지 않게 한다.
+    조사가 붙은 어절도 부분문자열로 걸리도록 띄어쓰기 제거형도 함께 넣는다.
+    """
+    try:
+        sid = uuid.UUID(chat_id)
+    except (ValueError, TypeError):
+        return set()
+    session = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
+    if session is None:
+        return set()
+    terms: set[str] = set()
+
+    def _add(raw: str | None):
+        n = (raw or "").strip()
+        if len(n) >= 2:
+            terms.add(n)
+            terms.add(n.replace(" ", ""))
+
+    chars = (await db.execute(
+        select(Character).where(Character.world_id == session.world_id)
+    )).scalars().all()
+    for c in chars:
+        _add(c.name)
+
+    world = (await db.execute(select(World).where(World.id == session.world_id))).scalar_one_or_none()
+    if world is not None:
+        _add(world.title)
+
+    return {t for t in terms if len(t) >= 2}
 
 
 async def _author_memo(character_id: str, errors: list[dict]) -> str:
@@ -83,7 +119,8 @@ async def proofread_chat(
     - 개인 error_profile 누적 → 같은 실수 재등장 시 frequent=True.
     - **자동 수정하지 않는다** — 프론트는 '제안'만 표시하고 적용/넘기기는 사용자가.
     """
-    errors, checker_ok = await pf.proofread(body.text)
+    protected = await _protected_terms(chat_id, db)   # 등장인물·세계관 고유명사 보호
+    errors, checker_ok = await pf.proofread(body.text, protected)
 
     flagged = [{**e, "frequent": False, "count": 1} for e in errors]
     user = await _resolve_user(chat_id, db)

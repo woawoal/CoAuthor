@@ -47,6 +47,18 @@ CONFUSION: dict[str, tuple[str, str]] = {
 }
 
 
+def _touches_protected(word: str, protected: set[str] | None) -> bool:
+    """오류 어절에 보호어(등장인물·세계관 고유명사)가 닿으면 True → 교정 제외.
+
+    일반 맞춤법기는 창작 고유명사('카이렌')를 모르고 쪼개거나('카이 레인') 바꾼다.
+    어절에서 조사가 붙어도(카이렌'의') 보호어가 부분문자열이면 잡아낸다.
+    """
+    if not protected:
+        return False
+    flat = word.replace(" ", "")
+    return any(p and (p in word or p in flat) for p in protected)
+
+
 def _classify(original: str, corrected: str) -> str:
     """오류 유형 추정. 띄어쓰기 > 혼동쌍 > 맞춤법 순."""
     if original.replace(" ", "") == corrected.replace(" ", ""):
@@ -57,11 +69,12 @@ def _classify(original: str, corrected: str) -> str:
     return "맞춤법"
 
 
-def _diff_errors(original: str, corrected: str) -> list[dict]:
+def _diff_errors(original: str, corrected: str, protected: set[str] | None = None) -> list[dict]:
     """원문 vs 교정문 **어절(공백 분리) 단위 diff** → 바뀐 어절을 통째로 오류쌍으로 반환.
 
     어절 단위라 `마춤법 → 맞춤법`처럼 단어 전체로 읽히고, 네이버가 띄어쓰기를 바꿔
     한 어절이 둘로 갈려도(`안되요 → 안 돼요`) 자연스럽게 묶인다.
+    protected: 등장인물·세계관 고유명사 → 닿은 오류쌍은 제외(창작 명사 보호).
     """
     ow, cw = original.split(), corrected.split()
     sm = difflib.SequenceMatcher(None, ow, cw, autojunk=False)
@@ -80,11 +93,16 @@ def _diff_errors(original: str, corrected: str) -> list[dict]:
             o, c = " ".join(o_words).strip(), " ".join(c_words).strip()
             if o and c and o != c:
                 errors.append({"original": o, "corrected": c, "type": _classify(o, c)})
+    if protected:
+        # 등장인물·세계관 고유명사가 닿은 오류쌍은 버린다(일반 맞춤법기가 모르는 창작 명사)
+        errors = [e for e in errors if not _touches_protected(e["original"], protected)]
     return errors
 
 
-async def proofread(text: str) -> tuple[list[dict], bool]:
+async def proofread(text: str, protected: set[str] | None = None) -> tuple[list[dict], bool]:
     """**(오류쌍 리스트, checker_ok)** 를 반환.
+
+    protected: 등장인물·세계관 고유명사 집합 → 그 명사가 닿은 오류는 제외(창작 명사 보호).
 
     - checker_ok=False = **네이버 검사기가 못 돈 것**(변경/차단/네트워크). 이때도 errors=[]지만,
       "검사했는데 깨끗함"과 구분돼서 호출부가 '조용히 안 됨'을 알 수 있다(가드의 핵심).
@@ -103,7 +121,7 @@ async def proofread(text: str) -> tuple[list[dict], bool]:
         return [], False
     if not corrected or corrected.strip() == text:
         return [], True
-    return _diff_errors(text, corrected), True
+    return _diff_errors(text, corrected, protected), True
 
 
 # ── 개인 오답노트(error_profile) 누적/매칭 ────────────────────
