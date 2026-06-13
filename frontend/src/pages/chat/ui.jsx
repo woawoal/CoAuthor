@@ -13,6 +13,7 @@ import { authClient } from '../../lib/auth';
 import { saveSentence } from '../../lib/mypageApi';
 import { getTaste, analyzeTaste } from '../../lib/tasteApi';
 import { applyGlobalVideoVolume, VIDEO_VOLUME_EVENT } from '../../lib/videoVolume';
+import { toast } from '../../lib/toast';
 import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
@@ -724,7 +725,7 @@ export default function Chat() {
   }
 
   async function handleEnd() {
-    if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
+    if (!chatId || chatId === 'room_001') { toast('유효한 세션이 없습니다.', 'error'); return; }
     if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
 
     const MIN_END_DURATION = 10000;
@@ -737,7 +738,7 @@ export default function Chat() {
     try {
       await completeSession(chatId);
     } catch (err) {
-      alert(`세션 종료 실패: ${err.message}`);
+      toast(`세션 종료 실패: ${err.message}`, 'error');
       setEnding(false);
       return;
     }

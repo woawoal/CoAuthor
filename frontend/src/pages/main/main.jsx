@@ -7,6 +7,7 @@ import { ExitIcon } from '../../components/icons';
 import { getAuthors } from '../../lib/authorsApi';
 import { getProfile } from '../../lib/mypageApi';
 import { authClient, syncCurrentUser } from '../../lib/auth';
+import { toast } from '../../lib/toast';
 
 const FALLBACK_AUTHORS = [
     { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: "공포는 보여주는 게 아니라 안 보여주는 것이다", image: "/assets/author1/author1.png", video: "/assets/author1/author1.mp4" },
@@ -105,15 +106,23 @@ function Main() {
             setUserId(authUserId);
 
             if (authUserId) {
-                // 프로필 카드는 동기화를 기다리지 않고 바로 조회(병렬) → 카드가 빨리 뜸
-                getProfile(authUserId).then(setProfile).catch(() => { });
+                // 1) 캐시 즉시 표시 (stale-while-revalidate) → 재방문 시 0초
+                try {
+                    const cached = localStorage.getItem(`profile_${authUserId}`);
+                    if (cached) setProfile(JSON.parse(cached));
+                } catch { /* 캐시 무시 */ }
+
+                // 2) 최신화 — 동기화 대기 없이 병렬, 받아오면 화면·캐시 갱신
+                const refreshProfile = () => getProfile(authUserId)
+                    .then(p => { if (p) { setProfile(p); localStorage.setItem(`profile_${authUserId}`, JSON.stringify(p)); } })
+                    .catch(() => { });
+                refreshProfile();
 
                 try {
                     const user = await syncCurrentUser();
                     setIsAdmin(user.is_admin);
                     console.log("로그인됨");
-                    // 신규 유저: 동기화로 user 행 생성 후 한 번 더(위 병렬 조회가 비었을 때 보강)
-                    getProfile(authUserId).then(p => p && setProfile(p)).catch(() => { });
+                    refreshProfile();   // 신규 유저: 동기화로 user 행 생성 후 보강
                 } catch (error) {
                     console.error(error);
                 }
@@ -205,7 +214,7 @@ function Main() {
 
     const handleAuthorSelect = (authorId) => {
         if (!userId) {
-            alert('로그인 후 이용 가능합니다.');
+            toast('로그인 후 이용 가능합니다.');
             navigate('/login');
             return;
         }
@@ -300,7 +309,7 @@ function Main() {
                         className="btn"
                         onClick={() => {
                             if (!userId) {
-                                alert('로그인 후 이용 가능합니다.');
+                                toast('로그인 후 이용 가능합니다.');
                                 navigate('/login');
                                 return;
                             }
@@ -313,7 +322,7 @@ function Main() {
                         className="btn"
                         onClick={() => {
                             if (!userId) {
-                                alert('로그인 후 이용 가능합니다.');
+                                toast('로그인 후 이용 가능합니다.');
                                 navigate('/login');
                                 return;
                             }

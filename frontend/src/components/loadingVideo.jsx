@@ -9,7 +9,8 @@ const wrapStyle = {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    background: 'rgba(255, 255, 255, 0.8)',
+    // 불투명 중립색 — 반투명이면 뒤 페이지(테마색)가 비쳐 핑크/앰버로 보였음
+    background: '#f4f3f7',
 };
 
 const videoBoxStyle = {

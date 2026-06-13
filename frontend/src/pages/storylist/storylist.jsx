@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSessions, deleteSession } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
+import { toast } from '../../lib/toast';
 import './storylist.css';
 import LoadingVideo from '../../components/loadingVideo';
 
@@ -65,7 +66,7 @@ export default function StoryList() {
       await deleteSession(session.id);
       setSessions(prev => prev.filter(s => s.id !== session.id));
     } catch (err) {
-      alert(`삭제 실패: ${err.message}`);
+      toast(`삭제 실패: ${err.message}`, "error");
     }
   };
 
