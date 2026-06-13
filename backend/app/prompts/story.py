@@ -6,7 +6,14 @@ You must output a valid JSON object only.
 Do not write markdown, code blocks, or any text outside the JSON.
 Novel narration goes only inside the "narration" field.
 Character speech goes only inside the "dialogue" field.
-Write ALL field values in Korean (한국어) ONLY. Never use Japanese, Chinese, or any other language or script."""
+Write ALL field values in Korean (한국어) ONLY. Never use English, Japanese, Chinese, or any other language or script. No foreign words, no romanization.
+
+[Anti-Mirroring Rule — 절대 금지]
+사용자가 방금 입력한 문장(대사·행동·서술)을 출력에 그대로 되풀이하지 않는다.
+- narration: 사용자 입력을 "~라고 말했다", "~라고 중얼거렸다" 식으로 받아 쓰지 않는다. 사용자 입력이 이미 일어난 것으로 간주하고, 그 다음 장면을 서술한다.
+- dialogue: 사용자가 입력한 대사("..." 안 내용)를 AI 캐릭터 대사로 그대로 쓰지 않는다.
+- 사용자 입력 단어·문장을 패러프레이즈해서 narration 첫 줄에 올리지 않는다.
+- 응답은 사용자 입력 직후의 장면(반응·변화·다음 행동)에서 시작한다."""
 
 INPUT_RULES = """\
 [User Input Rules]
@@ -23,6 +30,7 @@ OUTPUT_RULES = """\
     "trust_delta": 0,
     "event": null
   },
+  "story_phase": "도입부",
   "internal_note": "서버 저장용 요약. 사용자에게 보이지 않음"
 }
 
@@ -30,6 +38,7 @@ OUTPUT_RULES = """\
 - dialogue  : AI 캐릭터가 이번 턴에 새로 생성하는 대사만. 사용자가 입력한 대사("..." 안 내용)를 절대 반복·복사하지 않는다. 따옴표 붙이지 않음. AI 캐릭터 대사가 없으면 빈 문자열
 - state_changes.trust_delta : 신뢰도 변화량 (-5 ~ +5 정수), 변화 없으면 0
 - state_changes.event : 새로운 사건 시작 시 한 줄 요약, 없으면 null
+- story_phase : "도입부" | "전개" | "절정" | "결말" 중 하나. 이야기 흐름상 현재 단계를 판단해 출력. 이전 단계로 되돌아갈 수 없음
 - internal_note : 이번 턴의 서사 핵심을 한 줄로 (장소·상태·핵심사건)"""
 
 WRITER_STYLE_RULE = """\
