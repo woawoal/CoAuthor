@@ -11,7 +11,7 @@ import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import './mypage.css';
 import LoadingVideo from '../../components/loadingVideo';
-import VideoPreviewModal from '../../components/VideoPreviewModal';
+import VideoPreviewModal from '../../components/videoPreviewModal';
 
 const WORK_GOAL_CHARS = 30000;
 
