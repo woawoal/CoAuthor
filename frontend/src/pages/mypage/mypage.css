@@ -127,7 +127,7 @@
 /* ── 메인 콘텐츠 ─────────────────────────────────────────────── */
 .mp-main {
     flex: 0 1 1000px;        /* 760px 고정폭 + 화면 좁으면 줄어듦 */
-    padding: 100px 36px 50px 60px;
+    padding: 50px 36px 50px 100px;
     max-width: 1000px;
     /* margin: 0 auto;     사이드바 오른쪽 남는 공간에서 중앙 정렬 */
     min-width: 0;
