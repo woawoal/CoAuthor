@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread } from '../../lib/chatApi';
+import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread, addGlossaryTerm } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -52,7 +52,7 @@ export default function Editor() {
 
   // ── 오른쪽 패널 상태 ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(true);
-  const [panelWidth, setPanelWidth] = useState(760);    // 작가 패널 기본 너비 = 드래그 최대값(px)
+  const [panelRatio, setPanelRatio] = useState(0.45);   // 작가 패널 너비 = 화면 비율(vw) → 창 줄여도 좌우 비율 유지
   const [isResizing, setIsResizing] = useState(false);
   const [panelView, setPanelView] = useState('author');
   const [autoFeedback, setAutoFeedback] = useState(false);
@@ -162,8 +162,8 @@ export default function Editor() {
   useEffect(() => {
     if (!isResizing) return;
     function onMove(e) {
-      // 패널은 화면 오른쪽에 도킹 → 너비 = 화면폭 - 마우스X (320~760px 제한)
-      setPanelWidth(Math.min(760, Math.max(320, window.innerWidth - e.clientX)));
+      // 패널은 화면 오른쪽에 도킹 → 비율 = (화면폭 - 마우스X) / 화면폭 (28~60%로 제한)
+      setPanelRatio(Math.min(0.6, Math.max(0.28, (window.innerWidth - e.clientX) / window.innerWidth)));
     }
     function onUp() { setIsResizing(false); }
     window.addEventListener('mousemove', onMove);
@@ -454,9 +454,9 @@ export default function Editor() {
 
         <div
           className="author-panel-slide"
-          style={{ width: panelOpen ? panelWidth : 0, transition: isResizing ? 'none' : 'width 0.3s ease' }}
+          style={{ width: panelOpen ? `${panelRatio * 100}vw` : 0, transition: isResizing ? 'none' : 'width 0.3s ease' }}
         >
-          <div className="author-panel" style={{ width: panelWidth }}>
+          <div className="author-panel" style={{ width: `${panelRatio * 100}vw` }}>
 
             {panelView === 'author' ? (
               <>
@@ -754,13 +754,24 @@ export default function Editor() {
                         {e.applied ? (
                           <span className="memo-proof__done">✓ 적용완료</span>
                         ) : (
-                          <button
-                            className="memo-proof__apply"
-                            onClick={() => {
-                              setContent(prev => prev.split(e.original).join(e.corrected));
-                              setCorrections(prev => prev.map(x => x.key === e.key ? { ...x, applied: true } : x));
-                            }}
-                          >적용</button>
+                          <>
+                            <button
+                              className="memo-proof__apply"
+                              onClick={() => {
+                                setContent(prev => prev.split(e.original).join(e.corrected));
+                                setCorrections(prev => prev.map(x => x.key === e.key ? { ...x, applied: true } : x));
+                              }}
+                            >적용</button>
+                            <button
+                              className="memo-proof__skip"
+                              title="이 단어를 맞는 표기로 등록(다음부터 교정 제외)"
+                              onClick={() => {
+                                // 넘기기 = '이건 맞음' → 세계관 용어집에 등록
+                                if (chatId) addGlossaryTerm(chatId, e.original).catch(() => {});
+                                setCorrections(prev => prev.filter(x => x.key !== e.key));
+                              }}
+                            >넘기기</button>
+                          </>
                         )}
                       </div>
                     </div>

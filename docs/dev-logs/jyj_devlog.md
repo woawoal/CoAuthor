@@ -164,7 +164,7 @@
 
 #### 7. 팀 PR 리뷰·머지·충돌 해결
 
-- **#53**(syd 모델 가중치 840MB 재유입 정리 — #31 regression 차단) · **#57**(ygy personas 충돌 union 해결) · #56·#58·#59·#60 리뷰·머지 조율
+- **#53**(모델 가중치 840MB 재유입 정리 — #31 regression 차단) · **#57**(ygy personas 충돌 union 해결) · #56·#58·#59·#60 리뷰·머지 조율
 - 마이그레이션 **multiple-head 점검**(#43·#60 단일 head 확인), import/컨트랙트 정합 검증
 
 ### 검증
@@ -316,8 +316,8 @@
 
 #### AI 모델 설계 검토
 
-- 파인튜닝 베이스 모델 후보 정리(Qwen2.5-7B-Instruct 등) → 유득님께 설계 요청
-- 유득님 설계서 피드백 작성: PERSO 텍스트생성 불가(→Gemini로 정정), GPU 서빙 위치 명시 필요, mode 체계 불일치(collab/coach/compare vs 코드의 author/character), persona_id 철자(kimdohyeon), 창작 태스크 캐싱 주의
+- 파인튜닝 베이스 모델 후보 정리(Qwen2.5-7B-Instruct 등) → 문체 모델 설계 검토
+- 문체 모델 설계서 피드백 작성: PERSO 텍스트생성 불가(→Gemini로 정정), GPU 서빙 위치 명시 필요, mode 체계 불일치(collab/coach/compare vs 코드의 author/character), persona_id 철자(kimdohyeon), 창작 태스크 캐싱 주의
 
 #### RAG 방향 정리
 
@@ -335,7 +335,7 @@
 
 - 가연님 PostgreSQL-only 연결구조 변경 반영 후 통합
 - RAG 검색을 chats.py `build_prompt`에 연결 (+ pgvector 검토)
-- 유득님 설계서 회신 반영 (PERSO→Gemini, GPU 위치, mode 통일)
+- 문체 모델 설계서 회신 반영 (PERSO→Gemini, GPU 위치, mode 통일)
 - 채팅 E2E 완주 (`POST messages` → `GET stream`)
 - 잔여 정리: 죽은 스텁(`routes/chat`·`coaching`·`compare`), README의 PERSO 잔여 언급
 
@@ -449,7 +449,7 @@
   - 전체 폴더 구조 생성 (backend / frontend / model / data / docs)
   - `.gitignore`, `README.md` 작성
   - PR 템플릿 및 GitHub Actions CI (pytest) 추가
-  - feature 브랜치 6개 생성 및 원격 push (jyj, ygy, pge, ygh, kdy, syd)
+  - feature 브랜치 생성 및 원격 push (jyj, ygy, pge, ygh, kdy)
   - remote URL 레포 이름 변경 반영 (NodeVelture)
 
 - docs/planning, docs/dev-logs 디렉터리 구조 확정

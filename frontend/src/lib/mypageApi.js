@@ -73,6 +73,14 @@ export async function getStats(userId) {
     return res.json();
 }
 
+// 오답노트 — 자주 틀린 맞춤법(error_profile) 자주 틀리는 순. /mypage 아닌 /users 경로.
+export async function getErrorNotebook(userId) {
+    const res = await fetch(`${API_BASE_URL}/users/${userId}/error-notebook`);
+    if (!res.ok) return [];   // 404(유저 없음) 등은 빈 노트로
+    const data = await res.json();
+    return data.notebook ?? [];
+}
+
 export async function getDashboard(userId) {
     const res = await fetch(`${BASE}/dashboard?user_id=${userId}`);
     if (!res.ok) throw new Error('대시보드 조회 실패');
