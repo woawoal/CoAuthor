@@ -52,7 +52,7 @@ export default function Editor() {
 
   // ── 오른쪽 패널 상태 ──────────────────────────────────────
   const [panelOpen, setPanelOpen] = useState(true);
-  const [panelWidth, setPanelWidth] = useState(760);    // 작가 패널 기본 너비 = 드래그 최대값(px)
+  const [panelRatio, setPanelRatio] = useState(0.45);   // 작가 패널 너비 = 화면 비율(vw) → 창 줄여도 좌우 비율 유지
   const [isResizing, setIsResizing] = useState(false);
   const [panelView, setPanelView] = useState('author');
   const [autoFeedback, setAutoFeedback] = useState(false);
@@ -162,8 +162,8 @@ export default function Editor() {
   useEffect(() => {
     if (!isResizing) return;
     function onMove(e) {
-      // 패널은 화면 오른쪽에 도킹 → 너비 = 화면폭 - 마우스X (320~760px 제한)
-      setPanelWidth(Math.min(760, Math.max(320, window.innerWidth - e.clientX)));
+      // 패널은 화면 오른쪽에 도킹 → 비율 = (화면폭 - 마우스X) / 화면폭 (28~60%로 제한)
+      setPanelRatio(Math.min(0.6, Math.max(0.28, (window.innerWidth - e.clientX) / window.innerWidth)));
     }
     function onUp() { setIsResizing(false); }
     window.addEventListener('mousemove', onMove);
@@ -456,9 +456,9 @@ export default function Editor() {
 
         <div
           className="author-panel-slide"
-          style={{ width: panelOpen ? panelWidth : 0, transition: isResizing ? 'none' : 'width 0.3s ease' }}
+          style={{ width: panelOpen ? `${panelRatio * 100}vw` : 0, transition: isResizing ? 'none' : 'width 0.3s ease' }}
         >
-          <div className="author-panel" style={{ width: panelWidth }}>
+          <div className="author-panel" style={{ width: `${panelRatio * 100}vw` }}>
 
             {panelView === 'author' ? (
               <>

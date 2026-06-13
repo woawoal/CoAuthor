@@ -198,6 +198,13 @@
     transition: none;
 }
 
+/* 라이트 테마(한여름·김도현): 오른쪽 사이드바를 배경색과 맞춤(흰 카드 → 배경) */
+:root[data-author="author3"] .author-panel-slide,
+:root[data-author="author4"] .author-panel-slide {
+    background: var(--bg-main);
+    border-left: 1px solid color-mix(in srgb, var(--theme-color) 22%, transparent);
+}
+
 .author-panel {
     width: 100%;
     height: 100%;
