@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Main from './pages/main/main';
 import Worldview from './pages/worldview/worldview';
-import Intro from './pages/intro/intro';
 import Chat from './pages/chat/ui';
 import Editor from './pages/editor/ui';
 import StoryList from './pages/storylist/storylist';
@@ -29,7 +28,6 @@ function App() {
       <Routes>
         <Route path="/" element={<Main />} />
         <Route path="/worldview" element={<Worldview />} />
-        <Route path="/intro" element={<Intro />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/editor" element={<Editor />} />
         <Route path="/storylist" element={<StoryList />} />

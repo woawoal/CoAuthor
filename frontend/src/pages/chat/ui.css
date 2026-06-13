@@ -376,14 +376,104 @@
 }
 
 /* ── 입력창 ── */
+/* @등장인물 멘션 래퍼 — 드롭다운을 입력 바 위에 띄우기 위한 기준 컨테이너 */
+.chat-input-wrap {
+  position: relative;
+}
+
 .chat-input-bar {
   display: flex;
+  align-items: center;
   gap: 8px;
   padding: 14px 16px;
   border-top: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
   background: var(--header-bg);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
+}
+
+/* @ 입력 시 등장인물 선택 드롭다운 (입력 바 바로 위) */
+.mention-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 16px;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+  padding: 6px;
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+  border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+}
+
+.mention-dropdown__hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 4px 8px 6px;
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-main);
+  text-align: left;
+}
+
+.mention-item:hover {
+  background: color-mix(in srgb, var(--theme-color) 18%, transparent);
+}
+
+.mention-item__name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mention-item__role {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* 선택된 화자 칩 — '@이름' 태그 (테두리 O) */
+.speaker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--theme-color);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--theme-color) 18%, transparent);
+  color: var(--theme-color);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.speaker-chip__x {
+  background: none;
+  border: none;
+  color: var(--theme-color);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+
+.speaker-chip__x:hover {
+  opacity: 1;
 }
 
 .chat-input {
@@ -772,6 +862,14 @@
   padding: 8px 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 15%, transparent);
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* 자동 피드백 / 실시간 교정 토글 사이 구분선 */
+.auto-feedback-bar__label--proof {
+  margin-left: 4px;
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--theme-color) 18%, transparent);
 }
 
 .auto-feedback-bar__label {

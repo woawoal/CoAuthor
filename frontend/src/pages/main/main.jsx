@@ -204,7 +204,7 @@ function Main() {
         }
 
         handleAuthorHover(authorId);
-        navigate('/intro', { state: { authorId } });
+        navigate('/worldview', { state: { authorId } });
     };
 
     if (isLoading) {

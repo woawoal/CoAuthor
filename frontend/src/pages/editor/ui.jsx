@@ -56,6 +56,7 @@ export default function Editor() {
   const [isResizing, setIsResizing] = useState(false);
   const [panelView, setPanelView] = useState('author');
   const [autoFeedback, setAutoFeedback] = useState(false);
+  const [realtimeProof, setRealtimeProof] = useState(false);   // 실시간 교정 ON/OFF
   const [authorMessages, setAuthorMessages] = useState([]);
   const [userId, setUserId] = useState(null);
   const [savedMsgId, setSavedMsgId] = useState(null);
@@ -195,6 +196,7 @@ export default function Editor() {
   // ── 맞춤법 교정 (2.5초 debounce, 마지막 문단을 F-QC-02로 검사) ──
   useEffect(() => {
     if (!chatId || !content.trim()) { setCorrections([]); return; }
+    if (!realtimeProof) return;                 // 실시간 교정 OFF → 자동 검사·전환 안 함
     clearTimeout(proofTimerRef.current);
     const paras = content.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
     const last = paras[paras.length - 1] ?? content.trim();
@@ -221,7 +223,7 @@ export default function Editor() {
     }, 2500);
     return () => clearTimeout(proofTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content]);
+  }, [content, realtimeProof]);
 
   // ── 작가 채팅 자동 스크롤 ─────────────────────────────────
   useEffect(() => {
@@ -522,6 +524,13 @@ export default function Editor() {
                   >
                     {autoFeedback ? 'ON' : 'OFF'}
                   </button>
+                  <span className="auto-feedback-bar__label auto-feedback-bar__label--proof">실시간 교정</span>
+                  <button
+                    className={`auto-feedback-toggle${realtimeProof ? ' auto-feedback-toggle--on' : ''}`}
+                    onClick={() => setRealtimeProof(prev => !prev)}
+                  >
+                    {realtimeProof ? 'ON' : 'OFF'}
+                  </button>
                   {!autoFeedback && (
                     <button
                       className={`feedback-btn${hasSelection ? ' feedback-btn--selection' : ''}`}
@@ -719,7 +728,7 @@ export default function Editor() {
               /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
               <div className="memo-view">
                 <div className="memo-view__header">
-                  <span>✏️ 작가의 교정</span>
+                  <span>{currentAuthor.displayName}의 교정</span>
                   <div className="memo-proof__head-actions">
                     {corrections.length > 0 && (
                       <button className="memo-view__back" onClick={() => { setCorrections([]); setProofMemo(''); }}>비우기</button>

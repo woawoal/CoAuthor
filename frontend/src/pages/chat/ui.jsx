@@ -207,6 +207,9 @@ export default function Chat() {
   const [loadingHistory, setLoadingHistory] = useState(!!chatId && chatId !== 'room_001');   // 채팅 기록 로딩 표시
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
+  const [speaker, setSpeaker] = useState(null);       // @등장인물: 이번 대사를 말하는 인물(없으면 주인공)
+  const [mentionOpen, setMentionOpen] = useState(false);   // @ 멘션 드롭다운 표시 여부
+  const [mentionQuery, setMentionQuery] = useState('');    // @ 뒤 입력값(필터)
   const [reaction, setReaction] = useState('');     // F-AS-05 작가 리액션 자막
   const reactionTimerRef = useRef(null);
   const [world, setWorld] = useState(null);
@@ -242,6 +245,7 @@ export default function Chat() {
 
   // ── 자동 피드백 상태 ─────────────────────────────────────
   const [autoFeedback, setAutoFeedback] = useState(false);
+  const [realtimeProof, setRealtimeProof] = useState(false);   // 실시간 교정 ON/OFF
 
   // ── 문장 저장 상태 ───────────────────────────────────────
   const [userId, setUserId] = useState(null);
@@ -258,6 +262,7 @@ export default function Chat() {
   // ── Refs ─────────────────────────────────────────────────
   const bottomRef = useRef(null);
   const esRef = useRef(null);
+  const inputRef = useRef(null);   // @등장인물 선택 후 입력창 포커스용
   const authorBottomRef = useRef(null);
   const memoInputRef = useRef(null);
   const awaitingRecommendRef = useRef(false);
@@ -605,17 +610,46 @@ export default function Chat() {
     };
   }, [streaming]);
 
+  // ── @등장인물 멘션 ────────────────────────────────────────
+  const mentionCandidates = mentionOpen
+    ? dbCharacters.filter(c => c.name && c.name.includes(mentionQuery))
+    : [];
+
+  function handleInputChange(e) {
+    const v = e.target.value;
+    setInput(v);
+    // 화자 미지정 + '@'로 시작 + 공백/줄바꿈 전 → 멘션 드롭다운 표시
+    if (!speaker && /^@[^\s\n]*$/.test(v)) {
+      setMentionQuery(v.slice(1));
+      setMentionOpen(true);
+    } else if (mentionOpen) {
+      setMentionOpen(false);
+    }
+  }
+
+  function selectSpeaker(char) {
+    setSpeaker(char);
+    setInput('');
+    setMentionOpen(false);
+    setMentionQuery('');
+    inputRef.current?.focus();
+  }
+
   async function handleSend() {
     if (!input.trim() || streaming) return;
     const userText = input.trim();
+    const activeSpeaker = speaker;   // 화자 캡처(아래에서 상태는 즉시 초기화)
     setInput('');
+    setSpeaker(null);
+    setMentionOpen(false);
 
     const isFirstChat = messages.length === 0 && !importedNarration;
     delayPlayedRef.current = false;
     resetDelayTimer();
 
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: protagonistName, text: userText }]);
+    const speakerName = activeSpeaker?.name ?? protagonistName;
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: speakerName, text: userText }]);
 
     // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
     getAuthorReaction(chatId, {
@@ -641,15 +675,17 @@ export default function Chat() {
         console.error('[REACTION ERROR]', err);
       });
 
-    // 맞춤법 교정 — 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
-    proofread(chatId, userText, currentAuthor.characterId)
-      .then(r => {
-        if (r.errors?.length) {
-          setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
-          setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
-        }
-      })
-      .catch(() => {});
+    // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
+    if (realtimeProof) {
+      proofread(chatId, userText, currentAuthor.characterId)
+        .then(r => {
+          if (r.errors?.length) {
+            setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
+            setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
+          }
+        })
+        .catch(() => {});
+    }
 
     await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId });
 
@@ -672,7 +708,7 @@ export default function Chat() {
 
     esRef.current = connectChatStream(
       chatId,
-      { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext },
+      { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
       ({ narration, dialogue }) => {
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId ? { ...m, narration, dialogue } : m)
@@ -688,6 +724,11 @@ export default function Chat() {
   async function handleEnd() {
     if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
     if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
+
+    const MIN_END_DURATION = 10000;
+    const startedAt = Date.now();
+    setReactionEmotion('read');
+
     if (esRef.current) { esRef.current.close(); esRef.current = null; }
     setStreaming(false);
     setEnding(true);
@@ -699,7 +740,13 @@ export default function Chat() {
       return;
     }
     try { await generateNovel(chatId); } catch { /* 무시 */ }
-    navigate('/storylist');
+
+    const elapsed = Date.now() - startedAt;
+    const remainingDelay = Math.max(0, MIN_END_DURATION - elapsed);
+
+    setTimeout(() => {
+      navigate('/storylist');
+    }, remainingDelay);
   }
 
   function handleFeedback() {
@@ -857,22 +904,52 @@ export default function Chat() {
           </div>
         )}
 
-        <div className="chat-input-bar">
-          <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천">
-            💡
-          </button>
-          <textarea
-            className="chat-input"
-            placeholder={streaming ? '응답 중...' : '주인공으로 대사 입력...'}
-            value={input}
-            disabled={streaming}
-            rows={1}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); }
-            }}
-          />
-          <button className="chat-send-btn" onClick={handleSend} disabled={streaming}>전송</button>
+        <div className="chat-input-wrap">
+          {mentionOpen && mentionCandidates.length > 0 && (
+            <div className="mention-dropdown">
+              <div className="mention-dropdown__hint">대사를 말할 등장인물 선택</div>
+              {mentionCandidates.map(c => (
+                <button
+                  key={c.id ?? c.name}
+                  type="button"
+                  className="mention-item"
+                  onMouseDown={e => { e.preventDefault(); selectSpeaker(c); }}
+                >
+                  <span className="mention-item__name">@{c.name}</span>
+                  <span className="mention-item__role">{c.role === 'protagonist' ? '주인공' : '조연'}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="chat-input-bar">
+            <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천">
+              💡
+            </button>
+            {speaker && (
+              <span className="speaker-chip" title="이 인물의 대사로 전송됩니다">
+                @{speaker.name}
+                <button className="speaker-chip__x" onClick={() => setSpeaker(null)} title="화자 해제">✕</button>
+              </span>
+            )}
+            <textarea
+              ref={inputRef}
+              className="chat-input"
+              placeholder={streaming ? '응답 중...' : speaker ? `${speaker.name}의 대사 입력...` : '대사 입력  (@ 로 등장인물 지정)'}
+              value={input}
+              disabled={streaming}
+              rows={1}
+              onChange={handleInputChange}
+              onKeyDown={e => {
+                if (mentionOpen && mentionCandidates.length > 0 && e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                  e.preventDefault(); selectSpeaker(mentionCandidates[0]); return;
+                }
+                if (e.key === 'Escape' && mentionOpen) { setMentionOpen(false); return; }
+                if (e.key === 'Backspace' && input === '' && speaker) { e.preventDefault(); setSpeaker(null); return; }
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSend(); }
+              }}
+            />
+            <button className="chat-send-btn" onClick={handleSend} disabled={streaming}>전송</button>
+          </div>
         </div>
       </div>
 
@@ -974,6 +1051,13 @@ export default function Chat() {
                     onClick={() => setAutoFeedback(prev => !prev)}
                   >
                     {autoFeedback ? 'ON' : 'OFF'}
+                  </button>
+                  <span className="auto-feedback-bar__label auto-feedback-bar__label--proof">실시간 교정</span>
+                  <button
+                    className={`auto-feedback-toggle${realtimeProof ? ' auto-feedback-toggle--on' : ''}`}
+                    onClick={() => setRealtimeProof(prev => !prev)}
+                  >
+                    {realtimeProof ? 'ON' : 'OFF'}
                   </button>
                   {!autoFeedback && (
                     <button
@@ -1180,7 +1264,7 @@ export default function Chat() {
               /* ✏️ 교정 뷰 (메모와 분리된 독립 탭) */
               <div className="memo-view">
                 <div className="memo-view__header">
-                  <span>✏️ 작가의 교정</span>
+                  <span>{storyAuthor.displayName}의 교정</span>
                   <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
                 </div>
                 <div className="memo-view__list">

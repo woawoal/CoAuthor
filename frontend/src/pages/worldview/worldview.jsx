@@ -8,6 +8,7 @@ import { createWorldview } from '../../lib/worldviewApi';
 import { getAuthor, getQuestions } from '../../lib/authorsApi';
 import { getRandomWorldExamples } from '../../lib/worldExampleApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
+import IntroVideo from '../../components/IntroVideo';
 
 function Worldview() {
     const location = useLocation();
@@ -43,6 +44,7 @@ function Worldview() {
     const [characters, setCharacters] = useState([createNewCharacter(0)]);
     const [selectedAuthor, setSelectedAuthor] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [showIntro, setShowIntro] = useState(true);
     const [saving, setSaving] = useState(false);
     const currentDialogue = questions.find((question) => question.step === currentStep);
     const [look, setLook] = useState({ x: 0, y: 0 });
@@ -192,7 +194,7 @@ function Worldview() {
                 characters: validCharacters,
                 authorId,
             });
-            navigate('/editor', { state: { worldId, chatId: sessionId, authorId } });
+            navigate('/chat', { state: { worldId, chatId: sessionId, authorId } });
         } catch (err) {
             alert(`저장 실패: ${err.message}`);
         } finally {
@@ -485,16 +487,6 @@ function Worldview() {
         }
     };
 
-    if (isLoading) {
-        return (
-            <div className="app-container">
-                <div className="app-wrapper flex-center">
-                    <p style={{ color: 'white' }}>작가 목록을 불러오는 중입니다...</p>
-                </div>
-            </div>
-        );
-    }
-
     if (!authorId) {
         return (
             <div className="error-container">
@@ -506,6 +498,14 @@ function Worldview() {
 
     return (
         <div className="app-container">
+            {showIntro && (
+                <IntroVideo
+                    authorId={authorId}
+                    onCancel={() => navigate('/')}
+                    onSelect={() => setShowIntro(false)}
+                />
+            )}
+
             <div className="app-wrapper">
                 <header className="header">
                     <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />

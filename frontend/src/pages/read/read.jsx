@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getNovel } from '../../lib/chatApi';
 import { getSession, getWorld } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
@@ -41,6 +41,7 @@ function formatDate(iso) {
 export default function ReadNovel() {
   const { storyId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [novel, setNovel] = useState(null);
   const [session, setSession] = useState(null);
@@ -56,8 +57,9 @@ export default function ReadNovel() {
 
   const chapterRefs = useRef([]);
 
-  // 작가별 테마: 세션 로드 전엔 localStorage, 로드 후엔 session.author_id(진짜 값)
-  useAuthorTheme(session?.author_id ?? resolveAuthorId(null));
+  // 작가별 테마: 세션 로드 후 session.author_id(진짜 값), 그 전엔 네비게이션으로 받은 authorId,
+  // 둘 다 없을 때만 localStorage 폴백 → 직전 작가 색 깜빡임 방지
+  useAuthorTheme(session?.author_id ?? location.state?.authorId ?? resolveAuthorId(null));
 
   useEffect(() => {
     async function load() {
