@@ -14,6 +14,7 @@ import asyncio
 import difflib
 import logging
 import re
+import time
 
 from f_qc_02_spell_checker import check_korean_grammar_status
 
@@ -154,6 +155,7 @@ def update_profile(profile: dict | None, errors: list[dict]) -> tuple[dict, list
         entry["count"] = prev + 1
         entry["corrected"] = err["corrected"]
         entry["type"] = err["type"]
+        entry["last"] = time.time()   # 최신순 정렬용(마지막으로 틀린 시각)
         profile[key] = entry
         flagged.append({**err, "frequent": prev >= 2, "count": entry["count"]})
     return profile, flagged
@@ -162,7 +164,8 @@ def update_profile(profile: dict | None, errors: list[dict]) -> tuple[dict, list
 def notebook(profile: dict | None, limit: int = 50) -> list[dict]:
     """error_profile → 자주 틀리는 순으로 정렬된 오답노트 리스트."""
     items = [
-        {"original": k, "corrected": v.get("corrected", ""), "type": v.get("type", ""), "count": v.get("count", 0)}
+        {"original": k, "corrected": v.get("corrected", ""), "type": v.get("type", ""),
+         "count": v.get("count", 0), "last": v.get("last", 0)}
         for k, v in (profile or {}).items()
     ]
     items.sort(key=lambda x: x["count"], reverse=True)

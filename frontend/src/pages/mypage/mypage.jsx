@@ -64,6 +64,7 @@ function MyPage() {
     const [authorRecords, setAuthorRecords] = useState(null);
     const [achievements, setAchievements] = useState(null);
     const [errorNotebook, setErrorNotebook] = useState(null);   // 오답노트(자주 틀린 맞춤법)
+    const [errSort, setErrSort] = useState('count');            // 'count'=많이 틀린 순 | 'recent'=최신순
     const [stats, setStats] = useState(null);
 
     // 취향 프로필
@@ -657,29 +658,46 @@ function MyPage() {
                 )}
 
                 {/* ── 오답노트 (자주 틀린 맞춤법) ── */}
-                {active === '오답노트' && (
-                    <div className="mp-errnote">
-                        <div className="mp-errnote__head">
-                            <h2 className="mp-errnote__title">오답노트</h2>
-                            <p className="mp-errnote__desc">교정에서 잡힌 맞춤법 실수를 자주 틀리는 순으로 모아둔 곳이에요.</p>
+                {active === '오답노트' && (() => {
+                    const view = (errorNotebook ?? []).slice().sort((a, b) =>
+                        errSort === 'recent' ? (b.last ?? 0) - (a.last ?? 0) : (b.count ?? 0) - (a.count ?? 0)
+                    ).slice(0, 10);
+                    return (
+                        <div className="mp-errnote">
+                            <div className="mp-errnote__head">
+                                <h2 className="mp-errnote__title">오답노트</h2>
+                                <p className="mp-errnote__desc">교정에서 잡힌 맞춤법 실수 상위 10개예요.</p>
+                            </div>
+                            {!errorNotebook || errorNotebook.length === 0 ? (
+                                <p className="mp-empty">아직 기록된 오답이 없어요.<br />채팅·집필 중 교정을 받으면 여기에 쌓여요.</p>
+                            ) : (
+                                <>
+                                    <div className="mp-errnote__sort">
+                                        <button
+                                            className={`mp-errnote__sortbtn${errSort === 'count' ? ' mp-errnote__sortbtn--on' : ''}`}
+                                            onClick={() => setErrSort('count')}
+                                        >가장 많이 틀린 순</button>
+                                        <button
+                                            className={`mp-errnote__sortbtn${errSort === 'recent' ? ' mp-errnote__sortbtn--on' : ''}`}
+                                            onClick={() => setErrSort('recent')}
+                                        >최신순</button>
+                                    </div>
+                                    <ul className="mp-errnote__list">
+                                        {view.map((e, i) => (
+                                            <li key={i} className={`mp-errnote__item${e.count >= 3 ? ' mp-errnote__item--frequent' : ''}`}>
+                                                <span className="mp-errnote__wrong">{e.original}</span>
+                                                <span className="mp-errnote__arrow">→</span>
+                                                <span className="mp-errnote__right">{e.corrected}</span>
+                                                {e.type && <span className="mp-errnote__type">{e.type}</span>}
+                                                <span className="mp-errnote__count">{e.count}회</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </>
+                            )}
                         </div>
-                        {!errorNotebook || errorNotebook.length === 0 ? (
-                            <p className="mp-empty">아직 기록된 오답이 없어요.<br />채팅·집필 중 교정을 받으면 여기에 쌓여요.</p>
-                        ) : (
-                            <ul className="mp-errnote__list">
-                                {errorNotebook.map((e, i) => (
-                                    <li key={i} className={`mp-errnote__item${e.count >= 3 ? ' mp-errnote__item--frequent' : ''}`}>
-                                        <span className="mp-errnote__wrong">{e.original}</span>
-                                        <span className="mp-errnote__arrow">→</span>
-                                        <span className="mp-errnote__right">{e.corrected}</span>
-                                        {e.type && <span className="mp-errnote__type">{e.type}</span>}
-                                        <span className="mp-errnote__count">{e.count}회</span>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* ── AI 작가 기록 (Phase 2) ── */}
                 {active === 'AI 작가 기록' && (

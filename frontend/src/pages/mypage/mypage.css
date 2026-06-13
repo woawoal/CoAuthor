@@ -649,6 +649,16 @@
 .mp-errnote__right { color: #2faf6a; font-weight: 700; }
 .mp-errnote__type { font-size: 11px; color: var(--text-sub, #888); border: 1px solid rgba(127, 127, 127, 0.2); padding: 1px 8px; border-radius: 8px; }
 .mp-errnote__count { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--theme-color); white-space: nowrap; }
+.mp-errnote__sort { display: flex; gap: 8px; margin-bottom: 12px; }
+.mp-errnote__sortbtn {
+  font-size: 12px; padding: 5px 14px; border-radius: 999px; cursor: pointer;
+  background: none; border: 1px solid rgba(127, 127, 127, 0.25); color: var(--text-sub, #888);
+  transition: all 0.15s;
+}
+.mp-errnote__sortbtn--on {
+  border-color: var(--theme-color); color: var(--theme-color); font-weight: 700;
+  background: color-mix(in srgb, var(--theme-color) 10%, transparent);
+}
 
 .mp-taste__setup-btn {
   background: var(--theme-color, #c084fc);
