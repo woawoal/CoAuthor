@@ -84,6 +84,13 @@
     transform: scale(1.1);
 }
 
+/* 라이트 테마(한여름·김도현): 카드가 흰색으로 뜨지 않게 테마색을 살짝 섞은 배경·테두리로 */
+:root[data-author="author3"] .card,
+:root[data-author="author4"] .card {
+    background-color: color-mix(in srgb, var(--theme-color) 14%, var(--card-main));
+    border-color: color-mix(in srgb, var(--theme-color) 22%, transparent);
+}
+
 .avatar-wrapper {
     width: 100%;
     border-radius: 12px;
