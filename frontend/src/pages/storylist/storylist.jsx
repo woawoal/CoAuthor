@@ -55,7 +55,8 @@ export default function StoryList() {
   };
 
   const handleRead = (session) => {
-    navigate(`/read/${session.id}`);
+    // 작가 테마 즉시 적용 위해 authorId 전달(없으면 read가 직전 작가 색으로 깜빡임)
+    navigate(`/read/${session.id}`, { state: { authorId: session.author_id } });
   };
 
   const handleDelete = async (session) => {

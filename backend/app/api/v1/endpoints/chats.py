@@ -207,6 +207,7 @@ def build_messages(
     context: dict,
     user_input: str,
     relevant_memories: list[str] | None = None,
+    speaker: str = "",
 ) -> list[dict]:
     author_rules = get_author_prompt(
         persona_id=persona_id,
@@ -236,6 +237,14 @@ def build_messages(
     if context["state"]:
         context_parts.append(f"[현재 상태]\n{context['state']}")
 
+    # @등장인물: 이번 턴을 그 인물의 시점·서사로 전개하도록 작가 AI에 지시
+    if speaker:
+        context_parts.append(
+            f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
+            f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
+            f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
+        )
+
     # 토큰 절약: 최근 PROMPT_HISTORY_LIMIT개만 verbatim 주입 (그 이전은 요약/RAG가 커버)
     recent_history = context["history"][:PROMPT_HISTORY_LIMIT]
     for h in reversed(recent_history):
@@ -243,10 +252,11 @@ def build_messages(
         messages.append({"role": role, "content": h["content"]})
 
     prefix = "\n\n".join(context_parts)
+    speaker_label = f"{speaker}: " if speaker else ""
     if prefix:
-        user_content = f"{prefix}\n\n사용자 입력: {user_input}"
+        user_content = f"{prefix}\n\n사용자 입력: {speaker_label}{user_input}"
     else:
-        user_content = user_input or "(오프닝 서술을 시작해주세요)"
+        user_content = f"{speaker_label}{user_input}" if user_input else "(오프닝 서술을 시작해주세요)"
 
     messages.append({"role": "user", "content": user_content})
     return messages
@@ -337,6 +347,7 @@ async def stream_response(
     character_id: str = "baekya",
     world_context: str = "",
     mode: str = "author",
+    speaker: str = "",
     use_rag: bool = True,
     check_consistency: bool = False,
     db: AsyncSession = Depends(get_db),
@@ -371,6 +382,7 @@ async def stream_response(
                 context=context,
                 user_input=content,
                 relevant_memories=relevant_memories,
+                speaker=speaker,
             )
 
             # ── 전송 프롬프트 로그 ──────────────────────────────────
