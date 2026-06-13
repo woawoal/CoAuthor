@@ -107,40 +107,46 @@ def _call_speller_api(text: str, passport_key: str) -> str:
     return _parse_speller_response(response.text)
 
 
-def check_korean_grammar(text: str) -> str:
-    """
-    한국어 맞춤법·띄어쓰기를 검사해 교정된 텍스트를 반환합니다.
+def check_korean_grammar_status(text: str) -> tuple[str, bool]:
+    """한국어 맞춤법을 검사해 **(교정문, 검사기 동작여부 ok)** 를 반환.
 
-    - API 오류·네트워크 실패 시 원문을 그대로 반환 (서비스 중단 방지)
-    - 한 번에 최대 500자 (네이버 API 제한)
+    - ok=False = **검사기 자체가 못 돎**(passportKey 추출 실패=네이버 페이지 변경/차단,
+      또는 API/파싱 최종 실패). → 원문 그대로 + "검사 안 됨"을 호출부가 알 수 있다.
+    - ok=True  = 정상 검사(교정문). 빈 입력·500자 초과 skip은 '실패는 아니므로' True.
+    - **fail-open**: 어떤 경우든 교정문 자리엔 항상 원문을 반환(서비스 중단 방지).
     """
     if not text or not text.strip():
-        return text
+        return text, True
 
     if len(text) > _MAX_LENGTH:
         logger.warning("맞춤법 검사: %d자 — 상한 %d자, 원문 반환", len(text), _MAX_LENGTH)
-        return text
+        return text, True
 
     passport_key = _get_passport_key()
     if not passport_key:
-        logger.warning("맞춤법 검사: passportKey 없음 — 원문 반환")
-        return text
+        logger.warning("맞춤법 검사: passportKey 없음 — 검사기 동작 실패(원문 반환)")
+        return text, False
 
     try:
-        return _call_speller_api(text, passport_key)
+        return _call_speller_api(text, passport_key), True
     except (requests.RequestException, ValueError, json.JSONDecodeError) as exc:
         logger.warning("맞춤법 검사 1차 실패 (%s) — key 갱신 후 재시도", exc)
 
     passport_key = _get_passport_key(refresh=True)
     if not passport_key:
-        logger.warning("맞춤법 검사: key 갱신 실패 — 원문 반환")
-        return text
+        logger.warning("맞춤법 검사: key 갱신 실패 — 검사기 동작 실패(원문 반환)")
+        return text, False
 
     try:
-        return _call_speller_api(text, passport_key)
+        return _call_speller_api(text, passport_key), True
     except (requests.RequestException, ValueError, json.JSONDecodeError) as exc:
-        logger.warning("맞춤법 검사 최종 실패 (%s) — 원문 반환", exc)
-        return text
+        logger.warning("맞춤법 검사 최종 실패 (%s) — 검사기 동작 실패(원문 반환)", exc)
+        return text, False
+
+
+def check_korean_grammar(text: str) -> str:
+    """교정문만 반환(하위호환 래퍼). 실패 시 원문(fail-open)."""
+    return check_korean_grammar_status(text)[0]
 
 
 if __name__ == "__main__":
