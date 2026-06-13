@@ -105,15 +105,18 @@ function Main() {
             setUserId(authUserId);
 
             if (authUserId) {
+                // 프로필 카드는 동기화를 기다리지 않고 바로 조회(병렬) → 카드가 빨리 뜸
+                getProfile(authUserId).then(setProfile).catch(() => { });
+
                 try {
                     const user = await syncCurrentUser();
                     setIsAdmin(user.is_admin);
                     console.log("로그인됨");
+                    // 신규 유저: 동기화로 user 행 생성 후 한 번 더(위 병렬 조회가 비었을 때 보강)
+                    getProfile(authUserId).then(p => p && setProfile(p)).catch(() => { });
                 } catch (error) {
                     console.error(error);
                 }
-
-                getProfile(authUserId).then(setProfile).catch(() => { });   // 사이드바 프로필 카드용
 
                 const popupKey = `voice_popup_seen_${authUserId}`;
                 if (!localStorage.getItem(popupKey)) {
