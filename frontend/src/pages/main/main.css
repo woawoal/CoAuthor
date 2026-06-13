@@ -190,7 +190,7 @@
 }
 
 .author-panel-slide {
-    flex: 0 0 400px;
+    flex: 0 0 300px;
     min-height: 100vh;
     overflow: hidden;
     background: var(--card-main);
