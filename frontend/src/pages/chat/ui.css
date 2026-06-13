@@ -1803,6 +1803,8 @@
 .memo-proof__actions .memo-proof__dismiss { margin-top: 0; }
 .memo-proof__apply { background: var(--theme-color); border: none; color: #fff; font-size: 12px; font-weight: 600; padding: 4px 16px; border-radius: 6px; cursor: pointer; }
 .memo-proof__apply:hover { filter: brightness(1.12); }
+.memo-proof__skip { background: none; border: 1px solid color-mix(in srgb, var(--text-main) 20%, transparent); color: var(--text-muted); font-size: 12px; padding: 4px 12px; border-radius: 6px; cursor: pointer; }
+.memo-proof__skip:hover { color: var(--text-main); border-color: color-mix(in srgb, var(--text-main) 35%, transparent); }
 
 
 /* 교정 체크리스트: 적용완료 표시 */

@@ -16,6 +16,8 @@ class World(Base):
     setting: Mapped[str] = mapped_column(Text, default="")   # 시대/공간 배경
     rules: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+    # 맞춤법 교정 보호 용어집: 자동 추출(LLM) + 사용자 '넘기기' 누적. None=미추출, []=추출했으나 없음
+    glossary: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 

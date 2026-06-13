@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread } from '../../lib/chatApi';
+import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread, addGlossaryTerm } from '../../lib/chatApi';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -749,13 +749,24 @@ export default function Editor() {
                         {e.applied ? (
                           <span className="memo-proof__done">✓ 적용완료</span>
                         ) : (
-                          <button
-                            className="memo-proof__apply"
-                            onClick={() => {
-                              setContent(prev => prev.split(e.original).join(e.corrected));
-                              setCorrections(prev => prev.map(x => x.key === e.key ? { ...x, applied: true } : x));
-                            }}
-                          >적용</button>
+                          <>
+                            <button
+                              className="memo-proof__apply"
+                              onClick={() => {
+                                setContent(prev => prev.split(e.original).join(e.corrected));
+                                setCorrections(prev => prev.map(x => x.key === e.key ? { ...x, applied: true } : x));
+                              }}
+                            >적용</button>
+                            <button
+                              className="memo-proof__skip"
+                              title="이 단어를 맞는 표기로 등록(다음부터 교정 제외)"
+                              onClick={() => {
+                                // 넘기기 = '이건 맞음' → 세계관 용어집에 등록
+                                if (chatId) addGlossaryTerm(chatId, e.original).catch(() => {});
+                                setCorrections(prev => prev.filter(x => x.key !== e.key));
+                              }}
+                            >넘기기</button>
+                          </>
                         )}
                       </div>
                     </div>

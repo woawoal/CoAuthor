@@ -13,10 +13,21 @@ from __future__ import annotations
 import asyncio
 import difflib
 import logging
+import re
 
 from f_qc_02_spell_checker import check_korean_grammar_status
 
 logger = logging.getLogger(__name__)
+
+# 자모(ㅋㅋ·ㅠㅠ·ㄷㄷ)·늘임(좋아아아·ㅋㅋㅋ)은 오타가 아니라 감정 표현 → 교정 제외.
+_JAMO_ONLY = re.compile(r"^[ㄱ-ㅎㅏ-ㅣ]+$")   # 순수 자모만으로 된 어절
+_REPEAT3 = re.compile(r"(.)\1\1")              # 같은 글자 3연속(늘임)
+
+
+def _is_stylistic(word: str) -> bool:
+    """ㅋㅋ·ㅠㅠ 같은 자모, '좋아아아' 같은 늘임은 의도된 표현 → 맞춤법 제외."""
+    w = (word or "").strip()
+    return bool(w) and bool(_JAMO_ONLY.match(w) or _REPEAT3.search(w))
 
 # 자주 틀리는 한국어 혼동쌍 → 유형 라벨. (검출이 아니라 분류·코칭용)
 # key는 '틀린 표기에 포함되는 조각', value=(올바른 예, 유형 라벨).
@@ -93,6 +104,8 @@ def _diff_errors(original: str, corrected: str, protected: set[str] | None = Non
             o, c = " ".join(o_words).strip(), " ".join(c_words).strip()
             if o and c and o != c:
                 errors.append({"original": o, "corrected": c, "type": _classify(o, c)})
+    # 자모·늘임(ㅋㅋ·좋아아아)은 표현이므로 항상 제외
+    errors = [e for e in errors if not _is_stylistic(e["original"])]
     if protected:
         # 등장인물·세계관 고유명사가 닿은 오류쌍은 버린다(일반 맞춤법기가 모르는 창작 명사)
         errors = [e for e in errors if not _touches_protected(e["original"], protected)]

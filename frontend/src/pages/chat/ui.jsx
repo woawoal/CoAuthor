@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
-  getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread,
+  getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread, addGlossaryTerm,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
@@ -1282,7 +1282,12 @@ export default function Chat() {
                       </ul>
                       <button
                         className="memo-proof__dismiss"
-                        onClick={() => setCorrections(prev => prev.filter(x => x.id !== c.id))}
+                        title="이 단어들을 맞는 표기로 등록(다음부터 교정 제외)"
+                        onClick={() => {
+                          // 넘기기 = '이건 맞음' → 세계관 용어집에 등록해 다음 교정부터 제외
+                          c.errors.forEach(e => { if (chatId && chatId !== 'room_001') addGlossaryTerm(chatId, e.original).catch(() => {}); });
+                          setCorrections(prev => prev.filter(x => x.id !== c.id));
+                        }}
                       >넘기기</button>
                     </div>
                   ))}
