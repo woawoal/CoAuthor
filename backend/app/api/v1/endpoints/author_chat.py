@@ -73,6 +73,28 @@ async def _get_memos(chat_id: str) -> list:
         return []
 
 
+async def _get_recent_story_turns(chat_id: str, db: AsyncSession, limit: int = 5) -> list[dict]:
+    """최근 스토리 대화 N턴을 시간 오름차순으로 반환."""
+    try:
+        sid = uuid.UUID(chat_id)
+        rows = (await db.execute(
+            select(Dialogue)
+            .where(Dialogue.session_id == sid)
+            .order_by(Dialogue.created_at.desc())
+            .limit(limit)
+        )).scalars().all()
+        return [
+            {
+                "role": "user" if r.speaker_type == SpeakerType.USER else "character",
+                "content": r.content,
+            }
+            for r in reversed(rows)
+        ]
+    except Exception as e:
+        logger.warning("최근 스토리 대화 조회 실패: %s", e)
+        return []
+
+
 # ── 스키마 ────────────────────────────────────────────────────
 class AuthorMessageRequest(BaseModel):
     content: str
@@ -86,9 +108,24 @@ class AuthorRewriteRequest(BaseModel):
     author_id: str = "baekya"
 
 
+def _parse_suggest_marker(raw: str) -> tuple[str, bool]:
+    """응답에서 [SUGGEST:YES/NO] 마커를 파싱하고 제거된 텍스트와 플래그를 반환."""
+    lines = raw.rstrip().splitlines()
+    suggest = True  # 마커 없으면 기본 YES
+    if lines:
+        last = lines[-1].strip()
+        if last == "[SUGGEST:NO]":
+            suggest = False
+            lines = lines[:-1]
+        elif last == "[SUGGEST:YES]":
+            lines = lines[:-1]
+    return "\n".join(lines).strip(), suggest
+
+
 class AuthorMessageResponse(BaseModel):
     messageId: str
     content: str
+    shouldRecommend: bool = True
 
 
 # ── 엔드포인트 ────────────────────────────────────────────────
@@ -128,6 +165,8 @@ async def send_author_message(
         except Exception as e:
             logger.warning("작가채팅 RAG 실패: %s", e)
 
+        recent_story = await _get_recent_story_turns(chat_id, db, limit=5)
+
         context_summary = story_summary
         if relevant:
             context_summary += "\n\n[관련 사건 (RAG)]\n" + "\n".join(f"- {r}" for r in relevant)
@@ -139,6 +178,7 @@ async def send_author_message(
             memos=memos,
             author_history=author_history,
             prev_questions=prev_questions,
+            recent_story=recent_story,
             user_input=body.content,
         )
         system_prompt = messages[0]["content"]
@@ -149,16 +189,18 @@ async def send_author_message(
         ]
 
     raw = await llm.generate(system_prompt, contents, json_mode=False)
-    reply = (raw or "").strip()
+    reply_raw = (raw or "").strip()
+    reply, should_recommend = _parse_suggest_marker(reply_raw)
 
     await append_author_history(chat_id, body.author_id, "user", body.content)
     await append_author_history(chat_id, body.author_id, "ai", reply)
 
-    logger.info("작가채팅 응답 - chat_id=%s: %s", chat_id, reply[:80])
+    logger.info("작가채팅 응답 - chat_id=%s suggest=%s: %s", chat_id, should_recommend, reply[:80])
 
     return AuthorMessageResponse(
         messageId=f"amsg_{uuid.uuid4().hex[:8]}",
         content=reply,
+        shouldRecommend=should_recommend,
     )
 
 
@@ -173,13 +215,25 @@ async def generate_rewrite(
     - original: 사용자 원문
     - feedback: 방금 받은 피드백 텍스트
     """
-    world_context, _ = await _get_story_context(chat_id, db)
+    world_context, story_summary = await _get_story_context(chat_id, db)
+    memos = await _get_memos(chat_id)
+    author_history = await get_author_history(chat_id, body.author_id)
+
+    relevant: list[str] = []
+    try:
+        relevant = await memory.retrieve_relevant(chat_id, db, body.original)
+    except Exception as e:
+        logger.warning("추천문장 RAG 실패: %s", e)
 
     system_prompt = build_rewrite_prompt(
         persona_id=body.author_id,
         original=body.original,
         feedback=body.feedback,
         world_context=world_context,
+        story_summary=story_summary,
+        memos=memos,
+        relevant=relevant,
+        author_history=author_history,
     )
     contents = [{"role": "user", "parts": [{"text": "위 원문과 피드백을 바탕으로 추천 문장을 작성해줘."}]}]
 

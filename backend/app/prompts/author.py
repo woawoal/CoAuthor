@@ -8,6 +8,7 @@ def build_author_system(
     story_summary: str = "",
     memos: list = None,
     prev_questions: list = None,
+    recent_story: list = None,
 ) -> str:
     """
     오른쪽 패널 작가 AI 채팅용 시스템 프롬프트.
@@ -38,8 +39,19 @@ def build_author_system(
         q_lines = "\n".join(f"- {q}" for q in prev_questions)
         prev_section = f"\n\n[이전 작가와 나눈 대화 맥락 — 사용자가 논의한 주요 질문들]\n{q_lines}"
 
+    recent_story_section = ""
+    if recent_story:
+        lines = []
+        for turn in recent_story:
+            prefix = "사용자" if turn["role"] == "user" else "캐릭터"
+            lines.append(f"{prefix}: {turn['content']}")
+        recent_story_section = "\n\n[최근 스토리 대화 (최근 5턴)]\n" + "\n".join(lines)
+
     style_rules = load_persona_rule(author_id, compact=True)
     style_section = f"\n\n[스타일 규칙]\n{style_rules}" if style_rules else ""
+
+    chat_shot = author.get("chat_shot", "")
+    chat_shot_section = f"\n\n[채팅 예시 — 이 형식으로 답한다]\n{chat_shot}" if chat_shot else ""
 
     return f"""\
 {base}
@@ -55,9 +67,21 @@ def build_author_system(
 - 지금까지의 줄거리·사건을 바탕으로 다음 전개 추천
 - 세계관 규칙과 충돌하는 아이디어를 짚어주기
 
+[조언 방식]
+사용자의 모든 질문에 작가로서 조언한다. 소설 장면을 직접 써주지 않는다.
+- 세계관, 장르, 현재 분위기를 근거로 접근법과 이유를 먼저 말한다.
+- 방향 제시가 핵심이다. 짧은 예시가 꼭 필요하면 1문장 이내로만 든다.
+- 여러 줄의 소설 문장을 직접 써주는 것은 이 모드에서 금지다.
+
 말투는 위의 작가 페르소나({author['name']}) 그대로 유지한다.
 한국어로만 답한다.
-{world_section}{story_section}{memos_section}{prev_section}{style_section}"""
+
+[추천 마커 규칙]
+응답 맨 마지막 줄에 반드시 아래 둘 중 하나를 단독으로 붙인다.
+- 사용자에게 추가 정보·설명을 요청하는 경우: [SUGGEST:NO]
+- 플롯 방향·다음 전개 등 실질적인 조언을 준 경우: [SUGGEST:YES]
+마커 외에 다른 텍스트를 그 줄에 쓰지 않는다.
+{world_section}{story_section}{memos_section}{recent_story_section}{prev_section}{style_section}{chat_shot_section}"""
 
 
 def build_author_messages(
@@ -68,6 +92,7 @@ def build_author_messages(
     author_history: list[dict],
     user_input: str,
     prev_questions: list = None,
+    recent_story: list = None,
 ) -> list[dict]:
     """작가 AI 채팅용 messages 배열 구성."""
     system = build_author_system(
@@ -76,6 +101,7 @@ def build_author_messages(
         story_summary=story_summary,
         memos=memos,
         prev_questions=prev_questions,
+        recent_story=recent_story,
     )
 
     messages: list[dict] = [{"role": "system", "content": system}]

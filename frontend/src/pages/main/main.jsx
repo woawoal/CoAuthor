@@ -252,6 +252,7 @@ function Main() {
                                         alt={author.name}
                                         className="card-avatar-image"
                                     />
+                                    <HoverVideo src={author.video || `/assets/author${author.id}/default.mp4`} />
                                 </div>
 
                                 {/* 본문 텍스트 정보 */}

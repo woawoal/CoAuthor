@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
-  getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
+  sendAuthorMessage, generateAuthorRewrite,
   getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread, addGlossaryTerm,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
@@ -37,7 +37,6 @@ const AUTHOR_RECOMMEND_GREETING = {
   kimdohyeon: '어떤 추천이 필요해요?',
 };
 
-const NARRATION_KEYWORDS = ['지문', '대사', '문장', '씬', '장면', '선택지', '다음', '행동', '추천'];
 
 const AUTHOR_MAP = {
   1: { characterId: 'baekya', displayName: '백야', image: '/assets/author1/author1.png' },
@@ -60,6 +59,11 @@ function buildWorldContext(world, characters) {
       const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
       lines.push(`- ${c.name} (${roleKo})${c.personality ? ': ' + c.personality : ''}`);
     });
+    const directives = characters.filter(c => c.prompt && c.prompt.trim());
+    if (directives.length > 0) {
+      lines.push('[캐릭터 행동 지시문 — 반드시 따를 것]');
+      directives.forEach(c => lines.push(`- ${c.name}: ${c.prompt.trim()}`));
+    }
   }
   return lines.join('\n');
 }
@@ -216,7 +220,7 @@ export default function Chat() {
   const [dbCharacters, setDbCharacters] = useState([]);
   const [ending, setEnding] = useState(false);
   const [converting, setConverting] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
+
   const [importedNarration] = useState(() => {
     if (manuscriptContent) return manuscriptContent;
     if (chatId && chatId !== 'room_001') return localStorage.getItem(`manuscript_${chatId}`) ?? null;
@@ -265,7 +269,6 @@ export default function Chat() {
   const inputRef = useRef(null);   // @등장인물 선택 후 입력창 포커스용
   const authorBottomRef = useRef(null);
   const memoInputRef = useRef(null);
-  const awaitingRecommendRef = useRef(false);
   const feedbackTimerRef = useRef(null);
 
   // ── userId 로드 + 기존 취향 복원 ────────────────────────
@@ -352,6 +355,13 @@ export default function Chat() {
     feedbackTimerRef.current = setTimeout(handleFeedback, 2000);
     return () => clearTimeout(feedbackTimerRef.current);
   }, [streaming, autoFeedback]);
+
+  // ── EventSource cleanup (페이지 이탈 시 스트림 정리) ────
+  useEffect(() => {
+    return () => {
+      if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    };
+  }, []);
 
   // ── 컨텍스트 메뉴 외부 클릭 닫기 ─────────────────────────
   useEffect(() => {
@@ -465,9 +475,6 @@ export default function Chat() {
     if (!hideUser) setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
     setAuthorLoading(true);
 
-    const isNarrationReq = awaitingRecommendRef.current &&
-      NARRATION_KEYWORDS.some(kw => text.includes(kw));
-    awaitingRecommendRef.current = false;
 
     try {
       const data = await sendAuthorMessage(chatId, {
@@ -476,8 +483,8 @@ export default function Chat() {
         mode,
       });
       setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', type: 'feedback', content: data.content }]);
-      if (isNarrationReq) fetchSuggestions();
-      if (!skipRecommend) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
+
+      if (!skipRecommend && data.shouldRecommend !== false) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
@@ -681,7 +688,8 @@ export default function Chat() {
         .then(r => {
           if (r.errors?.length) {
             setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
-            setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
+            // 스트리밍 중엔 패널 전환 안 함 — 응답이 씹히는 것처럼 보이는 원인
+            setStreaming(cur => { if (!cur) setPanelView('proof'); return cur; });
           }
         })
         .catch(() => {});
@@ -775,31 +783,6 @@ export default function Chat() {
     navigate('/editor', { state: { chatId, authorId } });
   }
 
-  async function fetchSuggestions() {
-    if (!chatId || chatId === 'room_001') return;
-
-    if (userId) {
-      try {
-        const voiceProfile = await getVoiceProfile();
-        if (voiceProfile) {
-          const lastCharMsg = [...messages].reverse().find(m => m.role === 'character');
-          const npcDialogue = lastCharMsg?.dialogue || lastCharMsg?.narration || '';
-          const data = await getVoiceSuggestions(chatId, {
-            npc_dialogue: npcDialogue,
-            genre: world?.genre || '',
-          });
-          if (data.suggestions?.length) {
-            setSuggestions(data.suggestions);
-            return;
-          }
-        }
-      } catch { /* 폴백 */ }
-    }
-
-    const worldContext = buildWorldContext(world, dbCharacters);
-    const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
-    setSuggestions(data.suggestions ?? []);
-  }
 
   const authorVideoRef = useRef(null);
   // ── 볼륨 설정 ─────────────────────────────────────────────────
@@ -885,24 +868,6 @@ export default function Chat() {
           <div ref={bottomRef} />
         </div>
 
-        {suggestions.length > 0 && !streaming && (
-          <div className="chat-suggestions">
-            {suggestions.map((s, i) => {
-              const text = typeof s === 'string' ? s : s.text;
-              const label = typeof s === 'object' ? s.label : null;
-              return (
-                <button
-                  key={i}
-                  className="suggestion-chip"
-                  onClick={() => { setInput(text); setSuggestions([]); }}
-                >
-                  {label && <span className="suggestion-chip__label">{label}</span>}
-                  {text}
-                </button>
-              );
-            })}
-          </div>
-        )}
 
         <div className="chat-input-wrap">
           {mentionOpen && mentionCandidates.length > 0 && (
@@ -922,9 +887,7 @@ export default function Chat() {
             </div>
           )}
           <div className="chat-input-bar">
-            <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천">
-              💡
-            </button>
+
             {speaker && (
               <span className="speaker-chip" title="이 인물의 대사로 전송됩니다">
                 @{speaker.name}
