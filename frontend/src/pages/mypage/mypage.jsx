@@ -11,6 +11,7 @@ import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import './mypage.css';
 import LoadingVideo from '../../components/loadingVideo';
+import VideoPreviewModal from '../../components/VideoPreviewModal';
 
 const WORK_GOAL_CHARS = 30000;
 
@@ -37,6 +38,7 @@ const NAV = {
         { id: '설정집', icon: '🗂️' },
         { id: '문장 보관함', icon: '💾' },
         { id: 'AI 작가 기록', icon: '🤖' },
+        { id: '갤러리', icon: '🎬' },
         { id: '내 작품', icon: '📚' },
         { id: '업적', icon: '🏆' },
     ],
@@ -61,6 +63,8 @@ function MyPage() {
     const [recent, setRecent] = useState(null);
     const [sentences, setSentences] = useState(null);
     const [authorRecords, setAuthorRecords] = useState(null);
+    const [selectedVideoAuthor, setSelectedVideoAuthor] = useState(1);
+    const [previewVideo, setPreviewVideo] = useState(null);
     const [achievements, setAchievements] = useState(null);
     const [stats, setStats] = useState(null);
 
@@ -77,6 +81,22 @@ function MyPage() {
     const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
     const [loading, setLoading] = useState(true);
     const [showLoading, setShowLoading] = useState(true);
+
+    const VIDEO_AUTHORS = [
+        { id: 1, name: '백야', path: '/assets/author1' },
+        { id: 2, name: '차로운', path: '/assets/author2' },
+        { id: 3, name: '한여름', path: '/assets/author3' },
+        { id: 4, name: '김도현', path: '/assets/author4' },
+    ];
+
+    const REACTION_VIDEOS = [
+        { key: 'start', label: '첫 입력 반응' },
+        { key: 'tension', label: '예상 밖 전개' },
+        { key: 'joy', label: '장면이 잘 나왔을 때' },
+        { key: 'delays', label: '입력이 없을 때' },
+        { key: 'read', label: '소설 완성' },
+        { key: 'loading', label: '로딩중' },
+    ];
 
     // 초기 로딩: 유저 확인 + 프로필 + 작품 목록
     useEffect(() => {
@@ -686,6 +706,49 @@ function MyPage() {
                             });
                         })()}
                     </div>
+                )}
+
+                {/* ── 갤러리 ── */}
+                {active === '갤러리' && (() => {
+                    const author = VIDEO_AUTHORS.find(a => a.id === selectedVideoAuthor);
+
+                    return (
+                        <div className="mp-video-gallery">
+                            <div className="mp-video-authors">
+                                {VIDEO_AUTHORS.map(a => (
+                                    <button
+                                        key={a.id}
+                                        className={`mp-video-author ${selectedVideoAuthor === a.id ? 'mp-video-author--active' : ''}`}
+                                        onClick={() => setSelectedVideoAuthor(a.id)}
+                                    >
+                                        {a.name}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="mp-video-grid">
+                                {REACTION_VIDEOS.map(video => (
+                                    <div key={video.key} className="mp-video-card">
+                                        <video
+                                            className="mp-video"
+                                            src={`${author.path}/${video.key}.mp4`}
+                                            preload="metadata"
+                                            muted
+                                            onClick={() => setPreviewVideo(`${author.path}/${video.key}.mp4`)}
+                                        />
+                                        <div className="mp-video-title">{video.label}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {previewVideo && (
+                    <VideoPreviewModal
+                        src={previewVideo}
+                        onClose={() => setPreviewVideo(null)}
+                    />
                 )}
 
                 {/* ── 업적 (Phase 2) ── */}
