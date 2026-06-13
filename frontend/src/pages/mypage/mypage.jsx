@@ -4,7 +4,7 @@ import { authClient } from '../../lib/auth';
 import {
     getProfile, getWorks, getRecent, getSentences, getWiki,
     deleteSentence, getAuthorRecords, getAchievements, getStats, getDashboard,
-    getTasteProfile, setupTasteProfile,
+    getTasteProfile, setupTasteProfile, getErrorNotebook,
 } from '../../lib/mypageApi';
 import TasteOnboarding from './TasteOnboarding';
 import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
@@ -36,6 +36,7 @@ const NAV = {
         { id: '취향 프로필', icon: '✨' },
         { id: '설정집', icon: '🗂️' },
         { id: '문장 보관함', icon: '💾' },
+        { id: '오답노트', icon: '✏️' },
         { id: 'AI 작가 기록', icon: '🤖' },
         { id: '내 작품', icon: '📚' },
         { id: '업적', icon: '🏆' },
@@ -62,6 +63,7 @@ function MyPage() {
     const [sentences, setSentences] = useState(null);
     const [authorRecords, setAuthorRecords] = useState(null);
     const [achievements, setAchievements] = useState(null);
+    const [errorNotebook, setErrorNotebook] = useState(null);   // 오답노트(자주 틀린 맞춤법)
     const [stats, setStats] = useState(null);
 
     // 취향 프로필
@@ -121,10 +123,11 @@ function MyPage() {
             if (tab === '문장 보관함' && !sentences) setSentences(await getSentences(userId));
             if (tab === 'AI 작가 기록' && !authorRecords) setAuthorRecords(await getAuthorRecords(userId));
             if (tab === '업적' && !achievements) setAchievements(await getAchievements(userId));
+            if (tab === '오답노트' && !errorNotebook) setErrorNotebook(await getErrorNotebook(userId));
         } catch (e) {
             console.error(e);
         }
-    }, [userId, recent, sentences, authorRecords, achievements]);
+    }, [userId, recent, sentences, authorRecords, achievements, errorNotebook]);
 
     async function handleTasteComplete(selectedWorks) {
         try {
@@ -650,6 +653,31 @@ function MyPage() {
                                 {s.session_title && <span className="mp-sentence__src">— {s.session_title}</span>}
                             </div>
                         ))}
+                    </div>
+                )}
+
+                {/* ── 오답노트 (자주 틀린 맞춤법) ── */}
+                {active === '오답노트' && (
+                    <div className="mp-errnote">
+                        <div className="mp-errnote__head">
+                            <h2 className="mp-errnote__title">오답노트</h2>
+                            <p className="mp-errnote__desc">교정에서 잡힌 맞춤법 실수를 자주 틀리는 순으로 모아둔 곳이에요.</p>
+                        </div>
+                        {!errorNotebook || errorNotebook.length === 0 ? (
+                            <p className="mp-empty">아직 기록된 오답이 없어요.<br />채팅·집필 중 교정을 받으면 여기에 쌓여요.</p>
+                        ) : (
+                            <ul className="mp-errnote__list">
+                                {errorNotebook.map((e, i) => (
+                                    <li key={i} className={`mp-errnote__item${e.count >= 3 ? ' mp-errnote__item--frequent' : ''}`}>
+                                        <span className="mp-errnote__wrong">{e.original}</span>
+                                        <span className="mp-errnote__arrow">→</span>
+                                        <span className="mp-errnote__right">{e.corrected}</span>
+                                        {e.type && <span className="mp-errnote__type">{e.type}</span>}
+                                        <span className="mp-errnote__count">{e.count}회</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
                 )}
 

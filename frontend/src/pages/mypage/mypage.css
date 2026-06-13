@@ -629,6 +629,27 @@
   margin: 0;
 }
 
+/* ── 오답노트 ── */
+.mp-errnote__head { margin-bottom: 16px; }
+.mp-errnote__title { font-size: 20px; font-weight: 700; color: var(--text-main, #fff); margin: 0 0 6px; }
+.mp-errnote__desc { font-size: 13px; color: var(--text-sub, #888); margin: 0; }
+.mp-errnote__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.mp-errnote__item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px; border-radius: 10px;
+  background: rgba(127, 127, 127, 0.06);
+  border: 1px solid rgba(127, 127, 127, 0.14);
+}
+.mp-errnote__item--frequent {
+  border-color: color-mix(in srgb, var(--theme-color) 45%, transparent);
+  background: color-mix(in srgb, var(--theme-color) 8%, transparent);
+}
+.mp-errnote__wrong { color: #e06c75; text-decoration: line-through; font-weight: 600; }
+.mp-errnote__arrow { color: var(--text-sub, #888); }
+.mp-errnote__right { color: #2faf6a; font-weight: 700; }
+.mp-errnote__type { font-size: 11px; color: var(--text-sub, #888); border: 1px solid rgba(127, 127, 127, 0.2); padding: 1px 8px; border-radius: 8px; }
+.mp-errnote__count { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--theme-color); white-space: nowrap; }
+
 .mp-taste__setup-btn {
   background: var(--theme-color, #c084fc);
   color: #fff;
