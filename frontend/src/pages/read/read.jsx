@@ -139,7 +139,7 @@ export default function ReadNovel() {
 
       <div className="read-top-bar">
         <div className="read-top-bar__left">
-          <button className="read-back-btn" onClick={() => navigate('/storylist')}>
+          <button className="read-back-btn" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/storylist'))}>
             ← 돌아가기
           </button>
           <span className="read-doc-title">{novel?.title ?? ''}</span>
