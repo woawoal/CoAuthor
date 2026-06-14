@@ -1,147 +1,126 @@
+<!-- markdownlint-disable MD022 MD032 MD031 MD040 -->
 # 아키텍처
+
+> 최종 갱신: 2026-06-14 — **클라우드 풀스택**(Neon · Upstash · Vertex AI), **백엔드 Cloud Run / 프론트 Vercel** 배포.
 
 ## 레이어 구조
 
 ```
-┌──────────────────────────────────────────────┐
-│               API Layer                      │
-│   app/api/v1/endpoints/  ← HTTP 요청 처리     │
-│   app/api/v1/router.py   ← 라우터 등록         │
-├──────────────────────────────────────────────┤
-│               Schema Layer                   │
-│   app/schemas/  ← 입력 검증 / 출력 직렬화      │
-├──────────────────────────────────────────────┤
-│               Service Layer                  │
-│   app/services/cache.py      ← Redis 캐시     │
-│   app/services/llm_router.py ← AI 호출        │
-├──────────────────────────────────────────────┤
-│               Model Layer                    │
-│   app/models/  ← SQLAlchemy ORM 모델          │
-├──────────────────────────────────────────────┤
-│               Infrastructure                 │
-│   PostgreSQL 15  │  Redis 7  │  AI Engine    │
-└──────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│  API Layer        app/api/v1/endpoints/  ← HTTP·SSE 처리     │
+│                   app/api/v1/router.py   ← /api/v1 통합      │
+├────────────────────────────────────────────────────────────┤
+│  Schema Layer     app/schemas/  ← Pydantic 입출력 검증/직렬화 │
+├────────────────────────────────────────────────────────────┤
+│  Service Layer    app/services/ · app/core/                 │
+│   llm·llm_router  (프로바이더 체인·키 순환·폴백)              │
+│   chat_context    (Redis 히스토리/상태/요약)                 │
+│   memory·consistency·style   (RAG 3종)                      │
+│   proofread       (맞춤법 교정·용어집)                       │
+│   tts·evaluate·world_tag_classifier                         │
+│   core/personas·reactions·prompts (프롬프트)                 │
+├────────────────────────────────────────────────────────────┤
+│  Model Layer      app/models/  ← SQLAlchemy 2.0 ORM         │
+├────────────────────────────────────────────────────────────┤
+│  Infrastructure   Neon(PostgreSQL) │ Upstash(Redis) │ Vertex AI│
+└────────────────────────────────────────────────────────────┘
 ```
+
+배포: 백엔드 **GCP Cloud Run**(Dockerfile + Secret Manager, Vertex는 런타임 SA/ADC) · 프론트 **Vercel**(정적 SPA, `apiBase`가 백엔드 직접 호출).
 
 ---
 
 ## 폴더별 역할
 
 ### `app/main.py`
-- FastAPI 앱 인스턴스 생성
-- CORS 미들웨어 등록
-- v1 라우터 마운트
-- 로깅 설정
+- FastAPI 앱 + CORS(`ALLOWED_ORIGINS`) + v1 라우터 마운트 + 로깅 + `GET /health`
 
 ### `app/database.py`
-- `create_async_engine` 으로 PostgreSQL 비동기 연결
-- `AsyncSession` 팩토리 생성
-- `get_db` 의존성 함수 — 엔드포인트마다 DB 세션을 자동으로 열고 닫음
-- `Base` — 모든 모델이 상속하는 SQLAlchemy DeclarativeBase
+- `create_async_engine`(asyncpg) — `_prepare_db_url`이 `postgresql://…?sslmode=require` → **asyncpg + SSL 자동 변환**(Neon)
+- `pool_pre_ping`/`pool_recycle`로 끊긴 커넥션 복원, `get_db` 의존성, `Base`
 
 ### `app/core/config.py`
-- `pydantic-settings` 기반 환경변수 관리
-- `.env` 파일을 읽어 `settings` 싱글턴 객체로 제공
-- 주요 항목: `DATABASE_URL`, `REDIS_URL`, `AI_API_KEY`, `SECRET_KEY`
+- `pydantic-settings` — `.env` → `settings` 싱글턴
+- 주요: `DATABASE_URL`(Neon) · `REDIS_URL`(Upstash) · **`USE_VERTEX`·`GOOGLE_CLOUD_PROJECT`·`GOOGLE_CLOUD_LOCATION`·`GEMINI_MODEL`·`GEMINI_FALLBACK_MODEL`** · `LLM_PROVIDER`·`LLM_PROVIDER_CHAIN` · `GROQ_API_KEY`/`OPENAI_API_KEY`(폴백) · `ELEVENLABS_API_KEY_1/2`(TTS) · `ALLOWED_ORIGINS`
 
 ### `app/models/`
-- SQLAlchemy 2.0 스타일의 ORM 모델
-- `Mapped[타입]` + `mapped_column()` 사용
-- `Base`를 상속해 자동으로 테이블 생성 대상이 됨
-- `app/models/__init__.py` 에서 전체 임포트 → Alembic이 자동 감지
-
-### `app/schemas/`
-- Pydantic v2 기반 입출력 스키마
-- `XXXCreate` : 생성 요청 body
-- `XXXUpdate` : 수정 요청 body (모든 필드 Optional)
-- `XXXResponse` : API 응답 형식 (`model_config = {"from_attributes": True}` 필수)
-
-### `app/api/v1/`
-- `router.py` : 모든 엔드포인트를 `/api/v1` prefix로 통합
-- `endpoints/` : 도메인별 라우터 파일 (users, worlds, characters, sessions, dialogues, novels)
+- SQLAlchemy 2.0(`Mapped[]`+`mapped_column`). `__init__.py`에서 전체 임포트 → Alembic 자동 감지
+- user · session · world(+`tags`/`glossary`) · character · dialogue · novel · api_log · saved_sentence · user_taste · user_taste_profile
 
 ### `app/services/`
-- `cache.py` : Redis 비동기 TTL 캐시. `namespace:hash` 키 구조
-- `llm_router.py` : AI 엔진 호출 추상화. PERSO API → Ollama 폴백 순서로 연결 예정
+- **`llm.py`** — LLM 호출 일원화: 프로바이더 체인(`USE_VERTEX`면 Vertex 우선 → Groq/OpenAI 폴백) · n키 순환 · 429/auth/transient 분기·쿨다운·지수 백오프 · `generate(json_mode=True)`(서술/대사 구조화 강제) · `embed`(임베딩)
+- **`chat_context.py`** — Redis 최근 대화/상태/요약 + DB fallback (※ chats.py에도 동명 로컬 헬퍼 존재)
+- **`memory.py`** (RAG ①기억) — 증분 누적요약 + Gemini 임베딩 코사인 top-K 의미검색
+- **`consistency.py`** (RAG ②검수, F-QC-01) — 새 응답 ↔ 설정/기억 모순 탐지(LLM JSON)
+- **`style.py`** (RAG ③문체, F-NV-08) — 작가 문체 샘플 few-shot 검색 주입
+- **`proofread.py`** (F-QC-02) — 네이버 맞춤법기 + 단어단위 diff, 고유명사 보호·자모/늘임 무시, error_profile
+- **`tts.py`** (F-AV-02) — ElevenLabs 작가별 음성, 첫 문장 낭독
+- `evaluate.py`(LLM-judge 4축) · `world_tag_classifier.py`(F-WD-06) · `llm_router.py`·`gemini.py`·`cache.py`
 
-### `app/prompts/`
-- AI에게 전달할 시스템 프롬프트 템플릿 보관 예정
-- 캐릭터 역할별 프롬프트, 소설 변환 프롬프트 등
+### `app/core/` · `app/prompts/`
+- `personas.py`(작가 4인 리치 프롬프트·문체) · `reactions.py`(작가×감정 리액션 풀) · `prompts/`(출력/입력 규칙·멀티NPC·suggest/stuck 시스템)
 
 ### `migrations/`
-- Alembic 마이그레이션 파일 관리
-- `env.py` : 비동기 엔진 기반 마이그레이션 실행
-- `versions/` : 자동 생성된 마이그레이션 파일들
+- Alembic. `env.py`가 `.env`의 `DATABASE_URL` 단일 소스. head = `j0k1l2m3n4o5`(worlds.glossary)
 
 ---
 
-## 요청 처리 흐름 상세
+## 요청 처리 흐름
 
-### 일반 CRUD 요청 (예: 세계관 생성)
-
+### 일반 CRUD (예: 세계관 생성)
 ```
-POST /api/v1/worlds
-        │
-        ▼
-router.py → worlds.py:create_world()
-        │
-        ▼
-schemas/world.py:WorldCreate  ← 입력값 자동 검증
-        │  (실패 시 422 자동 반환)
-        ▼
-get_db() → AsyncSession 생성
-        │
-        ▼
-models/world.py:World 인스턴스 생성
-        │
-        ▼
-db.add() → db.flush() → db.refresh()
-        │
-        ▼
-schemas/world.py:WorldResponse  ← 응답 직렬화
-        │
-        ▼
-200/201 JSON 응답
+POST /api/v1/worlds?user_id=…
+  → router → worlds.create_world()
+  → schemas.WorldCreate (검증, 실패 시 422)
+  → get_db() AsyncSession → World 인스턴스 → add/flush/refresh
+  → schemas.WorldResponse → 201 JSON
 ```
 
-### 대화 스트리밍 요청 (SSE)
-
+### 채팅 스트리밍 (구조화 SSE) ★
 ```
-POST /api/v1/sessions/{id}/dialogues/stream
-        │
-        ▼
-dialogues.py:stream_dialogue()
-        │
-        ├─ 세션 상태 검증 (ACTIVE 여부)
-        ├─ 캐릭터 존재 확인
-        ├─ 사용자 발화 DB 저장
-        │
-        ▼
-StreamingResponse(generate(), media_type="text/event-stream")
-        │
-        ├─ LLMRouter.stream_character_response()  ← AI 호출
-        ├─ 청크 단위로 yield "data: ...\n\n"
-        ├─ AI 응답 완성 → DB 저장
-        └─ yield "data: [DONE]\n\n"
+GET /api/v1/chats/{id}/stream?content=&character_id=&mode=&speaker=
+  → chats.stream_response()
+     ├─ get_context()         최근 대화/상태/요약(Redis, 없으면 DB 복원)
+     ├─ _build_world_context  세션→세계관·캐릭터·줄거리 주입
+     ├─ memory.retrieve_relevant   RAG 의미검색(오래된 사건)
+     ├─ build_messages(persona, world, context, speaker)  ← speaker면 그 인물 시점 지시
+     ▼
+     llm.generate(system, contents, json_mode=True)   프로바이더 체인·폴백
+     ▼
+     parse_ai_response → {narration, dialogue, state, …}
+     ├─ event: reply  (narration·dialogue·memories·consistency)
+     ├─ event: audio  (tts.synthesize 첫 문장, base64)  ※ 키/IP 차단 시 생략
+     └─ event: done
 ```
+> 채팅·소설은 **JSON 모드**로 구조화 응답을 받아 프론트가 나레이션/대사를 분리·타자기 렌더.
 
 ---
 
-## AI 엔진 연동 구조 (예정)
+## LLM 엔진 연동 구조
 
 ```
-LLMRouter
-    │
-    ├─ PERSO API 호출 시도
-    │       └─ 성공 → 스트리밍 응답 반환
-    │
-    └─ 실패 (타임아웃 / 오류)
-            └─ Ollama (로컬) 폴백 호출
+llm.generate(system, contents, json_mode)
+   │  프로바이더 체인 = LLM_PROVIDER_CHAIN (예: gemini,groq,openai)
+   ▼
+ ┌─ USE_VERTEX=true → Vertex AI Gemini 2.5 Flash-lite (ADC, thinking off)
+ │      └─ 실패(429/auth/transient) → 키 순환·쿨다운·다음 프로바이더
+ ├─ Groq (Llama 3.3)        ← 폴백
+ └─ OpenAI (GPT)            ← 폴백
 ```
+- **Vertex 전환 효과**: 응답 8s→~2s, Groq의 한자/일본어 언어누수 해소
+- 임베딩: Gemini `text-multilingual-embedding-002`(768d) + 인앱 코사인(별도 벡터DB 없이 단편 규모 충분, 대규모 시 pgvector)
 
 프롬프트 구성:
 ```
-시스템 프롬프트 = 세계관 설명 + 캐릭터 system_prompt 필드
-대화 히스토리  = 이전 Dialogue 목록 (turn_order 순)
-사용자 메시지  = 현재 입력
+system = 출력/입력 규칙 + 작가 페르소나(personas.py) + 문체 RAG few-shot
+context = [등장인물] + [사건 요약] + [작가 메모] + [관련 기억(RAG)] + [현재 상태] + 최근 N턴
+user    = (speaker 지정 시) 화자 지시 + 사용자 입력
 ```
+
+---
+
+## 배포 / 운영
+
+- **백엔드**: Cloud Run(`nodevelture-api`, us-central1). `--source`로 Dockerfile 빌드, 시크릿은 Secret Manager, Vertex는 런타임 SA(ADC). 배포 시 **`alembic upgrade head` 동반 필수**(모델·DB 정합)
+- **프론트**: Vercel(정적 SPA). `apiBase`가 배포 환경에서 `VITE_API_BASE_URL`로 백엔드 직접 호출
+- 상세·트러블슈팅: [server-ops.md](server-ops.md)
