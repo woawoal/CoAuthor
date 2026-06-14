@@ -212,7 +212,7 @@ function MyPage() {
 
                 {/* 내 소설 목록 바로가기 */}
                 <button className="mp-storylist-btn" onClick={() => navigate('/storylist')}>
-                    📖 내 소설 목록
+                    내 소설 목록
                 </button>
 
                 {/* 내 서재 */}
