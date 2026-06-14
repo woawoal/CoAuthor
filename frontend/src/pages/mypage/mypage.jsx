@@ -10,7 +10,6 @@ import TasteOnboarding from './TasteOnboarding';
 import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import './mypage.css';
-import LoadingVideo from '../../components/loadingVideo';
 import VideoPreviewModal from '../../components/videoPreviewModal';
 
 const WORK_GOAL_CHARS = 30000;
@@ -83,7 +82,6 @@ function MyPage() {
 
     const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
     const [loading, setLoading] = useState(true);
-    const [showLoading, setShowLoading] = useState(true);
 
     const VIDEO_AUTHORS = [
         { id: 1, name: '백야', path: '/assets/author1' },
@@ -176,11 +174,11 @@ function MyPage() {
 
     return (
         <div className="mp">
-            {showLoading && (
-                <LoadingVideo
-                    loading={loading}
-                    onFinish={() => setShowLoading(false)}
-                />
+            {loading && (
+                <div className="mp-loading-overlay">
+                    <div className="mp-spinner" />
+                    <span>내 서재 불러오는 중…</span>
+                </div>
             )}
 
             {/* 사이드바 */}
