@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getNovel } from '../../lib/chatApi';
+import { getNovel, generateNovel } from '../../lib/chatApi';
+import { toast } from '../../lib/toast';
 import { getSession, getWorld } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import LoadingVideo from '../../components/loadingVideo';
@@ -54,6 +55,7 @@ export default function ReadNovel() {
   const [activeChapter, setActiveChapter] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showLoading, setShowLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
 
   const chapterRefs = useRef([]);
 
@@ -101,6 +103,23 @@ export default function ReadNovel() {
     setActiveChapter(idx);
   };
 
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const fresh = await generateNovel(storyId);
+      setNovel(fresh);
+      if (!(fresh?.content || '').trim()) {
+        toast('대화가 짧아 변환할 내용이 부족해요. 이어쓰기로 대화를 더 진행해보세요.', 'info');
+      } else {
+        toast('소설로 변환했어요.', 'success');
+      }
+    } catch {
+      toast('소설 변환에 실패했어요. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   const handleExport = () => {
     if (!novel) return;
     const blob = new Blob([novel.content], { type: 'text/plain;charset=utf-8' });
@@ -124,6 +143,27 @@ export default function ReadNovel() {
   }
 
   const content = novel?.content ?? '';
+  if (!loading && novel && !content.trim()) {
+    return (
+      <div className="read-page">
+        <div className="read-empty">
+          <p>아직 변환된 소설 본문이 없어요.</p>
+          <p className="read-empty__sub">대화를 조금 더 진행하거나 다시 변환해보세요.</p>
+          <div className="read-empty__actions">
+            <button className="read-empty__btn read-empty__btn--primary" onClick={handleRegenerate} disabled={regenerating}>
+              {regenerating ? '변환 중…' : '다시 변환'}
+            </button>
+            <button className="read-empty__btn" onClick={() => navigate('/chat', { state: { chatId: storyId } })}>
+              이어쓰기
+            </button>
+            <button className="read-empty__btn" onClick={() => navigate('/storylist')}>
+              목록으로
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const chapters = parseChapters(content);
   const wordCount = content.replace(/\s+/g, '').length;
   const readingMins = Math.max(1, Math.ceil(wordCount / 350));

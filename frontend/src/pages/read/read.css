@@ -484,6 +484,34 @@
   background: color-mix(in srgb, var(--text-main) 6%, transparent);
 }
 
+.read-empty__sub {
+  margin: -8px 0 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.read-empty__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.read-empty__btn--primary {
+  border-color: var(--theme-color) !important;
+  color: var(--theme-color) !important;
+  font-weight: 600;
+}
+
+.read-empty__btn--primary:hover {
+  background: color-mix(in srgb, var(--theme-color) 10%, transparent) !important;
+}
+
+.read-empty__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .read-loading-video-wrap {
   position: fixed;
   inset: 0;

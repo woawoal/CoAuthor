@@ -776,7 +776,11 @@ export default function Chat() {
       setEnding(false);
       return;
     }
-    try { await generateNovel(chatId); } catch { /* 무시 */ }
+    try {
+      await generateNovel(chatId);
+    } catch {
+      toast('소설 변환에 실패했어요. 읽기 화면의 “다시 변환”으로 재시도할 수 있어요.', 'error');
+    }
 
     const elapsed = Date.now() - startedAt;
     const remainingDelay = Math.max(0, MIN_END_DURATION - elapsed);
