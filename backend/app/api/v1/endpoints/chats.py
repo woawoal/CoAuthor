@@ -85,10 +85,34 @@ async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
             if val:
                 parts.append(f"{label}: {val}")
     if chars:
-        lines = "\n".join(
-            f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in chars
-        )
-        parts.append(f"[등장인물]\n{lines}")
+        protagonist = next((c for c in chars if c.id == session.protagonist_id), None)
+        ai_chars = [c for c in chars if c.is_ai_controlled and c.id != session.protagonist_id]
+
+        if protagonist:
+            parts.append(
+                f"[사용자 조종 인물 — AI가 절대 대신 서술하지 않음]\n"
+                f"- {protagonist.name} ({getattr(protagonist.role, 'value', protagonist.role)}): {protagonist.personality}\n"
+                f"※ 이 인물의 행동·대사·내면은 사용자 입력이 전부입니다. AI는 이 인물의 관점으로 생각하거나 반응을 대신 쓰지 않습니다."
+            )
+        if ai_chars:
+            lines = "\n".join(
+                f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in ai_chars
+            )
+            names = ", ".join(c.name for c in ai_chars)
+            parts.append(
+                f"[AI 서술 인물 — 이 인물들의 반응·대사를 생성]\n{lines}\n"
+                f"※ speaker 필드에 이번 턴에 말하는 인물 이름({names} 중 하나)을 반드시 명시."
+            )
+        elif not protagonist and chars:
+            lines = "\n".join(
+                f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in chars
+            )
+            parts.append(f"[등장인물]\n{lines}")
+        directive_lines = [
+            f"- {c.name}: {c.prompt.strip()}" for c in chars if getattr(c, 'prompt', None) and c.prompt.strip()
+        ]
+        if directive_lines:
+            parts.append("[캐릭터 행동 지시문 — 반드시 따를 것]\n" + "\n".join(directive_lines))
     if session.story_summary:
         parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
     return "\n".join(parts)
@@ -214,6 +238,22 @@ async def sync_to_db(chat_id: str):
         logger.error("DB 동기화 실패 - chat_id=%s: %s", chat_id, e)
 
 # ── 메시지 빌더 ────────────────────────────────────────────
+def _extract_protagonist_name(world_context: str) -> str:
+    """world_context에서 [사용자 조종 인물] 이름 추출."""
+    import re
+    m = re.search(r'\[사용자 조종 인물[^\]]*\]\s*\n- ([^\s(]+)', world_context)
+    return m.group(1) if m else ""
+
+
+def _extract_ai_char_names(world_context: str) -> list[str]:
+    """world_context에서 [AI 서술 인물] 이름 목록 추출."""
+    import re
+    m = re.search(r'\[AI 서술 인물[^\]]*\]\n((?:- .+\n?)+)', world_context)
+    if not m:
+        return []
+    return re.findall(r'^- ([^\s(]+)', m.group(1), re.MULTILINE)
+
+
 def build_messages(
     persona_id: str,
     world_context: str,
@@ -228,13 +268,31 @@ def build_messages(
         world_context=world_context,
         mode=mode,
     )
-    system = "\n\n".join([
+
+    # 주인공(사용자 캐릭터)을 world_context에서 추출해 최상단 규칙으로 주입
+    protagonist_name = _extract_protagonist_name(world_context)
+    ai_char_names    = _extract_ai_char_names(world_context)
+    if protagonist_name:
+        ai_names_str = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
+        protagonist_rule = (
+            f"[최우선 규칙 — 역할 구분]\n"
+            f"이 채팅에서 사용자는 {protagonist_name} 역할을 직접 연기합니다.\n"
+            f"AI는 {ai_names_str}의 반응·대사만 생성합니다.\n"
+            f"절대 금지: {protagonist_name}의 내면·감정·생각을 narration에 서술하는 것.\n"
+            f"절대 금지: {protagonist_name}의 대사를 dialogue에 생성하는 것.\n"
+            f"절대 금지: speaker 필드에 {protagonist_name}을 넣는 것."
+        )
+    else:
+        protagonist_rule = ""
+
+    system = "\n\n".join(filter(None, [
         CRITICAL_OUTPUT_RULE,
+        protagonist_rule,
         OUTPUT_RULES,
         INPUT_RULES,
         WRITER_STYLE_RULE,
         author_rules,
-    ])
+    ]))
     messages: list[dict] = [{"role": "system", "content": system}]
 
     context_parts = []
@@ -268,11 +326,18 @@ def build_messages(
         messages.append({"role": role, "content": h["content"]})
 
     prefix = "\n\n".join(context_parts)
-    speaker_label = f"{speaker}: " if speaker else ""
+    ai_label = "·".join(ai_char_names) if ai_char_names else "AI 캐릭터"
+    prot_label = protagonist_name or "사용자 캐릭터"
+    speaker_prefix = f"{speaker}: " if speaker else ""
+    reaction_instruction = (
+        f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. 여기 있는 대사를 dialogue 필드에 절대 복사하지 말 것]\n"
+        f"{speaker_prefix}{user_input}\n\n"
+        f"[지시] 위 내용에 반응하는 {ai_label}의 새로운 대사·행동만 JSON으로 출력하세요."
+    )
     if prefix:
-        user_content = f"{prefix}\n\n사용자 입력: {speaker_label}{user_input}"
+        user_content = f"{prefix}\n\n{reaction_instruction}"
     else:
-        user_content = f"{speaker_label}{user_input}" if user_input else "(오프닝 서술을 시작해주세요)"
+        user_content = reaction_instruction if user_input else "(오프닝 서술을 시작해주세요)"
 
     messages.append({"role": "user", "content": user_content})
     return messages
@@ -328,37 +393,6 @@ async def send_message(
     return {"messageId": message_id, "status": "queued", "turn": turn}
 
 
-async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
-    """chat_id(세션)로 세계관·등장인물을 DB에서 조회해 프롬프트용 문자열로 구성."""
-    try:
-        sid = uuid.UUID(chat_id)
-    except (ValueError, TypeError):
-        return ""
-    session = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
-    if not session:
-        return ""
-    world = (await db.execute(select(World).where(World.id == session.world_id))).scalar_one_or_none()
-    chars = (await db.execute(select(Character).where(Character.world_id == session.world_id))).scalars().all()
-    parts = []
-    if world:
-        for label, val in (("제목", world.title), ("장르", world.genre),
-                           ("배경", world.setting), ("요약", world.description), ("규칙", world.rules)):
-            if val:
-                parts.append(f"{label}: {val}")
-    if chars:
-        lines = "\n".join(
-            f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in chars
-        )
-        parts.append(f"[등장인물]\n{lines}")
-        directive_lines = [
-            f"- {c.name}: {c.prompt.strip()}" for c in chars if c.prompt and c.prompt.strip()
-        ]
-        if directive_lines:
-            parts.append("[캐릭터 행동 지시문 — 반드시 따를 것]\n" + "\n".join(directive_lines))
-    # RAG-lite: 누적된 줄거리 요약(장기 기억)을 주입해 긴 대화에서도 일관성 유지
-    if session.story_summary:
-        parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
-    return "\n".join(parts)
 
 
 @router.get("/{chat_id}/stream")
@@ -376,8 +410,9 @@ async def stream_response(
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     context = await get_context(chat_id, db)
     # send_message가 이미 현재 사용자 메시지를 history에 저장했으므로 제거
-    if context["history"] and context["history"][-1].get("role") == "user":
-        context["history"] = context["history"][:-1]
+    # history는 lpush로 저장되어 최신순 정렬 → index 0이 가장 최근 메시지
+    if context["history"] and context["history"][0].get("role") == "user":
+        context["history"] = context["history"][1:]
     # 프론트가 world_context를 안 보내면 세션에서 세계관·등장인물을 직접 조회해 주입
     if not world_context:
         world_context = await _build_world_context(chat_id, db)
@@ -435,6 +470,7 @@ async def stream_response(
 
             parsed = parse_ai_response(raw)
             narration     = parsed["narration"]
+            speaker       = parsed.get("speaker", "")
             dialogue      = parsed["dialogue"]
             state_changes = parsed["state_changes"]
             internal_note = parsed["internal_note"]
@@ -526,14 +562,15 @@ async def stream_response(
             # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
             reply_payload = json.dumps(
                 {
-                    "messageId":    message_id,
-                    "narration":    narration,
-                    "dialogue":     dialogue,
+                    "messageId":     message_id,
+                    "narration":     narration,
+                    "speaker":       speaker,
+                    "dialogue":      dialogue,
                     "state_changes": state_changes,
-                    "turn":         turn,
-                    "story_phase":  new_phase,
-                    "memories":     relevant_memories,
-                    "consistency":  consistency_result,
+                    "turn":          turn,
+                    "story_phase":   new_phase,
+                    "memories":      relevant_memories,
+                    "consistency":   consistency_result,
                 },
                 ensure_ascii=False,
             )

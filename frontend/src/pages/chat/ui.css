@@ -952,6 +952,9 @@
   color: var(--text-muted);
   padding-top: 1px;
 }
+.world-info-card--help .world-info-card__label {
+  width: 64px;
+}
 
 .world-info-card__chars {
   margin-top: 6px;

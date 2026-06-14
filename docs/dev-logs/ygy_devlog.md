@@ -2,6 +2,130 @@
 
 ---
 
+## 2026-06-13
+
+### 작업 내용
+
+#### 1. 채팅 미러링 버그 수정
+
+**문제**: AI가 사용자 입력을 그대로 반복하는 미러링 현상 발생.
+
+**원인**: Redis는 `lpush`로 저장하므로 history가 **최신순** 정렬(index 0 = 가장 최근). 그런데 코드가 `history[-1]`(가장 오래된 메시지)을 체크해 현재 사용자 메시지 제거를 시도 → 제거 실패 → 유저 메시지가 history 안에도 남고 `user_content`에도 한 번 더 붙어 LLM이 동일한 user 메시지를 두 번 연속으로 보게 됨 → 미러링 발생.
+
+**수정** (`chats.py`):
+```python
+# 수정 전 — history[-1]은 가장 오래된 메시지
+if context["history"] and context["history"][-1].get("role") == "user":
+    context["history"] = context["history"][:-1]
+
+# 수정 후 — history[0]이 가장 최근(현재 유저 메시지)
+if context["history"] and context["history"][0].get("role") == "user":
+    context["history"] = context["history"][1:]
+```
+
+---
+
+#### 2. 등장인물 미등장 버그 수정
+
+**문제**: 세계관에 등록한 등장인물들이 소설 채팅에서 등장하지 않음.
+
+**원인**: `_COMMON_STYLE_RULE`에 "새 인물 임의 추가 최소화"라는 규칙만 있었고, 세계관에 이미 등록된 인물과 미등록 새 인물을 구분하지 않았음 → AI가 등록된 등장인물도 "아직 안 나온 새 인물"로 판단해 등장 회피.
+
+**수정** (`personas.py`):
+- `_COMMON_STYLE_RULE`: "새 인물" → "세계관에 없는 새 인물"로 한정 + 등록 인물은 자연스럽게 등장시킨다 명시
+- `get_author_prompt` author 모드: `[등장인물 등장 규칙]` 섹션 추가
+
+```python
+# _COMMON_STYLE_RULE 변경
+"세계관에 없는 새 인물·사건·장소 임의 추가 최소화함. "
+"단, [세계관 정보]의 [등장인물]에 등록된 인물은 자연스러운 흐름에서 적극 등장시킴."
+```
+
+---
+
+#### 3. 주인공(사용자 캐릭터) 내면 서술 + 대사 생성 금지
+
+**문제**: AI가 주인공(사용자가 직접 연기하는 캐릭터)의 내면 독백, 감정, 대사를 대신 써버리는 문제.
+
+**원인**: world_context의 protagonist 정보가 프롬프트 **맨 뒤** `[세계관 정보]` 안에 묻혀 있었고, 앞에 있는 "author mode = 소설 작가로서 모든 인물 서술 가능" 스타일 규칙이 더 강하게 작동.
+
+**수정 내용**
+
+`_build_world_context()` (`chats.py`): `session.protagonist_id` + `Character.is_ai_controlled`로 인물을 분리해 world_context에 구분 주입.
+
+```
+[사용자 조종 인물 — AI가 절대 대신 서술하지 않음]
+- 한서윤 (protagonist): ...
+※ 이 인물의 행동·대사·내면은 사용자 입력이 전부입니다.
+
+[AI 서술 인물 — 이 인물들의 반응·대사를 생성]
+- 강지후 (protagonist): ...
+- 채린 (supporting): ...
+※ speaker 필드에 말하는 인물 이름을 반드시 명시.
+```
+
+`build_messages()` (`chats.py`): world_context에서 주인공 이름을 추출해 **프롬프트 최상단**(`CRITICAL_OUTPUT_RULE` 바로 다음)에 `[최우선 규칙 — 역할 구분]` 블록을 동적으로 주입. 단순히 world_context 안에 넣는 것보다 LLM이 훨씬 강하게 따름.
+
+```python
+def _extract_protagonist_name(world_context: str) -> str:
+    """world_context에서 [사용자 조종 인물] 이름 추출."""
+
+def _extract_ai_char_names(world_context: str) -> list[str]:
+    """world_context에서 [AI 서술 인물] 이름 목록 추출."""
+```
+
+주입되는 규칙 (예시):
+```
+[최우선 규칙 — 역할 구분]
+이 채팅에서 사용자는 한서윤 역할을 직접 연기합니다.
+AI는 강지후·채린의 반응·대사만 생성합니다.
+절대 금지: 한서윤의 내면·감정·생각을 narration에 서술하는 것.
+절대 금지: 한서윤의 대사를 dialogue에 생성하는 것.
+절대 금지: speaker 필드에 한서윤을 넣는 것.
+```
+
+---
+
+#### 4. 대화 speaker 표시 오류 수정
+
+**문제**: 채린이 말하는 장면에서도 대화 뱃지가 "강지후"로 고정 표시됨.
+
+**원인**: JSON 스키마에 `speaker` 필드가 없어 AI가 누가 말하는지 응답에 포함하지 않음 → 프론트가 `dbCharacters.find(c => c.role !== 'protagonist')?.name`으로 첫 번째 비주인공 이름을 모든 AI 대화에 고정 표시.
+
+**수정**:
+- `story.py OUTPUT_RULES`에 `speaker` 필드 추가
+- `parse_ai_response` (`prompts/__init__.py`): `speaker` 추출
+- SSE payload (`chats.py`): `speaker` 포함
+- 프론트 `CharMessage` (`ui.jsx`): `msg.speaker` 우선 사용
+
+```javascript
+// ui.jsx
+const charName = msg.speaker || characterName || msg.name;
+```
+
+**수정 파일**
+- `backend/app/api/v1/endpoints/chats.py` — 미러링 fix, world context 분리, protagonist 최우선 규칙 주입, speaker 추출 + SSE payload
+- `backend/app/core/personas.py` — `_COMMON_STYLE_RULE` 등록 인물 구분, author 모드 등장인물 등장 규칙 추가
+- `backend/app/prompts/story.py` — `OUTPUT_RULES` speaker 필드 추가, narration 주인공 서술 금지 명시
+- `backend/app/prompts/__init__.py` — `parse_ai_response` speaker 추출
+- `frontend/src/pages/chat/ui.jsx` — speaker 수신 + 우선 표시
+
+---
+
+### 남은 작업
+
+- [x] 채팅 미러링 버그 수정
+- [x] 등장인물 미등장 버그 수정
+- [x] 주인공 내면/대사 AI 서술 금지
+- [x] 대화 speaker 표시 오류 수정
+- [ ] personas.py few-shot 수정 (사용자 시나리오 기반)
+- [ ] personas.py baekya 신체반응 금지 원칙 추가
+- [ ] F-PR-01 사용자 프로필/취향 스키마 + 엔드포인트 (MBTI·장르·취미)
+- [ ] F-PR-03 개인화 프롬프트 — 취향 기반 추천·코칭
+- [ ] 삽화 생성 테스트 (소설 완성 후)
+
+---
+
 ## 2026-06-12
 
 ### 작업 내용

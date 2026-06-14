@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     LLM_KEY_COOLDOWN_SEC: int = 600
     LLM_MAX_TRANSIENT_RETRY: int = 2
 
+    # 삽화 생성 (fal.ai — FLUX)
+    FAL_KEY: str = ""
+
     # ELEVENLABS
     ELEVENLABS_API_KEY_1: str = ""
     ELEVENLABS_API_KEY_2: str = ""
