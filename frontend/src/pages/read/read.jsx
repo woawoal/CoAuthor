@@ -165,6 +165,7 @@ export default function ReadNovel() {
     );
   }
   const chapters = parseChapters(content);
+  const singleMode = chapters.length <= 1;   // 장이 하나뿐(단락 ≤5)이면 장 구분/목차 숨기고 본문만
   const wordCount = content.replace(/\s+/g, '').length;
   const readingMins = Math.max(1, Math.ceil(wordCount / 350));
 
@@ -227,19 +228,23 @@ export default function ReadNovel() {
 
       <div className="read-layout">
         <aside className="read-sidebar">
-          <div className="read-sidebar__label">목차</div>
-          {chapters.map((ch, i) => (
-            <div
-              key={i}
-              className={`read-toc-item${activeChapter === i ? ' read-toc-item--active' : ''}`}
-              onClick={() => scrollToChapter(i)}
-            >
-              <span className="read-toc-num">{i + 1}</span>
-              <span className="read-toc-text">{ch.title}</span>
-            </div>
-          ))}
+          {!singleMode && (
+            <>
+              <div className="read-sidebar__label">목차</div>
+              {chapters.map((ch, i) => (
+                <div
+                  key={i}
+                  className={`read-toc-item${activeChapter === i ? ' read-toc-item--active' : ''}`}
+                  onClick={() => scrollToChapter(i)}
+                >
+                  <span className="read-toc-num">{i + 1}</span>
+                  <span className="read-toc-text">{ch.title}</span>
+                </div>
+              ))}
 
-          <div className="read-sidebar__divider" />
+              <div className="read-sidebar__divider" />
+            </>
+          )}
 
           <div className="read-sidebar__label">작품 정보</div>
           <div className="read-meta-row">
@@ -290,25 +295,38 @@ export default function ReadNovel() {
             <div className="read-progress-label">{progress}% 읽음</div>
           </div>
 
-          {chapters.map((ch, i) => (
+          {singleMode ? (
             <div
-              key={i}
-              className="read-chapter"
-              id={`ch-${i}`}
-              ref={el => { chapterRefs.current[i] = el; }}
+              className="read-chapter read-chapter--single"
+              ref={el => { chapterRefs.current[0] = el; }}
             >
-              <div className="read-chapter__header">
-                <div className="read-chapter__num">Chapter {String(i + 1).padStart(2, '0')}</div>
-                <h2 className="read-chapter__title">{ch.title}</h2>
-                <div className="read-chapter__divider" />
-              </div>
               <div className="read-chapter__body" style={{ fontSize: `${fontSize}px` }}>
-                {ch.paragraphs.map((para, j) => (
+                {(chapters[0]?.paragraphs ?? []).map((para, j) => (
                   <p key={j}>{para}</p>
                 ))}
               </div>
             </div>
-          ))}
+          ) : (
+            chapters.map((ch, i) => (
+              <div
+                key={i}
+                className="read-chapter"
+                id={`ch-${i}`}
+                ref={el => { chapterRefs.current[i] = el; }}
+              >
+                <div className="read-chapter__header">
+                  <div className="read-chapter__num">Chapter {String(i + 1).padStart(2, '0')}</div>
+                  <h2 className="read-chapter__title">{ch.title}</h2>
+                  <div className="read-chapter__divider" />
+                </div>
+                <div className="read-chapter__body" style={{ fontSize: `${fontSize}px` }}>
+                  {ch.paragraphs.map((para, j) => (
+                    <p key={j}>{para}</p>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
 
           <div className="read-end-card">
             <div className="read-end-symbol">— 끝 —</div>

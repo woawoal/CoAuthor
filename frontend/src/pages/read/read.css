@@ -512,6 +512,10 @@
   cursor: default;
 }
 
+.read-chapter--single {
+  margin-top: 32px;
+}
+
 .read-loading-video-wrap {
   position: fixed;
   inset: 0;
