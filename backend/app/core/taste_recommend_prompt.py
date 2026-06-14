@@ -1,4 +1,5 @@
 """취향저격 AI 추천 프롬프트 빌더"""
+from __future__ import annotations
 
 TASTE_RECOMMEND_SYSTEM = """\
 너는 사용자의 소설 집필을 돕는 AI 작가 보조다.
@@ -16,9 +17,11 @@ TASTE_RECOMMEND_SYSTEM = """\
 - 대사는 1~2문장 이내로 작성하라.
 - 현재 장면의 감정선을 유지하라.
 
+{author_section}
+
 [요청]
 위 정보를 바탕으로, 다음에 이어질 수 있는 문장을 3가지 방향으로 추천해라.
-각 추천은 서로 다른 감정이나 분위기를 살려야 한다.
+각 추천은 서로 다른 방향이어야 하며, 반드시 [작가 추천 방향] 목록 안에서 골라야 한다.
 사용자 취향을 반영하되 현재 장면의 흐름을 유지하라.
 
 [출력 형식]
@@ -26,7 +29,7 @@ TASTE_RECOMMEND_SYSTEM = """\
 {{
   "recommendations": [
     {{
-      "type": "추천 방향 레이블 (예: 설렘 강화, 긴장감 고조, 관계 진전)",
+      "type": "[작가 추천 방향] 목록 중 하나를 그대로 사용",
       "narration": "말풍선 밖에 들어갈 묘사 (없으면 빈 문자열)",
       "dialogue": "말풍선 안에 들어갈 대사 (없으면 빈 문자열)",
       "reason": "이 추천을 선택한 이유를 한 줄로"
@@ -56,6 +59,19 @@ def build_novel_section(world_context: str, story_summary: str) -> str:
     if len(lines) == 1:
         lines.append("소설 정보 없음")
     return "\n".join(lines)
+
+
+def build_author_taste_section(author_id: str) -> str:
+    from app.core.personas import _AUTHOR_PERSONALITY
+    author = _AUTHOR_PERSONALITY.get(author_id)
+    if not author:
+        return ""
+    labels = ", ".join(author.get("taste_type_labels", []))
+    return (
+        f"[담당 작가]\n{author['name']} ({author['genre']} 전문)\n\n"
+        f"[작가 추천 방향]\n"
+        f"아래 방향 중에서만 type을 선택한다:\n{labels}"
+    )
 
 
 def build_dialogue_section(dialogues: list[dict]) -> str:
