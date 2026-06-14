@@ -40,6 +40,15 @@ RECENT_DIALOGUE_LIMIT = 20   # Redis에 유지하는 최근 대화 수
 PROMPT_HISTORY_LIMIT = 10    # 프롬프트에 verbatim으로 넣는 최근 대화 수 (그 이전은 요약+RAG가 커버 → 토큰 절약)
 DB_SYNC_INTERVAL = 5
 
+PHASE_ORDER = ["도입부", "전개", "절정", "결말"]
+
+def _advance_phase(current: str, suggested: str) -> str:
+    """LLM이 제안한 phase가 현재보다 앞이면 전진, 뒤(역행)면 현재 유지."""
+    try:
+        return PHASE_ORDER[max(PHASE_ORDER.index(current), PHASE_ORDER.index(suggested))]
+    except ValueError:
+        return current or "도입부"
+
 
 # ── Redis 키 규칙 ──────────────────────────────────────────
 def key_history(chat_id: str) -> str:
@@ -90,6 +99,9 @@ def key_turn(chat_id: str) -> str:
 def key_memos(chat_id: str) -> str:
     return f"session:{chat_id}:memos"
 
+def key_phase(chat_id: str) -> str:
+    return f"session:{chat_id}:phase"
+
 async def _read_memos(chat_id: str) -> list:
     """memos 키를 저장 방식에 관계없이 안전하게 list로 읽는다.
     save_memos(PUT)는 SET(JSON 문자열), 옛 add_memo(POST)는 Redis LIST로 저장하므로
@@ -100,7 +112,7 @@ async def _read_memos(chat_id: str) -> list:
             return await redis_client.lrange(k, 0, -1)
         raw = await redis_client.get(k)
         return json.loads(raw) if raw else []
-    except Exception as e:  # 메모 읽기 실패는 대화/조회를 막지 않는다
+    except Exception as e:
         logger.warning("memos 읽기 실패(빈 목록) - chat_id=%s: %s", chat_id, e)
         return []
 
@@ -157,12 +169,14 @@ async def get_context(chat_id: str, db: AsyncSession) -> dict:
 
     history = [json.loads(item) for item in history_raw]
     memos = await _read_memos(chat_id)
+    phase = await redis_client.get(key_phase(chat_id)) or "도입부"
     return {
         "history":    history,
         "state":      state,
         "characters": characters,
         "summary":    summary,
         "memos":      memos,
+        "phase":      phase,
     }
 
 async def init_context_if_empty(chat_id: str, state: str, characters: str, summary: str):
@@ -236,6 +250,8 @@ def build_messages(
         context_parts.append(f"[관련 기억] (과거 대화에서 검색됨, 일관성 유지에 활용)\n{mem_lines}")
     if context["state"]:
         context_parts.append(f"[현재 상태]\n{context['state']}")
+    if context.get("phase"):
+        context_parts.append(f"[현재 스토리 단계]\n{context['phase']}\n(story_phase는 이 단계 이상만 출력 가능)")
 
     # @등장인물: 이번 턴을 그 인물의 시점·서사로 전개하도록 작가 AI에 지시
     if speaker:
@@ -334,6 +350,11 @@ async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
             f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in chars
         )
         parts.append(f"[등장인물]\n{lines}")
+        directive_lines = [
+            f"- {c.name}: {c.prompt.strip()}" for c in chars if c.prompt and c.prompt.strip()
+        ]
+        if directive_lines:
+            parts.append("[캐릭터 행동 지시문 — 반드시 따를 것]\n" + "\n".join(directive_lines))
     # RAG-lite: 누적된 줄거리 요약(장기 기억)을 주입해 긴 대화에서도 일관성 유지
     if session.story_summary:
         parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
@@ -417,10 +438,18 @@ async def stream_response(
             dialogue      = parsed["dialogue"]
             state_changes = parsed["state_changes"]
             internal_note = parsed["internal_note"]
+            suggested_phase = parsed.get("story_phase", "")
+
+            # story_phase: LLM 제안을 역행 방지 로직으로 적용
+            current_phase = await redis_client.get(key_phase(chat_id)) or "도입부"
+            new_phase = _advance_phase(current_phase, suggested_phase) if suggested_phase else current_phase
+            if new_phase != current_phase:
+                await redis_client.set(key_phase(chat_id), new_phase)
+                logger.info("스토리 단계 전환 - chat_id=%s: %s → %s", chat_id, current_phase, new_phase)
 
             logger.info(
-                "PARSED │ narration=%s │ dialogue=%s │ state=%s │ note=%s",
-                narration[:60], dialogue[:60], state_changes, internal_note,
+                "PARSED │ narration=%s │ dialogue=%s │ state=%s │ phase=%s │ note=%s",
+                narration[:60], dialogue[:60], state_changes, new_phase, internal_note,
             )
 
             # 상태 갱신: internal_note를 현재 서사 상태로 저장
@@ -496,8 +525,16 @@ async def stream_response(
 
             # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
             reply_payload = json.dumps(
-                {"messageId": message_id, "narration": narration, "dialogue": dialogue,
-                 "memories": relevant_memories, "consistency": consistency_result},
+                {
+                    "messageId":    message_id,
+                    "narration":    narration,
+                    "dialogue":     dialogue,
+                    "state_changes": state_changes,
+                    "turn":         turn,
+                    "story_phase":  new_phase,
+                    "memories":     relevant_memories,
+                    "consistency":  consistency_result,
+                },
                 ensure_ascii=False,
             )
             yield f"event: reply\ndata: {reply_payload}\n\n"

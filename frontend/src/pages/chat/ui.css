@@ -1587,6 +1587,30 @@
 }
 
 /* ── 취향저격 추천 카드 ──────────────────────────────────────── */
+.author-msg--taste-rec-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.taste-rec__card {
+  position: relative;
+}
+
+.taste-rec__type-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--theme-color, #c084fc);
+  background: color-mix(in srgb, var(--theme-color, #c084fc) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color, #c084fc) 35%, transparent);
+  border-radius: 20px;
+  padding: 2px 10px;
+  margin-bottom: 6px;
+  letter-spacing: 0.03em;
+}
+
 .author-msg--taste-rec {
   background: linear-gradient(145deg,
     color-mix(in srgb, var(--theme-color, #c084fc) 12%, transparent) 0%,

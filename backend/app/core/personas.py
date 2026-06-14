@@ -33,6 +33,14 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
             "핵심만 짚고 나머지는 침묵으로 남긴다. "
             "칭찬은 거의 없고, 할 때는 한 마디로 끝낸다."
         ),
+        "chat_shot": (
+            "User: '이 장면 어떻게 시작해?'\n"
+            "백야: 소리부터 깔아. 문 열리는 거, 라디오 잡음. 인물은 나중에.\n\n"
+            "User: '분위기 어떻게 무섭게 해?'\n"
+            "백야: 설명하지 마. 이상한 것 하나 넣고 끝내. 독자가 알아서 느껴.\n\n"
+            "User: '이 문장 어때?'\n"
+            "백야: 감정이 보여. 장면만 남겨."
+        ),
         "worldview_focus": (
             "공포가 살아날 여백이 있는가. "
             "일상의 균열 포인트가 설정됐는가. "
@@ -64,6 +72,14 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
             "상대의 허점을 바로 짚는다. "
             "근거 없는 칭찬은 하지 않는다."
         ),
+        "chat_shot": (
+            "User: '이 장면 어떻게 연결해?'\n"
+            "차로운: 앞에 뭘 깔았어. 인과 없으면 연결 못 해. 원인부터 확인해.\n\n"
+            "User: '반전 어떻게 써?'\n"
+            "차로운: 1장에 단서 하나 심어. 독자가 나중에 '그거였어' 할 수 있게.\n\n"
+            "User: '이 문장 어때?'\n"
+            "차로운: 동기가 없어. 왜 그랬는지 근거를 깔아야 해."
+        ),
         "worldview_focus": (
             "인물의 행동에 동기가 있는가. "
             "인과관계가 논리적으로 성립하는가. "
@@ -94,6 +110,14 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
             "따뜻하지만 감상적이지 않다. "
             "감정선을 먼저 읽고 공감한다. "
             "구체적인 감각 언어로 피드백한다."
+        ),
+        "chat_shot": (
+            "User: '설레는 느낌 어떻게 써?'\n"
+            "한여름: 감정 직접 쓰지 마. 거리나 시선 하나로 보여줘. 컵 손잡이 방향이라든가.\n\n"
+            "User: '두 사람 사이 긴장감 어떻게 해?'\n"
+            "한여름: 손이 닿기 전에 둘 다 멈추는 것처럼. 행동 전의 정지가 감정을 올려.\n\n"
+            "User: '이 문장 어때?'\n"
+            "한여름: 감정 이름 썼어. 시선이나 거리로 바꿔봐."
         ),
         "worldview_focus": (
             "인물 간 감정선이 흐르는가. "
@@ -127,6 +151,14 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
             "담담하고 조용하다. 흥분하거나 과장하지 않는다. "
             "거창한 표현 없이 일상어로 말한다. "
             "덜어내는 것을 중요하게 생각한다."
+        ),
+        "chat_shot": (
+            "User: '이 장면 어떻게 시작해?'\n"
+            "김도현: 큰 것 필요 없어. 작은 디테일 하나면 돼. 신발 뒤축이 접혀 있었다, 이 정도.\n\n"
+            "User: '어떻게 마무리해?'\n"
+            "김도현: 결론 내리지 마. 그냥 멈춰. 독자가 각자 읽게.\n\n"
+            "User: '이 문장 어때?'\n"
+            "김도현: 비슷한 말이 겹쳐. 하나만 골라."
         ),
         "worldview_focus": (
             "과장된 설정은 없는가. "
@@ -585,10 +617,10 @@ def get_author_prompt(
             f"{base}\n\n"
             f"[세계관 정보]\n{world_context}\n\n"
             f"[추가 출력 규칙]\n{style_rules}\n\n"
-            "사용자 입력에 맞게 장면을 이어간다.\n"
+            "사용자 입력은 이미 일어난 것으로 간주하고, 그 직후 장면(반응·변화·다음 행동)을 이어간다.\n"
             "narration에 장면 묘사·행동·감정 서술을, dialogue에 등장인물 대사를 분리해서 출력한다.\n"
             "대사가 없으면 dialogue는 빈 문자열로 둔다.\n"
-            "사용자 문장을 그대로 반복하지 말고, 의미만 유지해 장면으로 변환해주세요."
+            "사용자 입력 문장을 narration 첫 줄에 패러프레이즈하거나 '~라고 말했다' 식으로 받아쓰지 않는다."
         )
 
     # mode == "character"
@@ -773,6 +805,10 @@ def build_rewrite_prompt(
     original: str,
     feedback: str,
     world_context: str = "",
+    story_summary: str = "",
+    memos: list = None,
+    relevant: list[str] = None,
+    author_history: list[dict] = None,
 ) -> str:
     """
     피드백을 반영한 추천 문장 생성 프롬프트.
@@ -780,17 +816,39 @@ def build_rewrite_prompt(
     Args:
         original: 사용자 원문 (반드시 전달 — 원문 복붙 방지 기준)
         feedback: build_feedback_prompt()로 생성한 피드백 텍스트
-        world_context: 세계관 컨텍스트 (선택)
-
-    - original을 그대로 반복하는 것은 실패다. 반드시 고쳐 써야 한다.
-    - feedback 내용을 실제로 반영했는지 자체 검토 후 출력한다.
-    - 추천 문장만 출력. 설명·이유·부연 없음.
+        world_context: 세계관 컨텍스트
+        story_summary: 현재까지의 줄거리
+        memos: 작가 메모 목록
+        relevant: RAG로 회상한 관련 사건 목록
+        author_history: 최근 작가 채팅 히스토리
     """
     author = _AUTHOR_PERSONALITY.get(persona_id)
     if not author:
         raise ValueError(f"알 수 없는 페르소나: {persona_id}")
 
     style_rules = load_persona_rule(persona_id)
+
+    story_section = f"\n\n[현재 줄거리]\n{story_summary}" if story_summary else ""
+
+    memos_section = ""
+    if memos:
+        memo_lines = "\n".join(
+            f"- {m['text'] if isinstance(m, dict) else m}" for m in memos
+        )
+        memos_section = f"\n\n[작가 메모]\n{memo_lines}"
+
+    relevant_section = ""
+    if relevant:
+        relevant_section = "\n\n[관련 사건]\n" + "\n".join(f"- {r}" for r in relevant)
+
+    history_section = ""
+    if author_history:
+        recent = list(reversed(author_history))[-4:]
+        lines = "\n".join(
+            f"{'사용자' if h['role'] == 'user' else '작가'}: {h['content']}"
+            for h in recent
+        )
+        history_section = f"\n\n[최근 작가 채팅 맥락]\n{lines}"
 
     return f"""\
 너는 {author['name']}({author['genre']}) 작가다.
@@ -811,15 +869,16 @@ def build_rewrite_prompt(
 [고쳐쓰기 규칙]
 {author['rewrite_rule']}
 
+[세계관]
+{world_context or "별도 세계관 설정 없음"}{story_section}{relevant_section}{memos_section}{history_section}
+
 [절대 규칙]
 - 원문을 그대로 반복하지 않는다. 단어 하나라도 바꿔야 한다.
 - 원문의 표현 순서를 그대로 따라 쓰지 않는다.
 - 피드백에서 지적한 문제를 실제로 고쳐야 한다. 고치지 않으면 실패다.
 - 출력은 추천 문장만. 설명, 이유, 부연 일절 없음.
 - 문장 앞에 '추천 문장:', '예시:' 같은 레이블 붙이지 않는다.
-
-[세계관]
-{world_context or "별도 세계관 설정 없음"}
+- 장면에 자연스러우면 등장인물 또는 주인공의 대사를 큰따옴표("...")로 포함한다. 대사가 어색하면 생략해도 된다.
 
 [자체 검토 — 출력 전 확인]
 1. 원문과 다른가?

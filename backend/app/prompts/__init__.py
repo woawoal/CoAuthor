@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
 
 # story.py 에서 re-export — 기존 import 경로 호환 유지
 from app.prompts.story import (  # noqa: F401
@@ -11,34 +10,7 @@ from app.prompts.story import (  # noqa: F401
     OUTPUT_RULES,
     WRITER_STYLE_RULE,
     CONSISTENCY_SYSTEM,
-    ASSISTANT_SUGGEST_SYSTEM,
 )
-
-
-@dataclass
-class WorldInfo:
-    title: str = ""
-    description: str = ""
-    setting: str = ""
-    rules: str = ""
-
-
-@dataclass
-class CharacterInfo:
-    name: str = ""
-    role: str = ""
-    personality: str = ""
-    speech_style: str = ""
-    secret: str = ""
-
-
-@dataclass
-class SessionState:
-    location: str = ""
-    time_of_day: str = ""
-    current_event: str = ""
-    trust_level: int = 0
-    story_phase: str = "도입부"
 
 
 SUGGEST_NEXT_SYSTEM = """\
@@ -86,6 +58,7 @@ def parse_ai_response(raw: str) -> dict:
             "narration":     data.get("narration") or "",
             "dialogue":      data.get("dialogue") or "",
             "state_changes": data.get("state_changes") or _default_state,
+            "story_phase":   data.get("story_phase") or "",
             "internal_note": data.get("internal_note") or "",
         }
     except (json.JSONDecodeError, AttributeError):
@@ -95,7 +68,7 @@ def parse_ai_response(raw: str) -> dict:
     def _grab(field: str) -> str:
         m = re.search(
             rf'"{field}"\s*:\s*"?(.*?)"?\s*'
-            rf'(?=,\s*\n?\s*"(?:narration|dialogue|state_changes|internal_note)"|\n?\s*\}})',
+            rf'(?=,\s*\n?\s*"(?:narration|dialogue|state_changes|story_phase|internal_note)"|\n?\s*\}})',
             cleaned, re.DOTALL,
         )
         return m.group(1).strip().strip('"').rstrip(",").strip() if m else ""
@@ -106,6 +79,7 @@ def parse_ai_response(raw: str) -> dict:
             "narration":     narration,
             "dialogue":      dialogue,
             "state_changes": _default_state,
+            "story_phase":   "",
             "internal_note": "",
         }
     # 최후: 원문 전체를 narration으로
@@ -113,6 +87,7 @@ def parse_ai_response(raw: str) -> dict:
         "narration":     raw,
         "dialogue":      "",
         "state_changes": _default_state,
+        "story_phase":   "",
         "internal_note": "",
     }
 
@@ -246,83 +221,5 @@ VOICE_PROFILE_SYSTEM = """\
   "summary_for_user": "사용자에게 보여줄 수 있는 말투 요약 문장",
   "summary_for_prompt": "생성 프롬프트에 넣을 짧은 말투 요약"
 }
-"""
-
-
-def build_voice_suggest_prompt(
-    voice_profile: dict,
-    scene_summary: str,
-    npc_dialogue: str,
-    genre: str = "",
-    relationship_summary: str = "",
-    character_profile: str = "",
-    user_intent: str = "",
-    user_emotion: str = "",
-    constraints: str = "",
-) -> str:
-    """Voice Mirroring 기반 사용자 대사 추천 프롬프트 조합 (5개 후보)."""
-    summary_for_prompt = voice_profile.get("summary_for_prompt", "")
-    guidelines = voice_profile.get("generation_guidelines", [])
-    guidelines_str = "\n".join(f"- {g}" for g in guidelines)
-    constraints_line = f"\n- 제약 사항: {constraints}" if constraints else ""
-
-    return f"""\
-당신은 AI 협업 소설 서비스의 사용자 다음 대사 추천기입니다.
-
-역할:
-현재 장면에서 등장인물이 사용자에게 한 말에 이어, 사용자가 직접 말할 수 있는 다음 대사 후보를 생성합니다.
-
-중요:
-당신은 등장인물이 아닙니다.
-당신은 작가 서술자가 아닙니다.
-당신은 사용자의 다음 대사 후보만 제안합니다.
-
-[현재 장면]
-장르: {genre or "미정"}
-장면 요약: {scene_summary or "미입력"}
-관계: {relationship_summary or "미입력"}
-등장인물 정보: {character_profile or "미입력"}
-등장인물이 방금 한 말: {npc_dialogue}
-
-[사용자 의도 및 감정]
-의도: {user_intent or "미입력"}
-현재 감정: {user_emotion or "미입력"}
-
-[사용자 말투 요약]
-{summary_for_prompt or "프로파일 없음"}
-
-[말투 적용 규칙]
-{guidelines_str}
-
-절대 금지:
-- 사용자 샘플 문장 그대로 복사
-- 등장인물의 대사를 대신 생성
-- 소설 지문, 행동 묘사, 내면 독백 출력
-- 큰따옴표 붙이기
-- 같은 의미의 문장을 표현만 바꿔 반복
-- 사용자가 쓰지 않는 유행어, 밈, 이모지 추가
-- 말투를 과장해서 흉내 내기
-- 장면 감정과 맞지 않는 농담 추가
-- 관계 단계에 맞지 않는 고백·사과·화해를 갑자기 생성{constraints_line}
-
-대사 작성 규칙:
-- 한 후보는 1~2문장으로 작성
-- 실제 입 밖에 낼 수 있는 말만 작성, 대화체 우선
-- 말투 특징 70% 반영, 장면 맥락 30% 반영
-- 말투 특징이 장면과 충돌하면 장면 감정 우선
-- 이모지는 voice_profile에서 허용될 때만 사용
-
-반드시 valid JSON만 출력:
-{{
-  "suggestions": [
-    {{"type": "honest_response",   "label": "솔직하게 답하기",    "text": "", "emotion": "", "intensity": 1, "why": ""}},
-    {{"type": "soft_response",     "label": "부드럽게 넘기기",    "text": "", "emotion": "", "intensity": 1, "why": ""}},
-    {{"type": "evasive_response",  "label": "회피하거나 농담하기", "text": "", "emotion": "", "intensity": 1, "why": ""}},
-    {{"type": "emotional_response","label": "감정 드러내기",      "text": "", "emotion": "", "intensity": 1, "why": ""}},
-    {{"type": "bold_response",     "label": "한 발 다가가기",     "text": "", "emotion": "", "intensity": 1, "why": ""}}
-  ],
-  "applied_voice_features": [],
-  "safety_note": ""
-}}
 """
 

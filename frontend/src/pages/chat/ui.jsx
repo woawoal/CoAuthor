@@ -38,7 +38,6 @@ const AUTHOR_RECOMMEND_GREETING = {
   kimdohyeon: '어떤 추천이 필요해요?',
 };
 
-const NARRATION_KEYWORDS = ['지문', '대사', '문장', '씬', '장면', '선택지', '다음', '행동', '추천'];
 
 const AUTHOR_MAP = {
   1: { characterId: 'baekya', displayName: '백야', image: '/assets/author1/author1.png' },
@@ -61,6 +60,11 @@ function buildWorldContext(world, characters) {
       const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
       lines.push(`- ${c.name} (${roleKo})${c.personality ? ': ' + c.personality : ''}`);
     });
+    const directives = characters.filter(c => c.prompt && c.prompt.trim());
+    if (directives.length > 0) {
+      lines.push('[캐릭터 행동 지시문 — 반드시 따를 것]');
+      directives.forEach(c => lines.push(`- ${c.name}: ${c.prompt.trim()}`));
+    }
   }
   return lines.join('\n');
 }
@@ -208,6 +212,7 @@ export default function Chat() {
   const [loadingHistory, setLoadingHistory] = useState(!!chatId && chatId !== 'room_001');   // 채팅 기록 로딩 표시
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);   // 💡 입력 추천(말투 기반 voice 포함)
   const [speaker, setSpeaker] = useState(null);       // @등장인물: 이번 대사를 말하는 인물(없으면 주인공)
   const [mentionOpen, setMentionOpen] = useState(false);   // @ 멘션 드롭다운 표시 여부
   const [mentionQuery, setMentionQuery] = useState('');    // @ 뒤 입력값(필터)
@@ -217,7 +222,7 @@ export default function Chat() {
   const [dbCharacters, setDbCharacters] = useState([]);
   const [ending, setEnding] = useState(false);
   const [converting, setConverting] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);
+
   const [importedNarration] = useState(() => {
     if (manuscriptContent) return manuscriptContent;
     if (chatId && chatId !== 'room_001') return localStorage.getItem(`manuscript_${chatId}`) ?? null;
@@ -266,7 +271,6 @@ export default function Chat() {
   const inputRef = useRef(null);   // @등장인물 선택 후 입력창 포커스용
   const authorBottomRef = useRef(null);
   const memoInputRef = useRef(null);
-  const awaitingRecommendRef = useRef(false);
   const feedbackTimerRef = useRef(null);
 
   // ── userId 로드 + 기존 취향 복원 ────────────────────────
@@ -354,6 +358,13 @@ export default function Chat() {
     return () => clearTimeout(feedbackTimerRef.current);
   }, [streaming, autoFeedback]);
 
+  // ── EventSource cleanup (페이지 이탈 시 스트림 정리) ────
+  useEffect(() => {
+    return () => {
+      if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    };
+  }, []);
+
   // ── 컨텍스트 메뉴 외부 클릭 닫기 ─────────────────────────
   useEffect(() => {
     function close() { setContextMenu(prev => ({ ...prev, visible: false })); }
@@ -439,6 +450,33 @@ export default function Chat() {
     setSelectedMsgId(memo.msgId);
   }
 
+  // ── 💡 입력 추천 (voice 프로파일 있으면 말투 기반, 없으면 일반) ──
+  async function fetchSuggestions() {
+    if (!chatId || chatId === 'room_001') return;
+
+    if (userId) {
+      try {
+        const voiceProfile = await getVoiceProfile();
+        if (voiceProfile) {
+          const lastCharMsg = [...messages].reverse().find(m => m.role === 'character');
+          const npcDialogue = lastCharMsg?.dialogue || lastCharMsg?.narration || '';
+          const data = await getVoiceSuggestions(chatId, {
+            npc_dialogue: npcDialogue,
+            genre: world?.genre || '',
+          });
+          if (data.suggestions?.length) {
+            setSuggestions(data.suggestions);
+            return;
+          }
+        }
+      } catch { /* 폴백 */ }
+    }
+
+    const worldContext = buildWorldContext(world, dbCharacters);
+    const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
+    setSuggestions(data.suggestions ?? []);
+  }
+
   // ── 작가 AI 채팅 ─────────────────────────────────────────
   // ── 추천 문장 자동 요청 ──────────────────────────────────
   async function fetchRecommendation(aiMsgId, authorCharacterId, userText, aiFeedback) {
@@ -466,9 +504,6 @@ export default function Chat() {
     if (!hideUser) setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
     setAuthorLoading(true);
 
-    const isNarrationReq = awaitingRecommendRef.current &&
-      NARRATION_KEYWORDS.some(kw => text.includes(kw));
-    awaitingRecommendRef.current = false;
 
     try {
       const data = await sendAuthorMessage(chatId, {
@@ -477,8 +512,8 @@ export default function Chat() {
         mode,
       });
       setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', type: 'feedback', content: data.content }]);
-      if (isNarrationReq) fetchSuggestions();
-      if (!skipRecommend) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
+
+      if (!skipRecommend && data.shouldRecommend !== false) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
@@ -508,9 +543,7 @@ export default function Chat() {
       role: 'ai',
       type: 'taste-recommend',
       loading: true,
-      narration: '',
-      dialogue: '',
-      reason: '',
+      recommendations: [],
     }]);
     try {
       const data = await getTasteRecommend(chatId, userId);
@@ -684,7 +717,8 @@ export default function Chat() {
         .then(r => {
           if (r.errors?.length) {
             setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
-            setPanelView('proof');   // 교정 있으면 교정 뷰로 자동 전환(바로 보이게)
+            // 스트리밍 중엔 패널 전환 안 함 — 응답이 씹히는 것처럼 보이는 원인
+            setStreaming(cur => { if (!cur) setPanelView('proof'); return cur; });
           }
         })
         .catch(() => {});
@@ -778,31 +812,6 @@ export default function Chat() {
     navigate('/editor', { state: { chatId, authorId } });
   }
 
-  async function fetchSuggestions() {
-    if (!chatId || chatId === 'room_001') return;
-
-    if (userId) {
-      try {
-        const voiceProfile = await getVoiceProfile();
-        if (voiceProfile) {
-          const lastCharMsg = [...messages].reverse().find(m => m.role === 'character');
-          const npcDialogue = lastCharMsg?.dialogue || lastCharMsg?.narration || '';
-          const data = await getVoiceSuggestions(chatId, {
-            npc_dialogue: npcDialogue,
-            genre: world?.genre || '',
-          });
-          if (data.suggestions?.length) {
-            setSuggestions(data.suggestions);
-            return;
-          }
-        }
-      } catch { /* 폴백 */ }
-    }
-
-    const worldContext = buildWorldContext(world, dbCharacters);
-    const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
-    setSuggestions(data.suggestions ?? []);
-  }
 
   const authorVideoRef = useRef(null);
   // ── 볼륨 설정 ─────────────────────────────────────────────────
@@ -888,6 +897,7 @@ export default function Chat() {
           <div ref={bottomRef} />
         </div>
 
+
         {suggestions.length > 0 && !streaming && (
           <div className="chat-suggestions">
             {suggestions.map((s, i) => {
@@ -925,7 +935,7 @@ export default function Chat() {
             </div>
           )}
           <div className="chat-input-bar">
-            <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천">
+            <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천(말투 기반)">
               💡
             </button>
             {speaker && (
@@ -1115,26 +1125,33 @@ export default function Chat() {
                               <div className="typing-dots"><span /><span /><span /></div>
                             </div>
                           ) : (
-                            <div className="author-msg author-msg--taste-rec">
-                              {msg.narration && (
-                                <p className="taste-rec__narration">{msg.narration}</p>
-                              )}
-                              {msg.dialogue && (
-                                <p className="taste-rec__dialogue">"{msg.dialogue}"</p>
-                              )}
-                              {msg.reason && (
-                                <p className="taste-rec__reason">💡 {msg.reason}</p>
-                              )}
-                              <button
-                                className="taste-rec__use-btn"
-                                onClick={() => {
-                                  const parts = [
-                                    msg.narration,
-                                    msg.dialogue ? `"${msg.dialogue}"` : '',
-                                  ].filter(Boolean);
-                                  setInput(prev => prev ? `${prev}\n${parts.join('\n')}` : parts.join('\n'));
-                                }}
-                              >이 문장 사용하기 →</button>
+                            <div className="author-msg--taste-rec-list">
+                              {(msg.recommendations || []).map((rec, i) => (
+                                <div key={i} className="author-msg author-msg--taste-rec taste-rec__card">
+                                  {rec.type && (
+                                    <span className="taste-rec__type-badge">{rec.type}</span>
+                                  )}
+                                  {rec.narration && (
+                                    <p className="taste-rec__narration">{rec.narration}</p>
+                                  )}
+                                  {rec.dialogue && (
+                                    <p className="taste-rec__dialogue">"{rec.dialogue}"</p>
+                                  )}
+                                  {rec.reason && (
+                                    <p className="taste-rec__reason">💡 {rec.reason}</p>
+                                  )}
+                                  <button
+                                    className="taste-rec__use-btn"
+                                    onClick={() => {
+                                      const parts = [
+                                        rec.narration,
+                                        rec.dialogue ? `"${rec.dialogue}"` : '',
+                                      ].filter(Boolean);
+                                      setInput(prev => prev ? `${prev}\n${parts.join('\n')}` : parts.join('\n'));
+                                    }}
+                                  >이 문장 사용하기 →</button>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
