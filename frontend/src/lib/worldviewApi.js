@@ -30,30 +30,32 @@ export async function createWorldview({ world, characters, authorId }) {
   }
   const { id: worldId } = await worldRes.json();
 
-  // 2. 캐릭터 생성 (순서대로) — protagonist_id 추적
-  let protagonistId = null;
-  for (const char of characters) {
-    const charRes = await fetch(`${API_BASE_URL}/worlds/${worldId}/characters/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: userId,
-        name: char.name,
-        role: char.role,
-        personality: char.personality,
-        prompt: char.system_prompt,
-        is_ai_controlled: true,
-      }),
-    });
-    if (!charRes.ok) {
-      const err = await charRes.json().catch(() => ({}));
-      throw new Error(err.detail || `캐릭터 '${char.name}' 생성 실패`);
-    }
-    const created = await charRes.json();
-    if (char.role === 'protagonist' && !protagonistId) {
-      protagonistId = created.id;
-    }
-  }
+  // 2. 캐릭터 생성 (병렬) — 응답이 입력 순서대로 보존되므로 protagonist_id 추적 가능
+  const created = await Promise.all(
+    characters.map(async (char) => {
+      const charRes = await fetch(`${API_BASE_URL}/worlds/${worldId}/characters/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          name: char.name,
+          role: char.role,
+          personality: char.personality,
+          prompt: char.system_prompt,
+          is_ai_controlled: true,
+        }),
+      });
+      if (!charRes.ok) {
+        const err = await charRes.json().catch(() => ({}));
+        throw new Error(err.detail || `캐릭터 '${char.name}' 생성 실패`);
+      }
+      return { char, data: await charRes.json() };
+    })
+  );
+
+  // 입력 순서상 첫 protagonist를 주인공으로
+  const protagonistId =
+    created.find(({ char }) => char.role === 'protagonist')?.data.id ?? null;
 
   if (!protagonistId) throw new Error("주인공(protagonist) 캐릭터를 1명 이상 등록해 주세요.");
 
