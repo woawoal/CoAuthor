@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
-  getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
+  sendAuthorMessage, generateAuthorRewrite,
   getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread, addGlossaryTerm,
   getErrorWarmup,
 } from '../../lib/chatApi';
@@ -230,8 +230,7 @@ export default function Chat() {
   const [loadingHistory, setLoadingHistory] = useState(!!chatId && chatId !== 'room_001');   // 채팅 기록 로딩 표시
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
-  const [suggestions, setSuggestions] = useState([]);   // 💡 입력 추천(말투 기반 voice 포함)
-  const [speaker, setSpeaker] = useState(null);       // @등장인물: 이번 대사를 말하는 인물(없으면 주인공)
+const [speaker, setSpeaker] = useState(null);       // @등장인물: 이번 대사를 말하는 인물(없으면 주인공)
   const [mentionOpen, setMentionOpen] = useState(false);   // @ 멘션 드롭다운 표시 여부
   const [mentionQuery, setMentionQuery] = useState('');    // @ 뒤 입력값(필터)
   const [reaction, setReaction] = useState('');     // F-AS-05 작가 리액션 자막
@@ -470,34 +469,7 @@ export default function Chat() {
     setSelectedMsgId(memo.msgId);
   }
 
-  // ── 💡 입력 추천 (voice 프로파일 있으면 말투 기반, 없으면 일반) ──
-  async function fetchSuggestions() {
-    if (!chatId || chatId === 'room_001') return;
-
-    if (userId) {
-      try {
-        const voiceProfile = await getVoiceProfile();
-        if (voiceProfile) {
-          const lastCharMsg = [...messages].reverse().find(m => m.role === 'character');
-          const npcDialogue = lastCharMsg?.dialogue || lastCharMsg?.narration || '';
-          const data = await getVoiceSuggestions(chatId, {
-            npc_dialogue: npcDialogue,
-            genre: world?.genre || '',
-          });
-          if (data.suggestions?.length) {
-            setSuggestions(data.suggestions);
-            return;
-          }
-        }
-      } catch { /* 폴백 */ }
-    }
-
-    const worldContext = buildWorldContext(world, dbCharacters);
-    const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
-    setSuggestions(data.suggestions ?? []);
-  }
-
-  // ── 작가 AI 채팅 ─────────────────────────────────────────
+// ── 작가 AI 채팅 ─────────────────────────────────────────
   // ── 추천 문장 자동 요청 ──────────────────────────────────
   async function fetchRecommendation(aiMsgId, authorCharacterId, userText, aiFeedback) {
     const recId = `rec_${aiMsgId}`;
@@ -949,25 +921,6 @@ export default function Chat() {
         </div>
 
 
-        {suggestions.length > 0 && !streaming && (
-          <div className="chat-suggestions">
-            {suggestions.map((s, i) => {
-              const text = typeof s === 'string' ? s : s.text;
-              const label = typeof s === 'object' ? s.label : null;
-              return (
-                <button
-                  key={i}
-                  className="suggestion-chip"
-                  onClick={() => { setInput(text); setSuggestions([]); }}
-                >
-                  {label && <span className="suggestion-chip__label">{label}</span>}
-                  {text}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
         <div className="chat-input-wrap">
           {mentionOpen && mentionCandidates.length > 0 && (
             <div className="mention-dropdown">
@@ -986,9 +939,6 @@ export default function Chat() {
             </div>
           )}
           <div className="chat-input-bar">
-            <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천(말투 기반)">
-              💡
-            </button>
             {speaker && (
               <span className="speaker-chip" title="이 인물의 대사로 전송됩니다">
                 @{speaker.name}
