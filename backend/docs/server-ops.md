@@ -31,6 +31,25 @@
 
 ---
 
+## ☁️ Cloud Run / 배포 체크리스트 (반복 함정 — 배포 전 필독)
+
+> `.env`는 **이미지에 안 올라감**(`.dockerignore`+gitignore). Cloud Run은 **배포 시 넘긴 env/시크릿만** 봄. 로컬에서 되던 게 클라우드에서 안 되면 90%가 여기.
+
+1. **🔑 새 외부 API 키는 Cloud Run에도 반드시 추가** — *이번 주에만 Vertex·ElevenLabs·FAL_KEY 3번 당함.* 코드에 `settings.XXX_KEY` 새로 쓰면, 로컬 `.env`뿐 아니라 **Cloud Run에도** 넣어야 함(안 넣으면 그 기능만 500/502, 키 없음 에러):
+   ```bash
+   # 재빌드 없이 config만 갱신(기존 env·시크릿 유지) — ~30초
+   gcloud run services update nodevelture-api --region us-central1 --update-env-vars FAL_KEY=<값>
+   # 민감키는 시크릿으로: --update-secrets FAL_KEY=FAL_KEY:latest (SA에 secretAccessor 부여 후)
+   ```
+2. **📁 배포는 `backend/`에서** — `gcloud run deploy nodevelture-api --source . --region us-central1`. 첫 줄에 **"Building using Dockerfile"** 떠야 정상. 루트에서 하면 **"Buildpacks"** 로 빌드 실패.
+3. **🗄️ 모델에 컬럼 추가했으면 마이그레이션** — `alembic upgrade head`. 모델 코드만 배포하고 마이그레이션 누락하면 해당 테이블 조회가 전부 500(예: `worlds.glossary` 누락 → sessions·채팅 마비).
+4. **🔁 코드 변경=재배포 / env만 변경=`services update`**(재빌드 X). env는 빌드 때 박히는 `VITE_*`(프론트)와 달리 백엔드 env는 런타임 주입.
+5. **🔐 Vertex 인증** — 로컬 ADC ≠ Cloud Run. Cloud Run은 **런타임 SA**(`<프로젝트번호>-compute@developer.gserviceaccount.com`)로 호출 → `roles/aiplatform.user` 필요.
+6. **▲ 프론트(Vercel)** — `VITE_API_BASE_URL`은 **Vercel 대시보드 env**에 넣고(로컬 `.env`는 gitignore라 안 읽힘) + **빌드 후 Production 승격**(새 빌드가 Preview로만 떠 있으면 메인 도메인은 옛 빌드). `VITE_*`는 빌드 때 박히므로 변경 시 **재배포 필수**.
+7. **🔎 안 되면 추측 말고 로그** — `gcloud run services logs read nodevelture-api --region us-central1 --limit 50`. 실제 트레이스백이 원인을 정확히 짚어줌.
+
+---
+
 ## 이슈 기록
 
 ## 2026-06-10 — 백엔드를 Cloud Run으로 배포 (ngrok 대체, 항상 켜진 HTTPS)
