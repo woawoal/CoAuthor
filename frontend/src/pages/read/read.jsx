@@ -478,6 +478,12 @@ export default function ReadNovel() {
         </div>
       </div>
 
+      {/* 읽기 진행률 — position:fixed 로 뷰포트 최상단 고정(상위 overflow-x:hidden 으로 sticky가 깨져 fixed 사용). 스크롤해도 항상 보임 */}
+      <div className="read-progress-fixed">
+        <div className="read-progress-fixed__fill" style={{ width: `${progress}%` }} />
+        <span className="read-progress-fixed__label">{progress}% 읽음</span>
+      </div>
+
       <div className="read-layout">
         <aside className="read-sidebar">
           {!singleMode && (
