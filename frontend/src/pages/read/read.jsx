@@ -78,6 +78,33 @@ export default function ReadNovel() {
   const [showLoading, setShowLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
 
+  // ── 저장된 삽화(이 소설) — localStorage 영속 ─────────────────────
+  const ILLUS_KEY = `illus_${storyId}`;
+  const [savedIllus, setSavedIllus] = useState([]);
+  const [lightbox, setLightbox] = useState(null);
+
+  useEffect(() => {
+    try { setSavedIllus(JSON.parse(localStorage.getItem(ILLUS_KEY)) || []); }
+    catch { setSavedIllus([]); }
+  }, [ILLUS_KEY]);
+
+  function persistIllus(list) {
+    setSavedIllus(list);
+    try { localStorage.setItem(ILLUS_KEY, JSON.stringify(list)); }
+    catch { toast('저장 공간이 부족해요. 오래된 삽화를 지워주세요.', 'error'); }
+  }
+
+  function saveIllustration(url) {
+    if (!url) return;
+    if (savedIllus.some(it => it.url === url)) { toast('이미 저장된 삽화예요.', 'info'); return; }
+    persistIllus([{ url, ts: Date.now() }, ...savedIllus].slice(0, 12));  // 최신 우선·최대 12장
+    toast('내 삽화에 저장했어요.', 'success');
+  }
+
+  function deleteIllustration(ts) {
+    persistIllus(savedIllus.filter(it => it.ts !== ts));
+  }
+
   // ── 삽화 생성 모달 상태 ───────────────────────────────────────────
   const [illusOpen, setIllusOpen]   = useState(false);
   const [illusStep, setIllusStep]   = useState('mode'); // mode|direct|recommend|style|generating|result|refine|blocked
@@ -349,9 +376,10 @@ export default function ReadNovel() {
             <h2 className="illus-title">✨ 삽화 완성!</h2>
             <img className="illus-result-img" src={illusResult.image_url} alt="생성된 삽화" />
             <div className="illus-result-actions">
-              <a className="illus-btn-primary" href={illusResult.image_url} target="_blank" rel="noreferrer" download>
-                저장하기
-              </a>
+              <button
+                className="illus-btn-primary"
+                onClick={() => { saveIllustration(illusResult.image_url); setIllusOpen(false); }}
+              >저장하기</button>
               <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')}>다시 만들기</button>
               <button className="illus-btn-secondary" onClick={() => setIllusOpen(false)}>닫기</button>
             </div>
@@ -569,7 +597,33 @@ export default function ReadNovel() {
             </div>
           </div>
         </main>
+
+        <aside className="read-illus-panel">
+          <div className="read-illus-panel__head">
+            <span className="read-sidebar__label">삽화</span>
+            {savedIllus.length > 0 && <span className="read-illus-count">{savedIllus.length}</span>}
+          </div>
+          {savedIllus.length === 0 ? (
+            <p className="read-illus-empty">아직 삽화가 없어요.<br />상단 <b>✨ 삽화 생성</b>으로<br />장면을 그려보세요.</p>
+          ) : (
+            <div className="read-illus-list">
+              {savedIllus.map(it => (
+                <div className="read-illus-item" key={it.ts}>
+                  <img src={it.url} alt="삽화" onClick={() => setLightbox(it.url)} />
+                  <button className="read-illus-del" title="삭제" onClick={() => deleteIllustration(it.ts)}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </aside>
       </div>
+
+      {lightbox && (
+        <div className="read-lightbox" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="삽화 확대" onClick={e => e.stopPropagation()} />
+          <button className="read-lightbox__close" onClick={() => setLightbox(null)}>✕</button>
+        </div>
+      )}
       {illusModal}
     </div>
   );
