@@ -470,7 +470,7 @@ async def stream_response(
 
             parsed = parse_ai_response(raw)
             narration     = parsed["narration"]
-            speaker       = parsed.get("speaker", "")
+            reply_speaker = parsed.get("speaker", "")   # AI 응답의 화자(입력 speaker와 별개 — 같은 이름이면 클로저 UnboundLocal)
             dialogue      = parsed["dialogue"]
             state_changes = parsed["state_changes"]
             internal_note = parsed["internal_note"]
@@ -564,7 +564,7 @@ async def stream_response(
                 {
                     "messageId":     message_id,
                     "narration":     narration,
-                    "speaker":       speaker,
+                    "speaker":       reply_speaker,
                     "dialogue":      dialogue,
                     "state_changes": state_changes,
                     "turn":          turn,
