@@ -52,6 +52,44 @@
 
 ## 이슈 기록
 
+## 2026-06-14 — 마이페이지('내 서재') 로딩 지연 진단 + dashboard 최적화
+
+**증상**: 메인 → '내 서재' 진입 시 스피너가 오래(체감 7초+). 프론트는 이미 핵심만 await + 병렬 + 프로필 캐시였음.
+
+**측정** (us-central1 라이브, 워밍 상태):
+
+| 엔드포인트 | 지연 |
+|---|---|
+| `/users/{id}/...` (단순) | ~0.26s |
+| `/mypage/profile` | ~2.2s |
+| `/mypage/stats` | ~2.2s |
+| `/users/{id}/voice-profile` (단순 PK 조회) | ~1.8s |
+| **`/mypage/dashboard`** | **~6.9s** ← 주범 |
+
+**원인 2가지**
+1. **dashboard가 DB 쿼리 6~7개를 순차** 실행(세션→소설→세계관→주인공→최근대화→주간소설). LLM 없음.
+2. **Neon 쿼리당 지연 floor ~2s** — 단순 PK 조회(voice-profile)도 1.8s. Cloud Run(us-central1)↔Neon **리전 거리/커넥션 establish 오버헤드**로 추정. **모든 엔드포인트에 영향**(채팅 포함).
+
+**시도 & 결과**
+- ❌ **독립 세션 5개로 병렬화**(`asyncio.gather` + 각자 `AsyncSessionLocal`): 6.9s → **8.7s로 역행**. asyncpg는 한 세션 동시 사용 불가라 새 커넥션 5개를 동시에 여는데, **Neon이 동시 커넥션 establish를 경합/직렬화**해서 오히려 느림. → 롤백.
+- ✅ **단일 세션 유지 + 쿼리 병합**: Novel을 `session_id.in_(전체)` **1쿼리**로 가져와 latest/weekly 둘 다 커버(2→1). round-trip 6→5. **dashboard ~3.0s로 안정**.
+- ✅ **프론트 stale-while-revalidate 캐시**: `profile`·`dashboard`·`stats`를 localStorage에 캐시 → **재방문 즉시** 표시 후 백그라운드 갱신. `voice-profile`(1.8s)은 첫 화면 불필요 → 백그라운드로 이동.
+
+**교훈**
+- **Neon에선 "쿼리 병렬화(다중 커넥션) > 순차"가 거짓.** 커넥션 establish가 비싸 동시 다중 커넥션이 더 느릴 수 있음. **라운드트립 수를 줄이는 것(쿼리 병합)** 이 안전한 최적화.
+- 근본 해결(미적용, 발표 후 과제): **Neon pooled 엔드포인트(`-pooler`)** 사용 / **리전 정렬**(Cloud Run·Neon 같은 리전) / `pool_pre_ping` 재검토 / min-instances 1로 cold-start 제거. 이게 floor ~2s를 줄이는 진짜 레버.
+- 데모 직전엔 **백엔드 워밍업**(아무 페이지 미리 호출)으로 cold-start 회피하면 충분.
+
+## 2026-06-14 — 삽화 생성 502 (fal.ai 403 Forbidden)
+
+**증상**: `POST /sessions/{id}/illustrations/generate` → 502. 로그에 `POST https://fal.run/fal-ai/flux/dev "HTTP/1.1 403 Forbidden"`.
+
+**원인**: `FAL_KEY` 시크릿은 **정상 연결**돼 있음(리비전에 존재). fal.ai가 키를 받고도 **403** = 인증은 됐으나 권한 거부 → **크레딧 소진/결제 미설정/키 무효**(계정 측 문제). 배포·env 문제 아님.
+
+**조치**: fal.ai 대시보드에서 크레딧·결제·키 유효성 확인(키 담당자). 코드/배포로는 못 고침.
+
+**부수 발견(중요)**: 표준 배포 명령의 `--set-secrets`에 **`FAL_KEY`가 빠져 있었음** → `--set-secrets`는 전체 교체라 다음 배포가 FAL_KEY를 **삭제**할 뻔. 표준 명령에 `FAL_KEY=FAL_KEY:latest` 영구 추가함(위 ③ 참고).
+
 ## 2026-06-10 — 백엔드를 Cloud Run으로 배포 (ngrok 대체, 항상 켜진 HTTPS)
 
 **배경**: 그동안 로컬 `uvicorn` + ngrok로 팀에 공유 → 내 PC 꺼지면 끊김·주소 매번 변경. DB(Neon)·Redis(Upstash)·LLM(Vertex)이 이미 클라우드라 **앱(FastAPI)만 올리면** 24시간 고정 HTTPS 주소가 생긴다.
