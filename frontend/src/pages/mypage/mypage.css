@@ -82,6 +82,28 @@
     color: var(--text-sub);
 }
 
+/* 내 소설 목록 바로가기 버튼 */
+.mp-storylist-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 4px 0 8px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--theme-color, #c9a87c) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--theme-color, #c9a87c) 45%, transparent);
+    border-radius: 10px;
+    color: var(--text-main, #fff);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.mp-storylist-btn:hover {
+    background: color-mix(in srgb, var(--theme-color, #c9a87c) 28%, transparent);
+}
+
 /* 네비 그룹 */
 .mp-nav-group {
     display: flex;
