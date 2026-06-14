@@ -81,6 +81,18 @@ export async function getErrorNotebook(userId) {
     return data.notebook ?? [];
 }
 
+// 오답노트 항목 1개 삭제 → 갱신된 노트 반환
+export async function deleteErrorNotebookEntry(userId, original) {
+    const res = await fetch(`${API_BASE_URL}/users/${userId}/error-notebook`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ original }),
+    });
+    if (!res.ok) throw new Error('삭제 실패');
+    const data = await res.json();
+    return data.notebook ?? [];
+}
+
 export async function getDashboard(userId) {
     const res = await fetch(`${BASE}/dashboard?user_id=${userId}`);
     if (!res.ok) throw new Error('대시보드 조회 실패');

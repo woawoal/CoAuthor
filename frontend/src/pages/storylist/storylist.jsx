@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSessions, deleteSession } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
+import { toast } from '../../lib/toast';
 import './storylist.css';
 import LoadingVideo from '../../components/loadingVideo';
 
@@ -65,7 +66,7 @@ export default function StoryList() {
       await deleteSession(session.id);
       setSessions(prev => prev.filter(s => s.id !== session.id));
     } catch (err) {
-      alert(`삭제 실패: ${err.message}`);
+      toast(`삭제 실패: ${err.message}`, "error");
     }
   };
 
@@ -80,7 +81,7 @@ export default function StoryList() {
 
       <div className="storylist-wrapper">
         <header className="storylist-header">
-          <button className="back-btn" onClick={() => navigate('/')}>← 돌아가기</button>
+          <button className="back-btn" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}>← 돌아가기</button>
           <h2 className="storylist-title">내 소설 목록</h2>
           <button className="back-btn storylist-mypage-btn" onClick={() => navigate('/mypage')}>📚 내 서재</button>
         </header>

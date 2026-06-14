@@ -4,13 +4,13 @@ import { authClient } from '../../lib/auth';
 import {
     getProfile, getWorks, getRecent, getSentences, getWiki,
     deleteSentence, getAuthorRecords, getAchievements, getStats, getDashboard,
-    getTasteProfile, setupTasteProfile, getErrorNotebook,
+    getTasteProfile, setupTasteProfile, getErrorNotebook, deleteErrorNotebookEntry,
 } from '../../lib/mypageApi';
 import TasteOnboarding from './TasteOnboarding';
 import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
 import { getVoiceProfile } from '../../lib/voiceApi';
+import { toast } from '../../lib/toast';
 import './mypage.css';
-import LoadingVideo from '../../components/loadingVideo';
 import VideoPreviewModal from '../../components/videoPreviewModal';
 
 const WORK_GOAL_CHARS = 30000;
@@ -83,7 +83,6 @@ function MyPage() {
 
     const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
     const [loading, setLoading] = useState(true);
-    const [showLoading, setShowLoading] = useState(true);
 
     const VIDEO_AUTHORS = [
         { id: 1, name: '백야', path: '/assets/author1' },
@@ -109,27 +108,38 @@ function MyPage() {
             if (!uid) { navigate('/login'); return; }
             setUserId(uid);
             setUserInfo(session.data?.user);
+
+            // 0) 프로필 캐시 즉시 표시(stale-while-revalidate) → 헤더·작품수 0초
             try {
-                const [profileData, worksData, dashboardData, statsData, tasteData, vp] = await Promise.all([
+                const cached = localStorage.getItem(`profile_${uid}`);
+                if (cached) setProfile(JSON.parse(cached));
+            } catch { /* 캐시 무시 */ }
+
+            // 1) 첫 화면(대시보드)에 필요한 것만 기다려 스피너 내림
+            try {
+                const [profileData, dashboardData, statsData, vp] = await Promise.all([
                     getProfile(uid),
-                    getWorks(uid),
                     getDashboard(uid),
                     getStats(uid),
-                    getTasteProfile(uid),
                     getVoiceProfile(),
                 ]);
-                setVoiceProfile(vp ?? null);
                 setProfile(profileData);
-                setWorks(worksData);
+                try { localStorage.setItem(`profile_${uid}`, JSON.stringify(profileData)); } catch { /* 무시 */ }
                 setDashboard(dashboardData);
                 setStats(statsData);
-                setTasteProfile(tasteData.taste_profile ?? {});
-                setTasteWorks(tasteData.selected_works ?? []);
+                setVoiceProfile(vp ?? null);
             } catch (e) {
                 console.error(e);
             } finally {
-                setLoading(false);
+                setLoading(false);   // 핵심 준비되면 즉시 화면(나머지는 아래 백그라운드)
             }
+
+            // 2) 다른 탭 전용 데이터는 백그라운드 — 대기하지 않음
+            getWorks(uid).then(setWorks).catch(() => { });
+            getTasteProfile(uid).then(t => {
+                setTasteProfile(t.taste_profile ?? {});
+                setTasteWorks(t.selected_works ?? []);
+            }).catch(() => { });
         };
         init();
     }, [navigate]);
@@ -174,13 +184,22 @@ function MyPage() {
         } catch (e) { console.error(e); }
     };
 
+    const handleDeleteError = async (original) => {
+        try {
+            const nb = await deleteErrorNotebookEntry(userId, original);
+            setErrorNotebook(nb);
+        } catch {
+            toast('삭제에 실패했어요. 잠시 후 다시 시도해주세요.', 'error');
+        }
+    };
+
     return (
         <div className="mp">
-            {showLoading && (
-                <LoadingVideo
-                    loading={loading}
-                    onFinish={() => setShowLoading(false)}
-                />
+            {loading && (
+                <div className="mp-loading-overlay">
+                    <div className="mp-spinner" />
+                    <span>내 서재 불러오는 중…</span>
+                </div>
             )}
 
             {/* 사이드바 */}
@@ -200,6 +219,11 @@ function MyPage() {
                         </div>
                     </div>
                 )}
+
+                {/* 내 소설 목록 바로가기 */}
+                <button className="mp-storylist-btn" onClick={() => navigate('/storylist')}>
+                    내 소설 목록
+                </button>
 
                 {/* 내 서재 */}
                 <div className="mp-nav-group">
@@ -710,6 +734,12 @@ function MyPage() {
                                                 <span className="mp-errnote__right">{e.corrected}</span>
                                                 {e.type && <span className="mp-errnote__type">{e.type}</span>}
                                                 <span className="mp-errnote__count">{e.count}회</span>
+                                                <button
+                                                    className="mp-errnote__del"
+                                                    onClick={() => handleDeleteError(e.original)}
+                                                    aria-label="삭제"
+                                                    title="이 오답 삭제"
+                                                >×</button>
                                             </li>
                                         ))}
                                     </ul>

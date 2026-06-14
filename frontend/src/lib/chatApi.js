@@ -41,6 +41,17 @@ export async function proofread(chatId, text, characterId = 'baekya') {
   return res.json();
 }
 
+// 능동 경고: 글쓰기 진입 시 '자주 틀리는 것'(2회 이상) 상위 N개. 실패/없으면 빈 배열.
+export async function getErrorWarmup(chatId, limit = 3) {
+  try {
+    const res = await fetch(`${API_BASE_URL}/chats/${chatId}/error-warmup?limit=${limit}`);
+    if (!res.ok) return { items: [], count: 0 };
+    return res.json();
+  } catch {
+    return { items: [], count: 0 };
+  }
+}
+
 export function connectChatStream(
   chatId,
   { content, character_id, mode = "author", world_context = "", speaker = "", check_consistency = false },

@@ -5,6 +5,7 @@ import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
   getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread, addGlossaryTerm,
+  getErrorWarmup,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
@@ -13,6 +14,7 @@ import { authClient } from '../../lib/auth';
 import { saveSentence } from '../../lib/mypageApi';
 import { getTaste, analyzeTaste } from '../../lib/tasteApi';
 import { applyGlobalVideoVolume, VIDEO_VOLUME_EVENT } from '../../lib/videoVolume';
+import { toast } from '../../lib/toast';
 import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
@@ -192,6 +194,22 @@ export default function Chat() {
     }
   }, [chatId, manuscriptContent]);
 
+  // 능동 경고: 진입 시 '자주 틀리는 것'(2회 이상) 미리 보기. 닫으면 그날은 다시 안 뜸.
+  useEffect(() => {
+    if (!chatId || chatId === 'room_001') return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem(`warmup_off_${chatId}_${today}`)) return;
+    getErrorWarmup(chatId, 3).then(r => setWarmup(r?.items ?? [])).catch(() => { });
+  }, [chatId]);
+
+  const dismissWarmup = () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      localStorage.setItem(`warmup_off_${chatId}_${today}`, '1');
+    } catch { /* localStorage 차단 무시 */ }
+    setWarmup([]);
+  };
+
   // 스토리 채팅 작가 (고정)
   const storyAuthor = AUTHOR_MAP[authorId] ?? AUTHOR_MAP[1];
 
@@ -219,6 +237,7 @@ export default function Chat() {
   const reactionTimerRef = useRef(null);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
+  const [warmup, setWarmup] = useState([]);   // 능동 경고: 자주 틀리는 것 미리 보기(2회 이상)
   const [ending, setEnding] = useState(false);
   const [converting, setConverting] = useState(false);
 
@@ -758,7 +777,7 @@ export default function Chat() {
   }
 
   async function handleEnd() {
-    if (!chatId || chatId === 'room_001') return alert('유효한 세션이 없습니다.');
+    if (!chatId || chatId === 'room_001') { toast('유효한 세션이 없습니다.', 'error'); return; }
     if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
 
     const MIN_END_DURATION = 10000;
@@ -771,11 +790,15 @@ export default function Chat() {
     try {
       await completeSession(chatId);
     } catch (err) {
-      alert(`세션 종료 실패: ${err.message}`);
+      toast(`세션 종료 실패: ${err.message}`, 'error');
       setEnding(false);
       return;
     }
-    try { await generateNovel(chatId); } catch { /* 무시 */ }
+    try {
+      await generateNovel(chatId);
+    } catch {
+      toast('소설 변환에 실패했어요. 읽기 화면의 “다시 변환”으로 재시도할 수 있어요.', 'error');
+    }
 
     const elapsed = Date.now() - startedAt;
     const remainingDelay = Math.max(0, MIN_END_DURATION - elapsed);
@@ -867,6 +890,22 @@ export default function Chat() {
         </div>
 
         <div className="chat-messages">
+          {warmup.length > 0 && (
+            <div className="warmup-card">
+              <button className="warmup-card__close" onClick={dismissWarmup} aria-label="닫기">×</button>
+              <div className="warmup-card__title">💡 자주 놓치는 것, 오늘은 미리 체크해요</div>
+              <div className="warmup-card__items">
+                {warmup.map((w, i) => (
+                  <span key={i} className="warmup-chip">
+                    <span className="warmup-chip__bad">{w.original}</span>
+                    <span className="warmup-chip__arrow">→</span>
+                    <span className="warmup-chip__good">{w.corrected}</span>
+                    <span className="warmup-chip__count">{w.count}회</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {importedNarration && (
             <div className="narration-import-block">
               <span className="narration-import-block__label">원고</span>
@@ -1281,7 +1320,7 @@ export default function Chat() {
                 </div>
                 <div className="memo-view__list">
                   {corrections.length === 0 && (
-                    <p className="author-chat__empty">맞춤법 오류가 없습니다 ✨<br />대화하면 작가가 봐줍니다</p>
+                    <p className="author-chat__empty">맞춤법 오류가 없어요 ✨<br />대화하면 작가가 봐줍니다</p>
                   )}
                   {corrections.map(c => (
                     <div key={c.id} className="memo-proof__card">
@@ -1342,7 +1381,7 @@ export default function Chat() {
 
                 <div className="memo-view__list">
                   {memos.length === 0 && (
-                    <p className="author-chat__empty">메모가 없습니다<br />말풍선을 우클릭해 추가하세요</p>
+                    <p className="author-chat__empty">메모가 없어요<br />말풍선을 우클릭해 추가하세요</p>
                   )}
                   {memos.map(memo => (
                     <div

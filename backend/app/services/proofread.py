@@ -170,3 +170,10 @@ def notebook(profile: dict | None, limit: int = 50) -> list[dict]:
     ]
     items.sort(key=lambda x: x["count"], reverse=True)
     return items[:limit]
+
+
+def remove_entry(profile: dict | None, original: str) -> dict:
+    """오답노트에서 한 항목(original 키)을 제거한 새 profile 반환."""
+    profile = dict(profile or {})
+    profile.pop(original, None)
+    return profile

@@ -64,8 +64,9 @@ async def generate_novel(
 
     existing = await db.execute(select(Novel).where(Novel.session_id == session_id))
     existing_novel = existing.scalar_one_or_none()
-    if existing_novel:
+    if existing_novel and (existing_novel.content or "").strip():
         return existing_novel
+    # 빈 본문 소설이 남아있던 경우(과거 변환 실패) → 아래에서 재생성하여 덮어쓴다.
 
     dialogues_result = await db.execute(
         select(Dialogue)
@@ -102,6 +103,23 @@ async def generate_novel(
         content = "\n\n".join(d.content for d in dialogues)
 
     content, _ = _strip_world_suggestion(content)   # [세계관 추가 제안] 블록 분리 → 원고 깨끗하게
+
+    if not content.strip():
+        # 제안 블록 제거 후 비었거나 LLM 실패 → 대화 로그 원문으로 폴백(빈 원고 저장 방지)
+        content = "\n\n".join(d.content for d in dialogues if d.content)
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="대화 내용이 없어 소설로 변환할 수 없습니다.")
+
+    if existing_novel:
+        # 과거 변환 실패로 남은 빈 소설을 같은 행에 덮어쓴다(중복 생성 방지).
+        existing_novel.content = content
+        existing_novel.status = NovelStatus.DRAFT
+        if world and world.title:
+            existing_novel.title = world.title
+        await db.flush()
+        await db.refresh(existing_novel)
+        logger.info("빈 소설 재생성: %s (session=%s, %d자)", existing_novel.id, session_id, len(content))
+        return existing_novel
 
     novel = Novel(
         session_id=session_id,

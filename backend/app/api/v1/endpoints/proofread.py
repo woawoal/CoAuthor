@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # 작가별 톤 — 교정 메모를 '빨간펜'이 아니라 '협업 작가의 여백 메모'처럼 띄우기 위함
 AUTHOR_TONE = {
-    "baekya":     "백야 — 호러/미스터리 작가. 시니컬하고 담담한 반말.",
+    "baekya":     "백야 — 호러/미스터리 작가. 담담하고 건조한 반말(빈정대지 않음).",
     "charoun":    "차로운 — 본격 추리 작가. 분석적이고 또박또박한 존댓말.",
     "hanyeoreum": "한여름 — 로맨스 작가. 다정하고 살가운 말투.",
     "kimdohyeon": "김도현 — 일상/에세이 작가. 편안하고 따뜻한 말투.",
@@ -133,6 +133,7 @@ async def _author_memo(character_id: str, errors: list[dict]) -> str:
         f"너는 소설 협업 작가다. 페르소나: {tone}\n"
         "사용자(주인공)가 방금 쓴 문장의 맞춤법을 네가 '여백에 메모해주듯' 한 줄로 짚는다.\n"
         "- 잔소리·훈계 금지, 네 작가 말투로 짧고 자연스럽게 (빨간펜 선생님 X, 협업 작가 O)\n"
+        "- 절대 사용자를 놀리거나 비꼬거나 능력을 평가하지 말 것. '~라도 하나?' 같은 조롱·비아냥·면박 금지. 글자에 대한 가벼운 코멘트일 뿐 사람 평가가 아니다.\n"
         "- 맞춤법 용어 나열 금지. 딱 한 문장.\n"
         "- 반드시 자연스러운 한국어로만 쓴다. 외국어 단어·한자(自然 등) 절대 섞지 말 것."
     )
@@ -179,6 +180,38 @@ async def error_notebook(user_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     if user is None:
         raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
     return {"notebook": pf.notebook(user.error_profile)}
+
+
+class ErrorEntryDelete(BaseModel):
+    original: str
+
+
+@router.delete("/users/{user_id}/error-notebook")
+async def delete_error_entry(
+    user_id: uuid.UUID, body: ErrorEntryDelete, db: AsyncSession = Depends(get_db)
+):
+    """오답노트 항목 1개 삭제(original 키 기준). 갱신된 노트를 돌려준다."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    user.error_profile = pf.remove_entry(user.error_profile, body.original)
+    await db.commit()
+    return {"notebook": pf.notebook(user.error_profile)}
+
+
+@router.get("/chats/{chat_id}/error-warmup")
+async def error_warmup(chat_id: str, limit: int = 3, db: AsyncSession = Depends(get_db)):
+    """능동 경고 — 글쓰기 진입 시 '자주 틀리는 것' 미리 보기.
+
+    반응형(틀린 뒤 교정) → 예측형(틀리기 전 제시) 전환의 1단계.
+    이미 2회 이상 틀린 표기만 골라 상위 N개를 돌려준다(처음 틀린 건 잔소리 X).
+    LLM 미사용 — error_profile 누적 데이터 그대로라 환각·지연·비용 0.
+    """
+    user = await _resolve_user(chat_id, db)
+    if user is None:
+        return {"items": [], "count": 0}
+    frequent = [it for it in pf.notebook(user.error_profile) if it.get("count", 0) >= 2]
+    return {"items": frequent[: max(1, limit)], "count": len(frequent)}
 
 
 # ── 세계관 용어집(맞춤법 보호 사전) ─────────────────────────────

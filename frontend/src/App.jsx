@@ -10,6 +10,7 @@ import Login from './pages/login/login';
 import VoiceProfile from './pages/voice/voice';
 import TokenDashboard from './pages/tokenDashboard/tokenDashboard';
 import MyPage from './pages/mypage/mypage';
+import { ToastHost } from './lib/toast';
 
 function App() {
   useEffect(() => {
@@ -25,6 +26,7 @@ function App() {
 
   return (
     <Router>
+      <ToastHost />
       <Routes>
         <Route path="/" element={<Main />} />
         <Route path="/worldview" element={<Worldview />} />

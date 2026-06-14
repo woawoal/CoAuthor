@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getNovel } from '../../lib/chatApi';
+import { getNovel, generateNovel } from '../../lib/chatApi';
+import { toast } from '../../lib/toast';
 import { getSession, getWorld } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import LoadingVideo from '../../components/loadingVideo';
@@ -54,6 +55,7 @@ export default function ReadNovel() {
   const [activeChapter, setActiveChapter] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showLoading, setShowLoading] = useState(true);
+  const [regenerating, setRegenerating] = useState(false);
 
   const chapterRefs = useRef([]);
 
@@ -101,6 +103,23 @@ export default function ReadNovel() {
     setActiveChapter(idx);
   };
 
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      const fresh = await generateNovel(storyId);
+      setNovel(fresh);
+      if (!(fresh?.content || '').trim()) {
+        toast('대화가 짧아 변환할 내용이 부족해요. 이어쓰기로 대화를 더 진행해보세요.', 'info');
+      } else {
+        toast('소설로 변환했어요.', 'success');
+      }
+    } catch {
+      toast('소설 변환에 실패했어요. 잠시 후 다시 시도해주세요.', 'error');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   const handleExport = () => {
     if (!novel) return;
     const blob = new Blob([novel.content], { type: 'text/plain;charset=utf-8' });
@@ -124,7 +143,29 @@ export default function ReadNovel() {
   }
 
   const content = novel?.content ?? '';
+  if (!loading && novel && !content.trim()) {
+    return (
+      <div className="read-page">
+        <div className="read-empty">
+          <p>아직 변환된 소설 본문이 없어요.</p>
+          <p className="read-empty__sub">대화를 조금 더 진행하거나 다시 변환해보세요.</p>
+          <div className="read-empty__actions">
+            <button className="read-empty__btn read-empty__btn--primary" onClick={handleRegenerate} disabled={regenerating}>
+              {regenerating ? '변환 중…' : '다시 변환'}
+            </button>
+            <button className="read-empty__btn" onClick={() => navigate('/chat', { state: { chatId: storyId } })}>
+              이어쓰기
+            </button>
+            <button className="read-empty__btn" onClick={() => navigate('/storylist')}>
+              목록으로
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const chapters = parseChapters(content);
+  const singleMode = chapters.length <= 1;   // 장이 하나뿐(단락 ≤5)이면 장 구분/목차 숨기고 본문만
   const wordCount = content.replace(/\s+/g, '').length;
   const readingMins = Math.max(1, Math.ceil(wordCount / 350));
 
@@ -139,7 +180,7 @@ export default function ReadNovel() {
 
       <div className="read-top-bar">
         <div className="read-top-bar__left">
-          <button className="read-back-btn" onClick={() => navigate('/storylist')}>
+          <button className="read-back-btn" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/storylist'))}>
             ← 돌아가기
           </button>
           <span className="read-doc-title">{novel?.title ?? ''}</span>
@@ -187,19 +228,23 @@ export default function ReadNovel() {
 
       <div className="read-layout">
         <aside className="read-sidebar">
-          <div className="read-sidebar__label">목차</div>
-          {chapters.map((ch, i) => (
-            <div
-              key={i}
-              className={`read-toc-item${activeChapter === i ? ' read-toc-item--active' : ''}`}
-              onClick={() => scrollToChapter(i)}
-            >
-              <span className="read-toc-num">{i + 1}</span>
-              <span className="read-toc-text">{ch.title}</span>
-            </div>
-          ))}
+          {!singleMode && (
+            <>
+              <div className="read-sidebar__label">목차</div>
+              {chapters.map((ch, i) => (
+                <div
+                  key={i}
+                  className={`read-toc-item${activeChapter === i ? ' read-toc-item--active' : ''}`}
+                  onClick={() => scrollToChapter(i)}
+                >
+                  <span className="read-toc-num">{i + 1}</span>
+                  <span className="read-toc-text">{ch.title}</span>
+                </div>
+              ))}
 
-          <div className="read-sidebar__divider" />
+              <div className="read-sidebar__divider" />
+            </>
+          )}
 
           <div className="read-sidebar__label">작품 정보</div>
           <div className="read-meta-row">
@@ -228,7 +273,7 @@ export default function ReadNovel() {
           <div className="read-novel-cover">
             <div className="read-persona-badge">
               <span className="read-persona-badge__dot" />
-              AI 빙의작가 {AUTHOR_NAME[session?.author_id] ?? 'AI'}
+              AI 작가 {AUTHOR_NAME[session?.author_id] ?? 'AI'}
             </div>
             <h1 className="read-novel-title">{novel?.title ?? ''}</h1>
             {world?.description && (
@@ -250,37 +295,50 @@ export default function ReadNovel() {
             <div className="read-progress-label">{progress}% 읽음</div>
           </div>
 
-          {chapters.map((ch, i) => (
+          {singleMode ? (
             <div
-              key={i}
-              className="read-chapter"
-              id={`ch-${i}`}
-              ref={el => { chapterRefs.current[i] = el; }}
+              className="read-chapter read-chapter--single"
+              ref={el => { chapterRefs.current[0] = el; }}
             >
-              <div className="read-chapter__header">
-                <div className="read-chapter__num">Chapter {String(i + 1).padStart(2, '0')}</div>
-                <h2 className="read-chapter__title">{ch.title}</h2>
-                <div className="read-chapter__divider" />
-              </div>
               <div className="read-chapter__body" style={{ fontSize: `${fontSize}px` }}>
-                {ch.paragraphs.map((para, j) => (
+                {(chapters[0]?.paragraphs ?? []).map((para, j) => (
                   <p key={j}>{para}</p>
                 ))}
               </div>
             </div>
-          ))}
+          ) : (
+            chapters.map((ch, i) => (
+              <div
+                key={i}
+                className="read-chapter"
+                id={`ch-${i}`}
+                ref={el => { chapterRefs.current[i] = el; }}
+              >
+                <div className="read-chapter__header">
+                  <div className="read-chapter__num">Chapter {String(i + 1).padStart(2, '0')}</div>
+                  <h2 className="read-chapter__title">{ch.title}</h2>
+                  <div className="read-chapter__divider" />
+                </div>
+                <div className="read-chapter__body" style={{ fontSize: `${fontSize}px` }}>
+                  {ch.paragraphs.map((para, j) => (
+                    <p key={j}>{para}</p>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
 
           <div className="read-end-card">
             <div className="read-end-symbol">— 끝 —</div>
             <p className="read-end-text">
-              이 소설은 AI 빙의작가 <strong>{AUTHOR_NAME[session?.author_id] ?? 'AI'}</strong>와 함께 작성되었습니다.
+              이 소설은 AI 작가 <strong>{AUTHOR_NAME[session?.author_id] ?? 'AI'}</strong>와 함께 작성되었습니다.
             </p>
             <div className="read-end-actions">
               <button
                 className="read-end-btn read-end-btn--primary"
                 onClick={() => navigate('/chat', { state: { chatId: storyId } })}
               >
-                이어 쓰기
+                이어쓰기
               </button>
               <button
                 className="read-end-btn read-end-btn--secondary"

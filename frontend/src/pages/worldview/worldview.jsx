@@ -9,6 +9,7 @@ import { getAuthor, getQuestions } from '../../lib/authorsApi';
 import { getRandomWorldExamples } from '../../lib/worldExampleApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import IntroVideo from '../../components/IntroVideo';
+import { toast } from '../../lib/toast';
 
 function Worldview() {
     const location = useLocation();
@@ -66,7 +67,7 @@ function Worldview() {
                 setWorldExample(examples[0]);
             } catch (error) {
                 console.error("Error fetching data:", error);
-                alert("작가 정보를 불러오지 못했습니다.");
+                toast("작가 정보를 불러오지 못했습니다.", "error");
             } finally {
                 setIsLoading(false);
             }
@@ -137,14 +138,14 @@ function Worldview() {
 
     const validateCurrentStep = () => {
         if (currentStep === 2 && !title.trim()) {
-            alert('세계관 제목을 입력해 주세요.');
+            toast('세계관 제목을 입력해주세요.');
             return false;
         }
 
         if (currentDialogue?.field === 'characters') {
             const protagonist = characters[0];
             if (!protagonist || !protagonist.name.trim()) {
-                alert('주인공의 이름을 반드시 입력해야 합니다.');
+                toast('주인공의 이름을 반드시 입력해야 합니다.');
                 return false;
             }
         }
@@ -168,7 +169,7 @@ function Worldview() {
 
     const handleSave = async () => {
         if (!title.trim()) {
-            alert("세계관 제목을 입력해 주세요!");
+            toast('세계관 제목을 입력해주세요.');
             const titleStep = questions.find(q => q.field === 'title')?.step || 2;
             setCurrentStep(titleStep);
             return;
@@ -176,7 +177,7 @@ function Worldview() {
 
         const protagonist = characters[0];
         if (!protagonist || !protagonist.name.trim()) {
-            alert("주인공의 이름을 반드시 입력해야 세계관을 생성할 수 있습니다.");
+            toast('주인공의 이름을 반드시 입력해야 합니다.');
             const characterStep = questions.find(q => q.field === 'characters')?.step || 6;
             setCurrentStep(characterStep);
             return;
@@ -196,7 +197,7 @@ function Worldview() {
             });
             navigate('/chat', { state: { worldId, chatId: sessionId, authorId } });
         } catch (err) {
-            alert(`저장 실패: ${err.message}`);
+            toast(`저장 실패: ${err.message}`, "error");
         } finally {
             setSaving(false);
         }
@@ -215,7 +216,7 @@ function Worldview() {
             setSelectedExample(null);
             setExampleModalOpen(true);
         } catch (error) {
-            alert('랜덤 예시를 불러오지 못했습니다.');
+            toast("랜덤 예시를 불러오지 못했습니다.", "error");
         }
     };
 
