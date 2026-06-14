@@ -113,6 +113,318 @@
   opacity: 0.85;
 }
 
+.read-illus-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  height: 34px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--theme-color) 20%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
+  color: var(--theme-color);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  transition: all 0.15s;
+}
+
+.read-illus-btn:hover {
+  background: color-mix(in srgb, var(--theme-color) 30%, transparent);
+}
+
+/* ── 삽화 생성 모달 ──────────────────────────────────────────────── */
+.illus-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.illus-modal {
+  background: var(--card-main, #1c1c1e);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 18px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 85dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.illus-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-main, #fff);
+  margin: 0;
+}
+
+.illus-desc {
+  font-size: 13px;
+  color: var(--text-muted, #aaa);
+  margin: 0;
+}
+
+.illus-back {
+  background: none;
+  border: none;
+  color: var(--text-muted, #aaa);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  align-self: flex-start;
+}
+
+.illus-mode-row {
+  display: flex;
+  gap: 12px;
+}
+
+.illus-mode-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-main, #fff);
+}
+
+.illus-mode-card:hover {
+  border-color: var(--theme-color, #888);
+  background: color-mix(in srgb, var(--theme-color, #555) 10%, transparent);
+}
+
+.illus-mode-icon { font-size: 28px; }
+.illus-mode-card strong { font-size: 14px; font-weight: 600; }
+.illus-mode-card span  { font-size: 12px; color: var(--text-muted, #aaa); text-align: center; }
+
+.illus-close-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: var(--text-muted, #aaa);
+  font-size: 13px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.illus-textarea {
+  width: 100%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  color: var(--text-main, #fff);
+  font-size: 14px;
+  padding: 12px 14px;
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+.illus-textarea:focus {
+  outline: none;
+  border-color: var(--theme-color, #888);
+}
+
+.illus-style-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.illus-picker-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.illus-picker-label {
+  font-size: 12px;
+  color: var(--text-muted, #aaa);
+  width: 40px;
+  flex-shrink: 0;
+  padding-top: 6px;
+}
+
+.illus-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.illus-chip {
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px;
+  color: var(--text-muted, #bbb);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.illus-chip.active {
+  background: color-mix(in srgb, var(--theme-color, #555) 25%, transparent);
+  border-color: var(--theme-color, #888);
+  color: var(--text-main, #fff);
+  font-weight: 600;
+}
+
+.illus-scene-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.illus-scene-card {
+  padding: 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.illus-scene-card:hover, .illus-scene-card.active {
+  border-color: var(--theme-color, #888);
+  background: color-mix(in srgb, var(--theme-color, #555) 10%, transparent);
+}
+
+.illus-scene-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--theme-color, #aaa);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.illus-scene-desc {
+  font-size: 13px;
+  color: var(--text-main, #fff);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.illus-scene-visual {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  margin: 0;
+}
+
+.illus-loading, .illus-empty {
+  text-align: center;
+  color: var(--text-muted, #aaa);
+  font-size: 13px;
+  padding: 24px 0;
+}
+
+.illus-selected-scene {
+  font-size: 13px;
+  color: var(--text-muted, #ccc);
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.illus-generating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 0;
+  color: var(--text-muted, #aaa);
+  font-size: 14px;
+}
+
+.illus-generating span {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.illus-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255,255,255,0.1);
+  border-top-color: var(--theme-color, #888);
+  border-radius: 50%;
+  animation: illus-spin 0.8s linear infinite;
+}
+
+@keyframes illus-spin { to { transform: rotate(360deg); } }
+
+.illus-result-img {
+  width: 100%;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.illus-result-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.illus-btn-primary {
+  flex: 1;
+  padding: 12px;
+  background: var(--theme-color, #555);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+
+.illus-btn-primary:hover { opacity: 0.85; }
+.illus-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.illus-btn-secondary {
+  flex: 1;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 12px;
+  color: var(--text-muted, #aaa);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.illus-refine-text, .illus-block-text {
+  font-size: 13px;
+  color: var(--text-muted, #ccc);
+  line-height: 1.6;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 0;
+}
+
 /* ── FONT PANEL ── */
 .read-font-panel {
   position: absolute;

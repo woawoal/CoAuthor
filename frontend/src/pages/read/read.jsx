@@ -4,6 +4,7 @@ import { getNovel } from '../../lib/chatApi';
 import { getSession, getWorld } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import LoadingVideo from '../../components/loadingVideo';
+import { getIllustrationScenes, generateIllustration } from '../../lib/illustrationApi';
 import './read.css';
 
 const CHAPTER_SIZE = 5;
@@ -38,6 +39,26 @@ function formatDate(iso) {
   return `${d.getFullYear()}. ${d.getMonth() + 1}. ${d.getDate()}.`;
 }
 
+const STYLE_OPTIONS = [
+  { key: 'webtoon',    label: '웹소설 표지풍' },
+  { key: 'watercolor', label: '수채화풍' },
+  { key: 'ink',        label: '흑백 일러스트' },
+  { key: 'realistic',  label: '실사풍' },
+  { key: 'pastel',     label: '파스텔풍' },
+];
+const MOOD_OPTIONS = [
+  { key: 'warm',     label: '따뜻함' },
+  { key: 'dark',     label: '어두움' },
+  { key: 'dreamy',   label: '몽환적' },
+  { key: 'tense',    label: '긴장감' },
+  { key: 'romantic', label: '로맨틱' },
+];
+const RATIO_OPTIONS = [
+  { key: '1:1',  label: '정사각형' },
+  { key: '9:16', label: '세로형 (표지)' },
+  { key: '16:9', label: '가로형' },
+];
+
 export default function ReadNovel() {
   const { storyId } = useParams();
   const navigate = useNavigate();
@@ -54,6 +75,53 @@ export default function ReadNovel() {
   const [activeChapter, setActiveChapter] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showLoading, setShowLoading] = useState(true);
+
+  // ── 삽화 생성 모달 상태 ───────────────────────────────────────────
+  const [illusOpen, setIllusOpen]   = useState(false);
+  const [illusStep, setIllusStep]   = useState('mode'); // mode|direct|recommend|style|generating|result|refine|blocked
+  const [sceneInput, setSceneInput] = useState('');
+  const [illusStyle, setIllusStyle] = useState('webtoon');
+  const [illusMood,  setIllusMood]  = useState('warm');
+  const [illusRatio, setIllusRatio] = useState('1:1');
+  const [illusScenes, setIllusScenes] = useState([]);
+  const [scenesLoading, setScenesLoading] = useState(false);
+  const [selectedScene, setSelectedScene] = useState(null);
+  const [illusResult, setIllusResult] = useState(null);
+
+  function openIllus() {
+    setIllusStep('mode'); setSceneInput(''); setSelectedScene(null);
+    setIllusResult(null); setIllusScenes([]); setIllusOpen(true);
+  }
+
+  async function loadScenes() {
+    setScenesLoading(true);
+    try {
+      const data = await getIllustrationScenes(storyId);
+      setIllusScenes(data.scenes ?? []);
+    } finally {
+      setScenesLoading(false);
+    }
+  }
+
+  async function handleGenerate(sceneDesc, skipFilter = false) {
+    setIllusStep('generating');
+    try {
+      const result = await generateIllustration(storyId, {
+        scene_description: sceneDesc,
+        style: illusStyle,
+        mood: illusMood,
+        ratio: illusRatio,
+        skip_filter: skipFilter,
+      });
+      setIllusResult(result);
+      if (result.status === 'generated')     setIllusStep('result');
+      else if (result.status === 'refine_needed') setIllusStep('refine');
+      else                                    setIllusStep('blocked');
+    } catch {
+      setIllusStep('blocked');
+      setIllusResult({ block_reason: '이미지 생성 중 오류가 발생했어요. 다시 시도해주세요.' });
+    }
+  }
 
   const chapterRefs = useRef([]);
 
@@ -128,6 +196,155 @@ export default function ReadNovel() {
   const wordCount = content.replace(/\s+/g, '').length;
   const readingMins = Math.max(1, Math.ceil(wordCount / 350));
 
+  // ── 삽화 모달 렌더 ──────────────────────────────────────────────────
+  const illusModal = illusOpen && (
+    <div className="illus-overlay" onClick={() => setIllusOpen(false)}>
+      <div className="illus-modal" onClick={e => e.stopPropagation()}>
+
+        {/* 모드 선택 */}
+        {illusStep === 'mode' && (
+          <>
+            <h2 className="illus-title">✨ 삽화 생성</h2>
+            <p className="illus-desc">소설 속 장면을 이미지로 만들어 드려요.</p>
+            <div className="illus-mode-row">
+              <button className="illus-mode-card" onClick={() => setIllusStep('direct')}>
+                <span className="illus-mode-icon">✏️</span>
+                <strong>직접 입력</strong>
+                <span>원하는 장면을 직접 설명하기</span>
+              </button>
+              <button className="illus-mode-card" onClick={() => { setIllusStep('recommend'); loadScenes(); }}>
+                <span className="illus-mode-icon">🔮</span>
+                <strong>AI 추천</strong>
+                <span>소설에서 어울리는 장면 추천받기</span>
+              </button>
+            </div>
+            <button className="illus-close-btn" onClick={() => setIllusOpen(false)}>닫기</button>
+          </>
+        )}
+
+        {/* 직접 입력 */}
+        {illusStep === 'direct' && (
+          <>
+            <button className="illus-back" onClick={() => setIllusStep('mode')}>← 뒤로</button>
+            <h2 className="illus-title">원하는 장면을 설명해주세요</h2>
+            <textarea
+              className="illus-textarea"
+              placeholder={"예) 비 오는 골목에서 주인공이 혼자 우산을 들고 서 있는 장면\n예) 남주가 여주 몰래 편지를 숨기는 장면"}
+              value={sceneInput}
+              onChange={e => setSceneInput(e.target.value)}
+              rows={4}
+            />
+            <StylePicker
+              style={illusStyle} setStyle={setIllusStyle}
+              mood={illusMood}   setMood={setIllusMood}
+              ratio={illusRatio} setRatio={setIllusRatio}
+            />
+            <button
+              className="illus-btn-primary"
+              disabled={!sceneInput.trim()}
+              onClick={() => handleGenerate(sceneInput.trim())}
+            >삽화 생성하기</button>
+          </>
+        )}
+
+        {/* AI 추천 — 장면 목록 */}
+        {illusStep === 'recommend' && (
+          <>
+            <button className="illus-back" onClick={() => setIllusStep('mode')}>← 뒤로</button>
+            <h2 className="illus-title">삽화 후보 장면</h2>
+            {scenesLoading ? (
+              <p className="illus-loading">소설을 분석하고 있어요...</p>
+            ) : (
+              <div className="illus-scene-list">
+                {illusScenes.map((sc, i) => (
+                  <button
+                    key={i}
+                    className={`illus-scene-card${selectedScene === i ? ' active' : ''}`}
+                    onClick={() => { setSelectedScene(i); setSceneInput(sc.description); setIllusStep('style'); }}
+                  >
+                    <span className="illus-scene-label">{sc.label}</span>
+                    <p className="illus-scene-desc">{sc.description}</p>
+                    {sc.visual && <p className="illus-scene-visual">{sc.visual}</p>}
+                  </button>
+                ))}
+                {!scenesLoading && illusScenes.length === 0 && (
+                  <p className="illus-empty">소설 내용을 불러올 수 없어요.</p>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 스타일 선택 (추천 모드에서 장면 고른 후) */}
+        {illusStep === 'style' && (
+          <>
+            <button className="illus-back" onClick={() => setIllusStep('recommend')}>← 뒤로</button>
+            <h2 className="illus-title">스타일을 선택해주세요</h2>
+            <p className="illus-selected-scene">{sceneInput}</p>
+            <StylePicker
+              style={illusStyle} setStyle={setIllusStyle}
+              mood={illusMood}   setMood={setIllusMood}
+              ratio={illusRatio} setRatio={setIllusRatio}
+            />
+            <button
+              className="illus-btn-primary"
+              onClick={() => handleGenerate(sceneInput, true)}
+            >삽화 생성하기</button>
+          </>
+        )}
+
+        {/* 생성 중 */}
+        {illusStep === 'generating' && (
+          <div className="illus-generating">
+            <div className="illus-spinner" />
+            <p>이미지를 그리고 있어요...</p>
+            <span>잠시만 기다려 주세요 (10~30초)</span>
+          </div>
+        )}
+
+        {/* 결과 */}
+        {illusStep === 'result' && illusResult && (
+          <>
+            <h2 className="illus-title">✨ 삽화 완성!</h2>
+            <img className="illus-result-img" src={illusResult.image_url} alt="생성된 삽화" />
+            <div className="illus-result-actions">
+              <a className="illus-btn-primary" href={illusResult.image_url} target="_blank" rel="noreferrer" download>
+                저장하기
+              </a>
+              <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')}>다시 만들기</button>
+              <button className="illus-btn-secondary" onClick={() => setIllusOpen(false)}>닫기</button>
+            </div>
+          </>
+        )}
+
+        {/* 수정 제안 */}
+        {illusStep === 'refine' && illusResult && (
+          <>
+            <h2 className="illus-title">⚠ 장면을 조금 수정했어요</h2>
+            <p className="illus-refine-text">{illusResult.suggestion}</p>
+            <div className="illus-result-actions">
+              <button
+                className="illus-btn-primary"
+                onClick={() => handleGenerate(illusResult.refined_prompt, true)}
+              >수정안으로 생성하기</button>
+              <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')}>다시 입력</button>
+            </div>
+          </>
+        )}
+
+        {/* 차단 */}
+        {illusStep === 'blocked' && illusResult && (
+          <>
+            <h2 className="illus-title">🚫 생성할 수 없어요</h2>
+            <p className="illus-block-text">{illusResult.block_reason ?? '이 장면으로는 삽화를 만들기 어려워요.'}</p>
+            <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')}>다시 시도</button>
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+
   return (
     <div className="read-page" onClick={() => setFontPanelOpen(false)}>
       {showLoading && (
@@ -181,6 +398,9 @@ export default function ReadNovel() {
           </button>
           <button className="read-export-btn" onClick={handleExport}>
             ↓ 내보내기
+          </button>
+          <button className="read-illus-btn" onClick={openIllus}>
+            ✨ 삽화 생성
           </button>
         </div>
       </div>
@@ -291,6 +511,38 @@ export default function ReadNovel() {
             </div>
           </div>
         </main>
+      </div>
+      {illusModal}
+    </div>
+  );
+}
+
+function StylePicker({ style, setStyle, mood, setMood, ratio, setRatio }) {
+  return (
+    <div className="illus-style-picker">
+      <div className="illus-picker-row">
+        <span className="illus-picker-label">그림체</span>
+        <div className="illus-chip-group">
+          {STYLE_OPTIONS.map(o => (
+            <button key={o.key} className={`illus-chip${style === o.key ? ' active' : ''}`} onClick={() => setStyle(o.key)}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="illus-picker-row">
+        <span className="illus-picker-label">분위기</span>
+        <div className="illus-chip-group">
+          {MOOD_OPTIONS.map(o => (
+            <button key={o.key} className={`illus-chip${mood === o.key ? ' active' : ''}`} onClick={() => setMood(o.key)}>{o.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="illus-picker-row">
+        <span className="illus-picker-label">비율</span>
+        <div className="illus-chip-group">
+          {RATIO_OPTIONS.map(o => (
+            <button key={o.key} className={`illus-chip${ratio === o.key ? ' active' : ''}`} onClick={() => setRatio(o.key)}>{o.label}</button>
+          ))}
+        </div>
       </div>
     </div>
   );

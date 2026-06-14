@@ -23,6 +23,7 @@ const AUTHOR_TAGS = [
   { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
   { label: '#추천', prompt: null },
   { label: '#취향저격ai', prompt: null },
+  { label: '#도움말', prompt: null },
 ];
 
 const TASTE_LABELS = {
@@ -100,7 +101,7 @@ function CharMessage({ msg, characterName, hasBookmark, onType, onDone }) {
   const live = !!msg.narration;                       // 스트림 응답만 타이핑(복원 기록 X)
   const narration = formatText(msg.narration || msg.text || '');
   const hasDialogue = !!msg.dialogue;
-  const charName = characterName || msg.name;
+  const charName = msg.speaker || characterName || msg.name;
   const [narrDone, setNarrDone] = useState(!live || !narration);
 
   return (
@@ -390,6 +391,7 @@ export default function Chat() {
   // ── 세계관/등장인물 카드 토글 ────────────────────────────
   const [showWorldInfo, setShowWorldInfo] = useState(false);
   const [showCharInfo, setShowCharInfo] = useState(false);
+  const [showHelpInfo, setShowHelpInfo] = useState(false);
 
   // ── 작가 페르소나 전환 ───────────────────────────────────
   function prevAuthor() {
@@ -584,16 +586,19 @@ export default function Chat() {
     if (tag.label === '#세계관') {
       setShowWorldInfo(prev => !prev);
       setShowCharInfo(false);
+      setShowHelpInfo(false);
       return;
     }
     if (tag.label === '#등장인물') {
       setShowCharInfo(prev => !prev);
       setShowWorldInfo(false);
+      setShowHelpInfo(false);
       return;
     }
     if (tag.label === '#추천') {
       setShowWorldInfo(false);
       setShowCharInfo(false);
+      setShowHelpInfo(false);
       setPanelView('author');
       setShowTastePanel(prev => !prev);
       return;
@@ -601,12 +606,20 @@ export default function Chat() {
     if (tag.label === '#취향저격ai') {
       setShowWorldInfo(false);
       setShowCharInfo(false);
+      setShowHelpInfo(false);
       setPanelView('author');
       handleTasteRecommend();
       return;
     }
+    if (tag.label === '#도움말') {
+      setShowHelpInfo(prev => !prev);
+      setShowWorldInfo(false);
+      setShowCharInfo(false);
+      return;
+    }
     setShowWorldInfo(false);
     setShowCharInfo(false);
+    setShowHelpInfo(false);
     setPanelView('author');
     handleSendAuthorMessage(tag.prompt);
   }
@@ -745,9 +758,9 @@ export default function Chat() {
     esRef.current = connectChatStream(
       chatId,
       { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
-      ({ narration, dialogue }) => {
+      ({ narration, speaker, dialogue }) => {
         setMessages(prev =>
-          prev.map(m => m.id === streamMsgId ? { ...m, narration, dialogue } : m)
+          prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue } : m)
         );
       },
       () => {
@@ -1030,7 +1043,8 @@ export default function Chat() {
                     <button
                       key={tag.label}
                       className={`author-tag${(tag.label === '#세계관' && showWorldInfo) ||
-                        (tag.label === '#등장인물' && showCharInfo)
+                        (tag.label === '#등장인물' && showCharInfo) ||
+                        (tag.label === '#도움말' && showHelpInfo)
                         ? ' author-tag--active' : ''
                         }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${tag.label === '#추천' ? ' author-tag--disabled' : ''
                         }`}
@@ -1101,6 +1115,32 @@ export default function Chat() {
                         {c.personality && <span className="world-info-card__char-desc">{c.personality}</span>}
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* 도움말 카드 */}
+                {showHelpInfo && (
+                  <div className="world-info-card world-info-card--help">
+                    <div className="world-info-card__row">
+                      <span className="world-info-card__label">대사</span>
+                      큰따옴표 안에 쓰세요<br />
+                      <span style={{ color: 'var(--color-text-muted, #888)', fontSize: '0.85em' }}>예) "왜 그러는 거야?"</span>
+                    </div>
+                    <div className="world-info-card__row">
+                      <span className="world-info-card__label">독백·속마음</span>
+                      작은따옴표 안에 쓰세요<br />
+                      <span style={{ color: 'var(--color-text-muted, #888)', fontSize: '0.85em' }}>예) '이 사람, 뭔가 숨기고 있어.'</span>
+                    </div>
+                    <div className="world-info-card__row">
+                      <span className="world-info-card__label">행동·서술</span>
+                      따옴표 없이 그냥 쓰세요<br />
+                      <span style={{ color: 'var(--color-text-muted, #888)', fontSize: '0.85em' }}>예) 스카프를 건네며 고개를 돌린다</span>
+                    </div>
+                    <div className="world-info-card__row">
+                      <span className="world-info-card__label">@등장인물</span>
+                      특정 인물 시점으로 전환<br />
+                      <span style={{ color: 'var(--color-text-muted, #888)', fontSize: '0.85em' }}>예) @에드워드 "무슨 일이야?"</span>
+                    </div>
                   </div>
                 )}
 

@@ -56,6 +56,7 @@ def parse_ai_response(raw: str) -> dict:
         # JSON null → None 이 그대로 넘어오면 이후 슬라이싱에서 터지므로 "" 로 강제
         return {
             "narration":     data.get("narration") or "",
+            "speaker":       data.get("speaker") or "",
             "dialogue":      data.get("dialogue") or "",
             "state_changes": data.get("state_changes") or _default_state,
             "story_phase":   data.get("story_phase") or "",
@@ -73,10 +74,11 @@ def parse_ai_response(raw: str) -> dict:
         )
         return m.group(1).strip().strip('"').rstrip(",").strip() if m else ""
 
-    narration, dialogue = _grab("narration"), _grab("dialogue")
+    narration, dialogue, speaker = _grab("narration"), _grab("dialogue"), _grab("speaker")
     if narration or dialogue:
         return {
             "narration":     narration,
+            "speaker":       speaker,
             "dialogue":      dialogue,
             "state_changes": _default_state,
             "story_phase":   "",
@@ -85,6 +87,7 @@ def parse_ai_response(raw: str) -> dict:
     # 최후: 원문 전체를 narration으로
     return {
         "narration":     raw,
+        "speaker":       "",
         "dialogue":      "",
         "state_changes": _default_state,
         "story_phase":   "",
