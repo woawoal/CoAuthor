@@ -182,6 +182,23 @@ async def error_notebook(user_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     return {"notebook": pf.notebook(user.error_profile)}
 
 
+class ErrorEntryDelete(BaseModel):
+    original: str
+
+
+@router.delete("/users/{user_id}/error-notebook")
+async def delete_error_entry(
+    user_id: uuid.UUID, body: ErrorEntryDelete, db: AsyncSession = Depends(get_db)
+):
+    """오답노트 항목 1개 삭제(original 키 기준). 갱신된 노트를 돌려준다."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    user.error_profile = pf.remove_entry(user.error_profile, body.original)
+    await db.commit()
+    return {"notebook": pf.notebook(user.error_profile)}
+
+
 @router.get("/chats/{chat_id}/error-warmup")
 async def error_warmup(chat_id: str, limit: int = 3, db: AsyncSession = Depends(get_db)):
     """능동 경고 — 글쓰기 진입 시 '자주 틀리는 것' 미리 보기.

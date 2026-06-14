@@ -4,11 +4,12 @@ import { authClient } from '../../lib/auth';
 import {
     getProfile, getWorks, getRecent, getSentences, getWiki,
     deleteSentence, getAuthorRecords, getAchievements, getStats, getDashboard,
-    getTasteProfile, setupTasteProfile, getErrorNotebook,
+    getTasteProfile, setupTasteProfile, getErrorNotebook, deleteErrorNotebookEntry,
 } from '../../lib/mypageApi';
 import TasteOnboarding from './TasteOnboarding';
 import { getDailyLetter, determineSituation } from '../../lib/authorLetters';
 import { getVoiceProfile } from '../../lib/voiceApi';
+import { toast } from '../../lib/toast';
 import './mypage.css';
 import VideoPreviewModal from '../../components/videoPreviewModal';
 
@@ -181,6 +182,15 @@ function MyPage() {
             await deleteSentence(userId, id);
             setSentences(prev => prev.filter(s => s.id !== id));
         } catch (e) { console.error(e); }
+    };
+
+    const handleDeleteError = async (original) => {
+        try {
+            const nb = await deleteErrorNotebookEntry(userId, original);
+            setErrorNotebook(nb);
+        } catch {
+            toast('삭제에 실패했어요. 잠시 후 다시 시도해주세요.', 'error');
+        }
     };
 
     return (
@@ -724,6 +734,12 @@ function MyPage() {
                                                 <span className="mp-errnote__right">{e.corrected}</span>
                                                 {e.type && <span className="mp-errnote__type">{e.type}</span>}
                                                 <span className="mp-errnote__count">{e.count}회</span>
+                                                <button
+                                                    className="mp-errnote__del"
+                                                    onClick={() => handleDeleteError(e.original)}
+                                                    aria-label="삭제"
+                                                    title="이 오답 삭제"
+                                                >×</button>
                                             </li>
                                         ))}
                                     </ul>
