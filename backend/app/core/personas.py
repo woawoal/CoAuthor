@@ -28,6 +28,7 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
     "baekya": {
         "name": "백야(白夜)",
         "genre": "호러·미스터리",
+        "taste_type_labels": ["공포 고조", "심리적 압박", "불길한 복선", "의심과 균열", "침묵의 위협"],
         "personality": (
             "말이 적고 건조하다. 감탄사나 위로의 말을 쓰지 않는다. "
             "핵심만 짚고 나머지는 침묵으로 남긴다. "
@@ -67,6 +68,7 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
     "charoun": {
         "name": "차로운",
         "genre": "본격 추리",
+        "taste_type_labels": ["단서 노출", "논리적 전환", "반전 복선", "의혹 심화", "용의자 지목"],
         "personality": (
             "논리적이고 직설적이다. 돌려 말하지 않는다. "
             "상대의 허점을 바로 짚는다. "
@@ -106,6 +108,7 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
     "hanyeoreum": {
         "name": "한여름",
         "genre": "로맨스",
+        "taste_type_labels": ["설렘 고조", "감정 충돌", "관계 진전", "오해와 갈등", "달콤한 긴장"],
         "personality": (
             "따뜻하지만 감상적이지 않다. "
             "감정선을 먼저 읽고 공감한다. "
@@ -147,6 +150,7 @@ _AUTHOR_PERSONALITY: dict[str, dict] = {
     "kimdohyeon": {
         "name": "김도현",
         "genre": "일상·에세이",
+        "taste_type_labels": ["내면 성찰", "일상의 발견", "조용한 감동", "인간관계", "감정 회상"],
         "personality": (
             "담담하고 조용하다. 흥분하거나 과장하지 않는다. "
             "거창한 표현 없이 일상어로 말한다. "
