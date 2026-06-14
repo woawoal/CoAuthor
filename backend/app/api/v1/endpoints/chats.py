@@ -254,6 +254,25 @@ def _extract_ai_char_names(world_context: str) -> list[str]:
     return re.findall(r'^- ([^\s(]+)', m.group(1), re.MULTILINE)
 
 
+def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str) -> str:
+    """[L1] 출력 화자를 등록된 AI 인물로 강제 보정(모델이 흔들려도 화면 화자는 항상 유효).
+
+    - 빈 값 / 주인공 이름 → ''(나레이션). 주인공 대사는 AI 출력이 아니다.
+    - 목록의 정식 이름으로 정규화(공백 무시 매칭 — '박 영감'→'박영감').
+    - 등록 안 된 이름(환각·즉석 새 인물) → AI 인물이 유일하면 그 인물, 아니면 ''.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    norm = lambda x: (x or "").replace(" ", "")
+    if protagonist_name and norm(s) == norm(protagonist_name):
+        return ""
+    for name in ai_names:
+        if norm(s) == norm(name):
+            return name
+    return ai_names[0] if len(ai_names) == 1 else ""
+
+
 def build_messages(
     persona_id: str,
     world_context: str,
@@ -285,9 +304,23 @@ def build_messages(
     else:
         protagonist_rule = ""
 
+    # [L2] 화자 고정 — speaker는 등록 인물 enum 안에서만, 새 인물 임의 등장 금지
+    if ai_char_names:
+        _names = ", ".join(ai_char_names)
+        speaker_rule = (
+            f"[화자 고정 규칙 — 엄수]\n"
+            f"speaker 필드는 반드시 다음 등장인물 중 정확히 하나이거나 빈 문자열(나레이션만)이어야 한다: {_names}.\n"
+            f"이 목록에 없는 이름을 speaker에 넣지 말 것.\n"
+            f"등록된 등장인물 외의 새 인물을 임의로 등장시키지 말 것 — 스쳐가는 인물이 필요하면 "
+            f"narration으로만 묘사하고 speaker에는 쓰지 말 것."
+        )
+    else:
+        speaker_rule = ""
+
     system = "\n\n".join(filter(None, [
         CRITICAL_OUTPUT_RULE,
         protagonist_rule,
+        speaker_rule,
         OUTPUT_RULES,
         INPUT_RULES,
         WRITER_STYLE_RULE,
@@ -429,6 +462,10 @@ async def stream_response(
         except Exception as e:
             logger.warning("기억 검색 실패(보강 생략): %s", e)
 
+    # [L1] 출력 화자 검증용 — 등록 인물/주인공 이름을 한 번만 추출(generate 클로저에서 사용)
+    _valid_ai_names = _extract_ai_char_names(world_context)
+    _prot_name = _extract_protagonist_name(world_context)
+
     async def generate():
         try:
             messages = build_messages(
@@ -470,7 +507,8 @@ async def stream_response(
 
             parsed = parse_ai_response(raw)
             narration     = parsed["narration"]
-            reply_speaker = parsed.get("speaker", "")   # AI 응답의 화자(입력 speaker와 별개 — 같은 이름이면 클로저 UnboundLocal)
+            # [L1] AI가 정한 화자를 등록 인물로 강제 보정(흔들림 방지). 입력 speaker와 별개 변수.
+            reply_speaker = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name)
             dialogue      = parsed["dialogue"]
             state_changes = parsed["state_changes"]
             internal_note = parsed["internal_note"]
