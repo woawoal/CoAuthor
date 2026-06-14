@@ -1,4 +1,5 @@
 """마이페이지(내 서재) 엔드포인트"""
+import asyncio
 import json
 import uuid
 import logging
@@ -10,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
 from app.models.user import User
 from app.models.session import Session, SessionStatus
 from app.models.novel import Novel
@@ -549,6 +550,12 @@ async def get_achievements(
 
 
 # ── 12. 대시보드 ────────────────────────────────────────────────
+async def _run_q(fn):
+    """독립 세션을 열어 쿼리 1개 실행(동시 실행용 — 같은 세션 동시 사용은 asyncpg가 막음)."""
+    async with AsyncSessionLocal() as s:
+        return await fn(s)
+
+
 @router.get("/dashboard")
 async def get_dashboard(
     user_id: str = Query(...),
@@ -582,22 +589,55 @@ async def get_dashboard(
         ldt = last_updated.replace(tzinfo=timezone.utc) if last_updated.tzinfo is None else last_updated
         days_since_active = (now - ldt).days
 
-    # resume_work: 가장 최근 세션
+    # resume_work / recent_feedback / weekly_chars 에 필요한 5개 쿼리는 서로 독립 →
+    # 각자 독립 세션으로 병렬 실행(순차 round-trip 5회 → 병렬 1배치, dashboard 체감 단축).
     latest = sessions[0]
-    latest_novel = (await db.execute(
-        select(Novel).where(Novel.session_id == latest.id)
-    )).scalar_one_or_none()
-    latest_world = None
-    if latest.world_id:
-        latest_world = (await db.execute(
-            select(World).where(World.id == latest.world_id)
+    week_ago = now - timedelta(days=7)
+    weekly_sids = [
+        s.id for s in sessions
+        if s.updated_at and (
+            s.updated_at.replace(tzinfo=timezone.utc) if s.updated_at.tzinfo is None else s.updated_at
+        ) >= week_ago
+    ]
+
+    async def _q_latest_novel(s):
+        return (await s.execute(select(Novel).where(Novel.session_id == latest.id))).scalar_one_or_none()
+
+    async def _q_latest_world(s):
+        if not latest.world_id:
+            return None
+        return (await s.execute(select(World).where(World.id == latest.world_id))).scalar_one_or_none()
+
+    async def _q_protagonist(s):
+        if not latest.protagonist_id:
+            return None
+        return (await s.execute(select(Character).where(Character.id == latest.protagonist_id))).scalar_one_or_none()
+
+    async def _q_recent_dialogue(s):
+        return (await s.execute(
+            select(Dialogue)
+            .where(
+                Dialogue.session_id.in_(session_ids),
+                Dialogue.speaker_type == SpeakerType.CHARACTER,
+            )
+            .order_by(Dialogue.created_at.desc())
+            .limit(1)
         )).scalar_one_or_none()
+
+    async def _q_wnovels(s):
+        if not weekly_sids:
+            return []
+        return (await s.execute(select(Novel).where(Novel.session_id.in_(weekly_sids)))).scalars().all()
+
+    latest_novel, latest_world, protagonist, recent_dialogue, wnovels = await asyncio.gather(
+        _run_q(_q_latest_novel),
+        _run_q(_q_latest_world),
+        _run_q(_q_protagonist),
+        _run_q(_q_recent_dialogue),
+        _run_q(_q_wnovels),
+    )
+
     author_str = AUTHOR_ID_MAP.get(latest.author_id) if latest.author_id else None
-    protagonist = None
-    if latest.protagonist_id:
-        protagonist = (await db.execute(
-            select(Character).where(Character.id == latest.protagonist_id)
-        )).scalar_one_or_none()
     resume_work = {
         "session_id": str(latest.id),
         "title": latest_novel.title if latest_novel else (latest_world.title if latest_world else "제목 없음"),
@@ -608,17 +648,7 @@ async def get_dashboard(
         "protagonist_name": protagonist.name if protagonist else None,
     }
 
-    # recent_feedback: 가장 최근 AI(CHARACTER) 대화
-    recent_dialogue = (await db.execute(
-        select(Dialogue)
-        .where(
-            Dialogue.session_id.in_(session_ids),
-            Dialogue.speaker_type == SpeakerType.CHARACTER,
-        )
-        .order_by(Dialogue.created_at.desc())
-        .limit(1)
-    )).scalar_one_or_none()
-
+    # recent_feedback: 위에서 병렬로 가져온 recent_dialogue 가공
     recent_feedback = None
     if recent_dialogue:
         fb_session = next((s for s in sessions if s.id == recent_dialogue.session_id), None)
@@ -630,20 +660,8 @@ async def get_dashboard(
             "content": trimmed,
         }
 
-    # weekly_chars: 최근 7일 내 수정된 세션들의 novel 글자 합산
-    week_ago = now - timedelta(days=7)
-    weekly_sids = [
-        s.id for s in sessions
-        if s.updated_at and (
-            s.updated_at.replace(tzinfo=timezone.utc) if s.updated_at.tzinfo is None else s.updated_at
-        ) >= week_ago
-    ]
-    weekly_chars = 0
-    if weekly_sids:
-        wnovels = (await db.execute(
-            select(Novel).where(Novel.session_id.in_(weekly_sids))
-        )).scalars().all()
-        weekly_chars = sum(len(n.content or "") for n in wnovels)
+    # weekly_chars: 위에서 병렬로 가져온 wnovels 합산
+    weekly_chars = sum(len(n.content or "") for n in wnovels)
 
     # author_shares
     author_counts = Counter(

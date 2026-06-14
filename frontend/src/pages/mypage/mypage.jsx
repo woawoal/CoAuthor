@@ -109,32 +109,42 @@ function MyPage() {
             setUserId(uid);
             setUserInfo(session.data?.user);
 
-            // 0) 프로필 캐시 즉시 표시(stale-while-revalidate) → 헤더·작품수 0초
+            // 0) 캐시 즉시 표시(stale-while-revalidate) — dashboard 엔드포인트가 ~6s라
+            //    재방문 시 캐시로 0초 표시 후 백그라운드 갱신(내 서재 들락날락 체감 단축)
+            let hadCache = false;
             try {
-                const cached = localStorage.getItem(`profile_${uid}`);
-                if (cached) setProfile(JSON.parse(cached));
+                const cp = localStorage.getItem(`profile_${uid}`);
+                const cd = localStorage.getItem(`dashboard_${uid}`);
+                const cs = localStorage.getItem(`stats_${uid}`);
+                if (cp) setProfile(JSON.parse(cp));
+                if (cd) setDashboard(JSON.parse(cd));
+                if (cs) setStats(JSON.parse(cs));
+                if (cp && cd && cs) { hadCache = true; setLoading(false); }   // 캐시 있으면 즉시 화면
             } catch { /* 캐시 무시 */ }
 
-            // 1) 첫 화면(대시보드)에 필요한 것만 기다려 스피너 내림
+            // 1) 최신값 갱신 — 캐시가 없었으면 이게 첫 화면(스피너 유지), 있었으면 조용히 교체
             try {
-                const [profileData, dashboardData, statsData, vp] = await Promise.all([
+                const [profileData, dashboardData, statsData] = await Promise.all([
                     getProfile(uid),
                     getDashboard(uid),
                     getStats(uid),
-                    getVoiceProfile(),
                 ]);
                 setProfile(profileData);
-                try { localStorage.setItem(`profile_${uid}`, JSON.stringify(profileData)); } catch { /* 무시 */ }
                 setDashboard(dashboardData);
                 setStats(statsData);
-                setVoiceProfile(vp ?? null);
+                try {
+                    localStorage.setItem(`profile_${uid}`, JSON.stringify(profileData));
+                    localStorage.setItem(`dashboard_${uid}`, JSON.stringify(dashboardData));
+                    localStorage.setItem(`stats_${uid}`, JSON.stringify(statsData));
+                } catch { /* 무시 */ }
             } catch (e) {
                 console.error(e);
             } finally {
-                setLoading(false);   // 핵심 준비되면 즉시 화면(나머지는 아래 백그라운드)
+                if (!hadCache) setLoading(false);   // 캐시로 이미 화면 떴으면 finally에서 또 끌 필요 없음
             }
 
-            // 2) 다른 탭 전용 데이터는 백그라운드 — 대기하지 않음
+            // 2) 다른 탭 전용 + 느린 voice-profile(~1.6s)은 백그라운드 — 대기하지 않음
+            getVoiceProfile().then(vp => setVoiceProfile(vp ?? null)).catch(() => setVoiceProfile(null));
             getWorks(uid).then(setWorks).catch(() => { });
             getTasteProfile(uid).then(t => {
                 setTasteProfile(t.taste_profile ?? {});
