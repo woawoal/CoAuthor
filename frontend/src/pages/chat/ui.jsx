@@ -5,6 +5,7 @@ import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, sendAuthorMessage, generateAuthorRewrite,
   getMemos, saveMemos, getAuthorReaction, getTasteRecommend, proofread, addGlossaryTerm,
+  getErrorWarmup,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
@@ -193,6 +194,22 @@ export default function Chat() {
     }
   }, [chatId, manuscriptContent]);
 
+  // 능동 경고: 진입 시 '자주 틀리는 것'(2회 이상) 미리 보기. 닫으면 그날은 다시 안 뜸.
+  useEffect(() => {
+    if (!chatId || chatId === 'room_001') return;
+    const today = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem(`warmup_off_${chatId}_${today}`)) return;
+    getErrorWarmup(chatId, 3).then(r => setWarmup(r?.items ?? [])).catch(() => { });
+  }, [chatId]);
+
+  const dismissWarmup = () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      localStorage.setItem(`warmup_off_${chatId}_${today}`, '1');
+    } catch { /* localStorage 차단 무시 */ }
+    setWarmup([]);
+  };
+
   // 스토리 채팅 작가 (고정)
   const storyAuthor = AUTHOR_MAP[authorId] ?? AUTHOR_MAP[1];
 
@@ -220,6 +237,7 @@ export default function Chat() {
   const reactionTimerRef = useRef(null);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
+  const [warmup, setWarmup] = useState([]);   // 능동 경고: 자주 틀리는 것 미리 보기(2회 이상)
   const [ending, setEnding] = useState(false);
   const [converting, setConverting] = useState(false);
 
@@ -872,6 +890,22 @@ export default function Chat() {
         </div>
 
         <div className="chat-messages">
+          {warmup.length > 0 && (
+            <div className="warmup-card">
+              <button className="warmup-card__close" onClick={dismissWarmup} aria-label="닫기">×</button>
+              <div className="warmup-card__title">💡 자주 놓치는 것, 오늘은 미리 체크해요</div>
+              <div className="warmup-card__items">
+                {warmup.map((w, i) => (
+                  <span key={i} className="warmup-chip">
+                    <span className="warmup-chip__bad">{w.original}</span>
+                    <span className="warmup-chip__arrow">→</span>
+                    <span className="warmup-chip__good">{w.corrected}</span>
+                    <span className="warmup-chip__count">{w.count}회</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {importedNarration && (
             <div className="narration-import-block">
               <span className="narration-import-block__label">원고</span>

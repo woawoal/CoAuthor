@@ -182,6 +182,21 @@ async def error_notebook(user_id: uuid.UUID, db: AsyncSession = Depends(get_db))
     return {"notebook": pf.notebook(user.error_profile)}
 
 
+@router.get("/chats/{chat_id}/error-warmup")
+async def error_warmup(chat_id: str, limit: int = 3, db: AsyncSession = Depends(get_db)):
+    """능동 경고 — 글쓰기 진입 시 '자주 틀리는 것' 미리 보기.
+
+    반응형(틀린 뒤 교정) → 예측형(틀리기 전 제시) 전환의 1단계.
+    이미 2회 이상 틀린 표기만 골라 상위 N개를 돌려준다(처음 틀린 건 잔소리 X).
+    LLM 미사용 — error_profile 누적 데이터 그대로라 환각·지연·비용 0.
+    """
+    user = await _resolve_user(chat_id, db)
+    if user is None:
+        return {"items": [], "count": 0}
+    frequent = [it for it in pf.notebook(user.error_profile) if it.get("count", 0) >= 2]
+    return {"items": frequent[: max(1, limit)], "count": len(frequent)}
+
+
 # ── 세계관 용어집(맞춤법 보호 사전) ─────────────────────────────
 class GlossaryAddRequest(BaseModel):
     term: str
