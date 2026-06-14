@@ -7,5 +7,6 @@ from app.models.novel import Novel
 from app.models.api_log import ApiLog
 from app.models.user_taste import UserChatTaste
 from app.models.user_taste_profile import UserTasteProfile
+from app.models.illustration import Illustration
 
-__all__ = ["User", "World", "Character", "Session", "Dialogue", "Novel", "ApiLog", "UserChatTaste", "UserTasteProfile"]
+__all__ = ["User", "World", "Character", "Session", "Dialogue", "Novel", "ApiLog", "UserChatTaste", "UserTasteProfile", "Illustration"]

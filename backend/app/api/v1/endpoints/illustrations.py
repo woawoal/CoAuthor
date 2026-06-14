@@ -3,12 +3,15 @@
 GET  /sessions/{session_id}/illustrations/recommend  → 장면 후보 4개
 POST /sessions/{session_id}/illustrations/generate   → 이미지 URL
 """
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.illustration import Illustration
 from app.models.novel import Novel
 from app.models.session import Session
 from app.models.world import World
@@ -125,3 +128,65 @@ async def generate_illustration(
         refined_prompt=refined,
         suggestion=filter_result.get("suggestion"),
     )
+
+
+# ── 저장된 삽화 (DB 영속 — 기기/계정 무관) ──────────────────────────────
+class SaveIllustrationRequest(BaseModel):
+    image_url: str
+    caption: str = ""   # 어떤 장면인지(장면 설명)
+
+
+def _illus_dict(r: Illustration) -> dict:
+    return {
+        "id": str(r.id),
+        "image_url": r.image_url,
+        "caption": r.caption or "",
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+@router.get("/{session_id}/illustrations")
+async def list_illustrations(session_id: str, db: AsyncSession = Depends(get_db)):
+    """이 세션에 저장된 삽화 목록(최신순)."""
+    try:
+        sid = uuid.UUID(session_id)
+    except (ValueError, TypeError):
+        return {"illustrations": []}
+    rows = (await db.execute(
+        select(Illustration).where(Illustration.session_id == sid).order_by(Illustration.created_at.desc())
+    )).scalars().all()
+    return {"illustrations": [_illus_dict(r) for r in rows]}
+
+
+@router.post("/{session_id}/illustrations")
+async def save_illustration(
+    session_id: str,
+    body: SaveIllustrationRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """생성한 삽화를 DB에 저장(이미지 + 장면 설명)."""
+    try:
+        sid = uuid.UUID(session_id)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "잘못된 세션 ID입니다.")
+    if not (body.image_url or "").strip():
+        raise HTTPException(400, "이미지가 없습니다.")
+    row = Illustration(session_id=sid, image_url=body.image_url, caption=(body.caption or "")[:500])
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _illus_dict(row)
+
+
+@router.delete("/{session_id}/illustrations/{illus_id}")
+async def delete_illustration(session_id: str, illus_id: str, db: AsyncSession = Depends(get_db)):
+    """저장된 삽화 1개 삭제."""
+    try:
+        iid = uuid.UUID(illus_id)
+    except (ValueError, TypeError):
+        raise HTTPException(400, "잘못된 ID입니다.")
+    row = (await db.execute(select(Illustration).where(Illustration.id == iid))).scalar_one_or_none()
+    if row:
+        await db.delete(row)
+        await db.commit()
+    return {"status": "deleted"}

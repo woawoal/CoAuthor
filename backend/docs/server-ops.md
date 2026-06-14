@@ -31,7 +31,64 @@
 
 ---
 
+## ☁️ Cloud Run / 배포 체크리스트 (반복 함정 — 배포 전 필독)
+
+> `.env`는 **이미지에 안 올라감**(`.dockerignore`+gitignore). Cloud Run은 **배포 시 넘긴 env/시크릿만** 봄. 로컬에서 되던 게 클라우드에서 안 되면 90%가 여기.
+
+1. **🔑 새 외부 API 키는 Cloud Run에도 반드시 추가** — *이번 주에만 Vertex·ElevenLabs·FAL_KEY 3번 당함.* 코드에 `settings.XXX_KEY` 새로 쓰면, 로컬 `.env`뿐 아니라 **Cloud Run에도** 넣어야 함(안 넣으면 그 기능만 500/502, 키 없음 에러):
+   ```bash
+   # 재빌드 없이 config만 갱신(기존 env·시크릿 유지) — ~30초
+   gcloud run services update nodevelture-api --region us-central1 --update-env-vars FAL_KEY=<값>
+   # 민감키는 시크릿으로: --update-secrets FAL_KEY=FAL_KEY:latest (SA에 secretAccessor 부여 후)
+   ```
+2. **📁 배포는 `backend/`에서** — `gcloud run deploy nodevelture-api --source . --region us-central1`. 첫 줄에 **"Building using Dockerfile"** 떠야 정상. 루트에서 하면 **"Buildpacks"** 로 빌드 실패.
+3. **🗄️ 모델에 컬럼 추가했으면 마이그레이션** — `alembic upgrade head`. 모델 코드만 배포하고 마이그레이션 누락하면 해당 테이블 조회가 전부 500(예: `worlds.glossary` 누락 → sessions·채팅 마비).
+4. **🔁 코드 변경=재배포 / env만 변경=`services update`**(재빌드 X). env는 빌드 때 박히는 `VITE_*`(프론트)와 달리 백엔드 env는 런타임 주입.
+5. **🔐 Vertex 인증** — 로컬 ADC ≠ Cloud Run. Cloud Run은 **런타임 SA**(`<프로젝트번호>-compute@developer.gserviceaccount.com`)로 호출 → `roles/aiplatform.user` 필요.
+6. **▲ 프론트(Vercel)** — `VITE_API_BASE_URL`은 **Vercel 대시보드 env**에 넣고(로컬 `.env`는 gitignore라 안 읽힘) + **빌드 후 Production 승격**(새 빌드가 Preview로만 떠 있으면 메인 도메인은 옛 빌드). `VITE_*`는 빌드 때 박히므로 변경 시 **재배포 필수**.
+7. **🔎 안 되면 추측 말고 로그** — `gcloud run services logs read nodevelture-api --region us-central1 --limit 50`. 실제 트레이스백이 원인을 정확히 짚어줌.
+
+---
+
 ## 이슈 기록
+
+## 2026-06-14 — 마이페이지('내 서재') 로딩 지연 진단 + dashboard 최적화
+
+**증상**: 메인 → '내 서재' 진입 시 스피너가 오래(체감 7초+). 프론트는 이미 핵심만 await + 병렬 + 프로필 캐시였음.
+
+**측정** (us-central1 라이브, 워밍 상태):
+
+| 엔드포인트 | 지연 |
+|---|---|
+| `/users/{id}/...` (단순) | ~0.26s |
+| `/mypage/profile` | ~2.2s |
+| `/mypage/stats` | ~2.2s |
+| `/users/{id}/voice-profile` (단순 PK 조회) | ~1.8s |
+| **`/mypage/dashboard`** | **~6.9s** ← 주범 |
+
+**원인 2가지**
+1. **dashboard가 DB 쿼리 6~7개를 순차** 실행(세션→소설→세계관→주인공→최근대화→주간소설). LLM 없음.
+2. **Neon 쿼리당 지연 floor ~2s** — 단순 PK 조회(voice-profile)도 1.8s. Cloud Run(us-central1)↔Neon **리전 거리/커넥션 establish 오버헤드**로 추정. **모든 엔드포인트에 영향**(채팅 포함).
+
+**시도 & 결과**
+- ❌ **독립 세션 5개로 병렬화**(`asyncio.gather` + 각자 `AsyncSessionLocal`): 6.9s → **8.7s로 역행**. asyncpg는 한 세션 동시 사용 불가라 새 커넥션 5개를 동시에 여는데, **Neon이 동시 커넥션 establish를 경합/직렬화**해서 오히려 느림. → 롤백.
+- ✅ **단일 세션 유지 + 쿼리 병합**: Novel을 `session_id.in_(전체)` **1쿼리**로 가져와 latest/weekly 둘 다 커버(2→1). round-trip 6→5. **dashboard ~3.0s로 안정**.
+- ✅ **프론트 stale-while-revalidate 캐시**: `profile`·`dashboard`·`stats`를 localStorage에 캐시 → **재방문 즉시** 표시 후 백그라운드 갱신. `voice-profile`(1.8s)은 첫 화면 불필요 → 백그라운드로 이동.
+
+**교훈**
+- **Neon에선 "쿼리 병렬화(다중 커넥션) > 순차"가 거짓.** 커넥션 establish가 비싸 동시 다중 커넥션이 더 느릴 수 있음. **라운드트립 수를 줄이는 것(쿼리 병합)** 이 안전한 최적화.
+- 근본 해결(미적용, 발표 후 과제): **Neon pooled 엔드포인트(`-pooler`)** 사용 / **리전 정렬**(Cloud Run·Neon 같은 리전) / `pool_pre_ping` 재검토 / min-instances 1로 cold-start 제거. 이게 floor ~2s를 줄이는 진짜 레버.
+- 데모 직전엔 **백엔드 워밍업**(아무 페이지 미리 호출)으로 cold-start 회피하면 충분.
+
+## 2026-06-14 — 삽화 생성 502 (fal.ai 403 Forbidden)
+
+**증상**: `POST /sessions/{id}/illustrations/generate` → 502. 로그에 `POST https://fal.run/fal-ai/flux/dev "HTTP/1.1 403 Forbidden"`.
+
+**원인**: `FAL_KEY` 시크릿은 **정상 연결**돼 있음(리비전에 존재). fal.ai가 키를 받고도 **403** = 인증은 됐으나 권한 거부 → **크레딧 소진/결제 미설정/키 무효**(계정 측 문제). 배포·env 문제 아님.
+
+**조치**: fal.ai 대시보드에서 크레딧·결제·키 유효성 확인(키 담당자). 코드/배포로는 못 고침.
+
+**부수 발견(중요)**: 표준 배포 명령의 `--set-secrets`에 **`FAL_KEY`가 빠져 있었음** → `--set-secrets`는 전체 교체라 다음 배포가 FAL_KEY를 **삭제**할 뻔. 표준 명령에 `FAL_KEY=FAL_KEY:latest` 영구 추가함(위 ③ 참고).
 
 ## 2026-06-10 — 백엔드를 Cloud Run으로 배포 (ngrok 대체, 항상 켜진 HTTPS)
 
@@ -59,10 +116,11 @@
 
 ### ③ 배포 (backend 폴더에서, 한 줄)
 ```
-gcloud run deploy nodevelture-api --source . --region us-central1 --allow-unauthenticated --set-env-vars "USE_VERTEX=true,GOOGLE_CLOUD_PROJECT=nodevelture-499003,GOOGLE_CLOUD_LOCATION=us-central1,LLM_PROVIDER=gemini,GEMINI_MODEL=gemini-2.5-flash-lite,GEMINI_FALLBACK_MODEL=gemini-2.5-flash" --set-secrets "DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest"
+gcloud run deploy nodevelture-api --source . --region us-central1 --allow-unauthenticated --set-env-vars "USE_VERTEX=true,GOOGLE_CLOUD_PROJECT=nodevelture-499003,GOOGLE_CLOUD_LOCATION=us-central1,LLM_PROVIDER=gemini,GEMINI_MODEL=gemini-2.5-flash-lite,GEMINI_FALLBACK_MODEL=gemini-2.5-flash" --set-secrets "DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,FAL_KEY=FAL_KEY:latest"
 ```
 - 출력된 `https://nodevelture-api-xxxx.run.app` 가 ngrok 대체. `/health` → `{"status":"ok"}` 확인.
-- **비밀 아닌 설정만 `--set-env-vars`**, DB/Redis URL은 `--set-secrets`로.
+- **비밀 아닌 설정만 `--set-env-vars`**, DB/Redis URL·FAL_KEY는 `--set-secrets`로.
+- ⚠️ **`--set-secrets`/`--set-env-vars`는 전체 교체**다. 시크릿 하나라도 빠뜨리면 그게 **삭제**된다(삽화 `FAL_KEY` 누락 → fal.ai 502가 단골 사고). **현재 서비스의 시크릿 전체**(`DATABASE_URL`·`REDIS_URL`·`FAL_KEY`)를 항상 같이 적을 것. 새 키 추가 시 이 줄도 갱신.
 
 ### ④ 함정
 - **프로젝트 번호**: 꺾쇠 `<...>` 그대로 넣지 말고 실제 숫자로 치환.
