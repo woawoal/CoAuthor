@@ -107,27 +107,38 @@ function MyPage() {
             if (!uid) { navigate('/login'); return; }
             setUserId(uid);
             setUserInfo(session.data?.user);
+
+            // 0) 프로필 캐시 즉시 표시(stale-while-revalidate) → 헤더·작품수 0초
             try {
-                const [profileData, worksData, dashboardData, statsData, tasteData, vp] = await Promise.all([
+                const cached = localStorage.getItem(`profile_${uid}`);
+                if (cached) setProfile(JSON.parse(cached));
+            } catch { /* 캐시 무시 */ }
+
+            // 1) 첫 화면(대시보드)에 필요한 것만 기다려 스피너 내림
+            try {
+                const [profileData, dashboardData, statsData, vp] = await Promise.all([
                     getProfile(uid),
-                    getWorks(uid),
                     getDashboard(uid),
                     getStats(uid),
-                    getTasteProfile(uid),
                     getVoiceProfile(),
                 ]);
-                setVoiceProfile(vp ?? null);
                 setProfile(profileData);
-                setWorks(worksData);
+                try { localStorage.setItem(`profile_${uid}`, JSON.stringify(profileData)); } catch { /* 무시 */ }
                 setDashboard(dashboardData);
                 setStats(statsData);
-                setTasteProfile(tasteData.taste_profile ?? {});
-                setTasteWorks(tasteData.selected_works ?? []);
+                setVoiceProfile(vp ?? null);
             } catch (e) {
                 console.error(e);
             } finally {
-                setLoading(false);
+                setLoading(false);   // 핵심 준비되면 즉시 화면(나머지는 아래 백그라운드)
             }
+
+            // 2) 다른 탭 전용 데이터는 백그라운드 — 대기하지 않음
+            getWorks(uid).then(setWorks).catch(() => { });
+            getTasteProfile(uid).then(t => {
+                setTasteProfile(t.taste_profile ?? {});
+                setTasteWorks(t.selected_works ?? []);
+            }).catch(() => { });
         };
         init();
     }, [navigate]);
