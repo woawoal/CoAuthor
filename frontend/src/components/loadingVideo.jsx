@@ -42,6 +42,29 @@ const volumeStyle = {
     color: '#fff',
 };
 
+const tips = [
+    `[ TIP ] 대사는 큰따옴표 안에 쓰세요\n예) "왜 그러는 거야?"`,
+    `[ TIP ] 독백·속마음은 작은따옴표 안에 쓰세요\n예) '이 사람, 뭔가 숨기고 있어.'`,
+    `[ TIP ] 행동·서술은 따옴표 없이 그냥 쓰세요\n예) 스카프를 건네며 고개를 돌린다`,
+    `[ TIP ] @등장인물은 특정 인물 시점으로 전환돼요\n예) @에드워드 "무슨 일이야?"`,
+];
+
+const subtitleStyle = {
+    position: 'absolute',
+    left: '50%',
+    bottom: '20px',
+    transform: 'translateX(-50%)',
+    zIndex: 2,
+    maxWidth: '80%',
+    padding: '12px 18px',
+    color: '#fff',
+    fontSize: '18px',
+    lineHeight: 1.5,
+    textAlign: 'center',
+    whiteSpace: 'pre-line',
+    wordBreak: 'keep-all',
+};
+
 function LoadingVideo({ loading = true, minDuration = 3000, onFinish }) {
     const startTimeRef = useRef(Date.now());
     const videoRef = useRef(null);
@@ -59,6 +82,10 @@ function LoadingVideo({ loading = true, minDuration = 3000, onFinish }) {
         setGlobalVideoVolume(volume);
         applyGlobalVideoVolume(video);
     }, [volume]);
+
+    const tipText = useMemo(() => {
+        return tips[Math.floor(Math.random() * tips.length)];
+    }, []);
 
     useEffect(() => {
         if (loading) return;
@@ -84,6 +111,10 @@ function LoadingVideo({ loading = true, minDuration = 3000, onFinish }) {
                     playsInline
                     preload="auto"
                 />
+
+                <div style={subtitleStyle}>
+                    {tipText}
+                </div>
 
                 <div style={volumeStyle}>
                     <span>{volume === 0 ? '🔇' : '🔊'}</span>
