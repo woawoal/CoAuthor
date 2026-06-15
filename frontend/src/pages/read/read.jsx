@@ -80,6 +80,7 @@ export default function ReadNovel() {
 
   // ── 저장된 삽화(이 소설) — DB 영속(기기/계정 무관) ────────────────
   const [savedIllus, setSavedIllus] = useState([]);   // [{id, image_url, caption, created_at}]
+  const [savingIllus, setSavingIllus] = useState(false);   // 저장 중 표시(base64 업로드 지연)
   const [lightbox, setLightbox] = useState(null);     // {url, caption} | null
 
   useEffect(() => {
@@ -88,13 +89,17 @@ export default function ReadNovel() {
   }, [storyId]);
 
   async function saveIllustration(url, caption) {
-    if (!url) return;
+    if (!url || savingIllus) return;
+    setSavingIllus(true);
     try {
       const saved = await createIllustration(storyId, { image_url: url, caption: caption || '' });
       setSavedIllus(prev => [saved, ...prev]);
       toast('내 삽화에 저장했어요.', 'success');
+      setIllusOpen(false);   // 저장 완료 후 모달 닫기
     } catch {
       toast('삽화 저장에 실패했어요.', 'error');
+    } finally {
+      setSavingIllus(false);
     }
   }
 
@@ -376,10 +381,11 @@ export default function ReadNovel() {
             <div className="illus-result-actions">
               <button
                 className="illus-btn-primary"
-                onClick={() => { saveIllustration(illusResult.image_url, sceneInput); setIllusOpen(false); }}
-              >저장하기</button>
-              <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')}>다시 만들기</button>
-              <button className="illus-btn-secondary" onClick={() => setIllusOpen(false)}>닫기</button>
+                onClick={() => saveIllustration(illusResult.image_url, sceneInput)}
+                disabled={savingIllus}
+              >{savingIllus ? '삽화 저장 중…' : '저장하기'}</button>
+              <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')} disabled={savingIllus}>다시 만들기</button>
+              <button className="illus-btn-secondary" onClick={() => setIllusOpen(false)} disabled={savingIllus}>닫기</button>
             </div>
           </>
         )}
@@ -470,6 +476,11 @@ export default function ReadNovel() {
             ✨ 삽화 생성
           </button>
         </div>
+      </div>
+
+      {/* 읽기 진행률 — position:fixed 로 뷰포트 최상단 고정(상위 overflow-x:hidden 으로 sticky가 깨져 fixed 사용). 스크롤해도 항상 보임 */}
+      <div className="read-progress-fixed">
+        <div className="read-progress-fixed__fill" style={{ width: `${progress}%` }} />
       </div>
 
       <div className="read-layout">
