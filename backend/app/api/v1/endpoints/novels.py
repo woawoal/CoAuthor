@@ -10,8 +10,7 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.world import World
 from app.models.novel import Novel, NovelStatus
 from app.schemas.novel import NovelUpdate, NovelResponse
-from app.core.personas import build_novel_system, AUTHOR_ID_MAP
-from app.services import llm
+from app.core.personas import AUTHOR_ID_MAP
 from app.services.llm_router import LLMRouter
 
 router = APIRouter()
@@ -166,10 +165,13 @@ async def save_draft(session_id: uuid.UUID, body: NovelUpdate, db: AsyncSession 
 @router.post("/{session_id}/novel/convert", response_model=NovelResponse, status_code=201)
 async def convert_dialogues_to_novel(
     session_id: uuid.UUID,
-    use_style: bool = True,
     db: AsyncSession = Depends(get_db),
 ):
-    """진행 중인 세션의 대화를 소설 형식으로 변환 (상태 제한 없음, 항상 upsert)."""
+    """진행 중인 세션의 대화를 소설 형식으로 변환 (LLM 없이 직접 조합 — 결정적·빠름).
+
+    AI 응답(CHARACTER)은 이미 DB에 '나레이션\\n\\n"대사"' 형태로 저장되어 있으므로
+    그대로 이어붙이기만 한다. 사용자 입력(USER)은 누락 없이 원문 포함.
+    """
     session_result = await db.execute(select(Session).where(Session.id == session_id))
     session = session_result.scalar_one_or_none()
     if not session:
@@ -184,34 +186,25 @@ async def convert_dialogues_to_novel(
 
     world_result = await db.execute(select(World).where(World.id == session.world_id))
     world = world_result.scalar_one_or_none()
-    world_desc = ""
-    if world:
-        world_desc = "\n".join(p for p in (world.setting, world.description) if p)
 
-    persona_id = AUTHOR_ID_MAP.get(session.author_id, "")
+    parts = []
+    for d in dialogues:
+        text = (d.content or "").strip()
+        if not text:
+            continue
+        if d.speaker_type == SpeakerType.USER:
+            # 사용자 입력: 그대로 포함 (UI에서 말풍선으로 보이던 내용)
+            parts.append(text)
+        else:
+            # AI 응답: 이미 '나레이션\n\n"대사"' 형태로 저장됨
+            parts.append(text)
 
-    content = ""
-    if dialogues:
-        dialogue_history = [
-            {"role": "user" if d.speaker_type == SpeakerType.USER else "assistant", "content": d.content}
-            for d in dialogues
-        ]
-        try:
-            content = await llm_router.generate_novel(
-                dialogue_history, world_desc, persona_id=persona_id, use_style=use_style
-            )
-        except Exception as e:
-            logger.error("소설 변환 LLM 실패 (session=%s): %s", session_id, e)
-            content = "\n\n".join(d.content for d in dialogues)
-
-    if content:
-        content, _ = _strip_world_suggestion(content)   # [세계관 추가 제안] 블록 분리 → 원고 깨끗하게
+    content = "\n\n".join(parts)
 
     existing = await db.execute(select(Novel).where(Novel.session_id == session_id))
     novel = existing.scalar_one_or_none()
     if novel:
-        if content:
-            novel.content = content
+        novel.content = content
     else:
         novel = Novel(
             session_id=session_id,
@@ -223,7 +216,7 @@ async def convert_dialogues_to_novel(
 
     await db.flush()
     await db.refresh(novel)
-    logger.info("소설 변환 완료: %s (session=%s, %d자)", novel.id, session_id, len(content))
+    logger.info("소설 변환 완료(직접): %s (session=%s, %d자)", novel.id, session_id, len(content))
     return novel
 
 

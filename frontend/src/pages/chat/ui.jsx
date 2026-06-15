@@ -124,8 +124,10 @@ function TypedText({ text, speed = 30, step = 1, onType, onDone }) {
 
 // 작가 AI 메시지 — 라이브 응답이면 나레이션→대사 순으로 타이핑, 복원된 기록은 즉시 표시
 function CharMessage({ msg, characterName, hasBookmark, onType, onDone }) {
-  const live = !!msg.narration;                       // 스트림 응답만 타이핑(복원 기록 X)
-  const narration = formatText(msg.narration || msg.text || '');
+  const live = !!msg.narration && !msg.isRestored;   // 스트림 응답만 타이핑(복원 기록 X)
+  // 복원 메시지는 narration이 ""(빈 문자열)이어도 text로 fallback하지 않음 (?? 사용)
+  const rawNarration = msg.isRestored ? (msg.narration ?? msg.text ?? '') : (msg.narration || msg.text || '');
+  const narration = formatText(rawNarration);
   const hasDialogue = !!msg.dialogue;
   const charName = msg.speaker || characterName || msg.name;
   const [narrDone, setNarrDone] = useState(!live || !narration);
@@ -395,13 +397,42 @@ export default function Chat() {
             const isUser = d.speaker_type === 'user';
             const speakerName = d.speaker || (isUser ? protagonistName : storyAuthor.displayName);
             const isSideChar = isUser && !!d.speaker && d.speaker !== protagonistName;
+
+            // AI 응답: “나레이션\n\n\”대사\”” 형태로 저장됨 → 분리해서 복원
+            let narration = undefined;
+            let dialogue = undefined;
+            if (!isUser) {
+              const trimmed = (d.content || '').trim();
+              // Pattern 1: 나레이션\n\n”대사” 형식
+              // “=직선따옴표(DB저장형식), “”=곡선따옴표
+              // split 대신 regex 사용 — 대사 내부에 \n\n이 있어도 깨지지 않음
+              const m1 = trimmed.match(/^([\s\S]*?)\n\n["“”]([\s\S]*)["“”]$/);
+              if (m1) {
+                narration = m1[1].trim();
+                dialogue = m1[2];
+              } else {
+                // Pattern 2: 전체가 “대사”인 경우 (나레이션 없음)
+                const m2 = trimmed.match(/^["“”]([\s\S]*)["“”]$/);
+                if (m2) {
+                  narration = '';
+                  dialogue = m2[1];
+                } else {
+                  narration = trimmed;
+                  dialogue = '';
+                }
+              }
+            }
+
             return {
               id: d.id,
               role: isUser ? 'user' : 'character',
               name: speakerName,
               speaker: d.speaker || null,
               text: d.content,
+              narration,
+              dialogue,
               isSideChar,
+              isRestored: true,
             };
           });
           setMessages(restored);
