@@ -81,9 +81,12 @@ export default function StoryList() {
 
       <div className="storylist-wrapper">
         <header className="storylist-header">
-          <button className="back-btn" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}>← 돌아가기</button>
+          <button className="storylist-back-btn" onClick={() => (window.history.length > 1 ? navigate(-1) : navigate('/'))}>‹</button>
           <h2 className="storylist-title">내 소설 목록</h2>
-          <button className="back-btn storylist-mypage-btn" onClick={() => navigate('/mypage')}>📚 내 서재</button>
+          <div className="storylist-header__actions">
+            <button className="back-btn" onClick={() => navigate('/')}>← 메인화면</button>
+            <button className="back-btn storylist-mypage-btn" onClick={() => navigate('/mypage')}>📚 내 서재</button>
+          </div>
         </header>
 
         {!loading && sessions.length === 0 && (

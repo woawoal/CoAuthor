@@ -268,7 +268,7 @@ class LLMRouter:
         # persona_id 없으면 build_novel_system이 작가 중립 폴백으로 처리
         system_prompt = build_novel_system(persona_id, world_description)
 
-        block = "\n".join(
+        block = "\n\n".join(
             f"{'사용자' if m.get('role') == 'user' else '작가'}: {m['content']}"
             for m in dialogue_history
         )

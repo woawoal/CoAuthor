@@ -63,22 +63,6 @@
 .editor-save-status--unsaved { color: #e07070; }
 .editor-save-status--saved { color: var(--text-muted); }
 
-.editor-back-btn {
-  background: none;
-  border: 1px solid color-mix(in srgb, var(--text-main) 25%, transparent);
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
-  padding: 5px 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.editor-back-btn:hover {
-  border-color: var(--theme-color);
-  color: var(--theme-color);
-}
-
 .mode-switch-btn {
   background: none;
   border: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);

@@ -67,12 +67,14 @@ export function connectChatStream(
 
   es.addEventListener("reply", (event) => {
     // 백엔드는 narration·dialogue 외에 memories(기억 검색)·consistency(검수)도 함께 보낸다.
-    const { narration, dialogue, memories, consistency } = JSON.parse(event.data);
+    const { narration, speaker, dialogue, protagonist_dialogue, memories, consistency } = JSON.parse(event.data);
     onToken({
-      narration: narration || "",
-      dialogue: dialogue || "",
-      memories: memories || [],
-      consistency: consistency || { consistent: true, violations: [] },
+      narration:            narration || "",
+      speaker:              speaker || "",
+      dialogue:             dialogue || "",
+      protagonist_dialogue: protagonist_dialogue || "",
+      memories:             memories || [],
+      consistency:          consistency || { consistent: true, violations: [] },
     });
   });
 

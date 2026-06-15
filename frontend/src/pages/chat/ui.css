@@ -32,50 +32,51 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 16px 20px;
+  padding: 14px 20px;
   background: var(--header-bg);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
-}
-
-.chat-header__info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.chat-header__avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1.5px solid color-mix(in srgb, var(--theme-color) 55%, transparent);
   flex-shrink: 0;
 }
 
-.chat-header__text {
+.chat-header__info {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .chat-header__persona {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text-main);
 }
 
 .chat-header__genre {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
 }
 
 .chat-header__btns {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  gap: 12px;
+}
+
+.editor-back-btn {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--text-main) 25%, transparent);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.editor-back-btn:hover {
+  border-color: var(--theme-color);
+  color: var(--theme-color);
 }
 
 .editor-save-btn {
@@ -99,26 +100,57 @@
   cursor: not-allowed;
 }
 
-.mode-switch-btn {
-  background: none;
-  border: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  padding: 7px 16px;
-  border-radius: 8px;
+/* ── 모드 스위처 (참여형 ↔ 집필형 토글) ── */
+.mode-switcher {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.mode-switcher__track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background: color-mix(in srgb, var(--text-main) 18%, transparent);
+  border-radius: 9999px;
+  border: none;
   cursor: pointer;
-  transition: all 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.22s ease;
 }
 
-.mode-switch-btn:hover:not(:disabled) {
-  border-color: var(--theme-color);
-  color: var(--theme-color);
+.mode-switcher__track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.22s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
-.mode-switch-btn:disabled {
-  opacity: 0.4;
+.mode-switcher--on .mode-switcher__track {
+  background: var(--theme-color);
+}
+
+.mode-switcher--on .mode-switcher__track::after {
+  transform: translateX(14px);
+}
+
+.mode-switcher__track:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
+}
+
+.mode-switcher__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  min-width: 34px;
 }
 
 .chat-end-btn {
@@ -782,21 +814,22 @@
   right: 12px;
   bottom: 16px;
   text-align: center;
-  color: rgba(255, 255, 255, 0.8);
   /* 폰트: 마루부리(로컬 @font-face). 다른 폰트로 바꾸려면 위 @font-face + 이 줄 교체 */
   font-family: 'MaruBuri', 'Nanum Myeongjo', serif;
-  font-size: 15px;
-  font-weight: 600;
+  /* 존재감 ↑ — 크기·굵기·밝기·그림자 강화 (작게 하려면 font-size/text-shadow 조절) */
+  font-size: 19px;
+  font-weight: 700;
   line-height: 1.5;
   /* 글자(받침·부호) 안 잘리게 충분한 줄 높이 */
   letter-spacing: 0.02em;
+  color: #fff;
   word-break: keep-all;
   /* 한국어는 띄어쓰기 단위로만 끊기 */
   overflow-wrap: break-word;
   /* 띄어쓰기 없는 긴 문자열도 칸 안에서 처리 */
   text-wrap: balance;
   /* 두 줄이 되면 줄 길이를 균형있게 — 어정쩡한 줄바꿈 방지 */
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 0, 0, 0.65);
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.95), 0 0 16px rgba(0, 0, 0, 0.85);
   pointer-events: none;
   animation: reaction-in 0.2s ease-out;
 }

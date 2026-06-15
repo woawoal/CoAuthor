@@ -115,6 +115,54 @@
 
 ---
 
+---
+
+## 참여형 채팅 — 등장인물 말풍선 구분 + 주인공 대사 추천 (2026-06-15)
+
+### @등장인물 태그 — 말풍선 좌우 분리
+
+- `@조연B` 입력 시 `isSideChar: true` 플래그 → 왼쪽(캐릭터) 버블 + 뱃지
+- `@박지훈`(주인공) 입력 시 `isSideChar: false` → 오른쪽(유저) 버블 유지
+  - `isSideChar = activeSpeaker.name !== protagonistName` 로 주인공 여부 판단
+- `Bubble` 컴포넌트에 `protagonistName` prop 추가, 3분기 렌더링
+  - `isSideChar` → 왼쪽 캐릭터 버블
+  - `protagonist_dialogue` 있음 → 주인공 오른쪽 버블 + AI 캐릭터 왼쪽 버블 (Fragment)
+  - 기본 → CharMessage 왼쪽 버블
+
+### speaker 컬럼 추가 (DB)
+
+- `dialogues` 테이블에 `speaker TEXT NULLABLE` 컬럼 추가
+- Alembic 마이그레이션: `l2m3n4o5p6q7_add_speaker_to_dialogues.py`
+- 사용자 발화 저장 시 `speaker=body.speaker`, AI 발화 저장 시 `speaker=reply_speaker`
+- 히스토리 복원 시 `d.speaker` 기반으로 `isSideChar` 재계산
+
+### 주인공 대사 추천 기능 (protagonist_dialogue)
+
+**목표:** `@박지훈: 박지훈이 대답했다` 입력 → AI가 박지훈의 실제 대사를 추천 + 오유리 반응 생성
+
+**백엔드 변경:**
+- `story.py` `OUTPUT_RULES` JSON 스키마에 `protagonist_dialogue` 필드 추가
+- `chats.py` `_build_messages()`: `is_protagonist_speaker` 조기 계산, `protagonist_rule` 분기
+  - 일반 턴: "speaker에 주인공 이름 금지" 규칙 유지
+  - 주인공 발화 턴: "protagonist_dialogue에 대사 생성, speaker는 AI 캐릭터" 지시로 교체
+  - `[화자 지정]` 컨텍스트 주인공 발화 턴에서 스킵 (충돌 방지)
+- outer scope에 `_is_protagonist_speaker` 변수 추출 (generate 클로저에서 재사용)
+- 폴백 보정: AI가 `protagonist_dialogue` 대신 `dialogue`에 넣었을 때 자동 이관
+- `reply_payload`에 `protagonist_dialogue` 필드 추가
+- `parse_ai_response()`에 `protagonist_dialogue` 파싱 추가
+
+**프론트엔드 변경:**
+- `chatApi.js` reply 이벤트에서 `speaker`, `protagonist_dialogue` 추가 수신
+- `ui.jsx` `onMessage` 콜백에서 `protagonist_dialogue` 상태 반영
+- `Bubble` 컴포넌트: `protagonist_dialogue` 있을 때 주인공 오른쪽 + AI 왼쪽 두 버블 렌더
+- `speakerIsProtagonist` fallback 유지 (AI가 잘못된 필드에 응답할 경우 대비)
+
+**참고:**
+- `@태그` 없이 "박지훈이 대답했다"만 입력하면 speaker가 전달 안 돼 기능 미작동 → 일단 유지
+- 오탐 우려로 텍스트 자동 감지는 미적용
+
+---
+
 ## dev 머지 충돌 해결 내역
 
 - `chat_context.py`: `PROMPT_HISTORY_LIMIT` 10 / `DB_SYNC_INTERVAL` 5 (dev 값) 적용, 작가별 분리 히스토리 기능 유지
