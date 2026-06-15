@@ -350,11 +350,19 @@ def build_messages(
 
     # @등장인물: 이번 턴을 그 인물의 시점·서사로 전개하도록 작가 AI에 지시
     if speaker:
-        context_parts.append(
-            f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
-            f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
-            f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
-        )
+        _norm = lambda x: (x or "").replace(" ", "")
+        if protagonist_name and _norm(speaker) == _norm(protagonist_name):
+            # 주인공을 콕 지정해 대사를 친 경우(기본 입력과 동일) — "주인공이 아니라" 모순 없이 주인공 발화로 처리
+            context_parts.append(
+                f"[화자 지정] 이번 입력은 주인공 '{speaker}'의 대사/행동이다. "
+                f"주인공 시점 그대로 자연스럽게 장면을 이어가되, 주인공의 대사·내면을 AI가 새로 지어내지 말 것."
+            )
+        else:
+            context_parts.append(
+                f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
+                f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
+                f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
+            )
 
     # 토큰 절약: 최근 PROMPT_HISTORY_LIMIT개만 verbatim 주입 (그 이전은 요약/RAG가 커버)
     recent_history = context["history"][:PROMPT_HISTORY_LIMIT]
