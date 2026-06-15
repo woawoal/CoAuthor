@@ -29,8 +29,8 @@
    │                                  → AI가 작가 문체로 서술/대사 응답
    │                                  → RAG 일관성 · 어시스턴트 유도 · 작가 리액션 · 오탈자 교정
    ▼
-[3단계] 소설 변환 → 읽기                채팅 종료 → 작가 문체 단편 소설로 변환
-                                      → 일관성 검수 → 읽기(챕터·txt 내보내기)
+[3단계] 소설 변환 → 읽기 → 삽화          채팅 종료 → 작가 문체 단편 소설로 변환
+                                      → 일관성 검수 → 읽기(챕터·진행률·txt) → 장면 삽화 생성
 ```
 
 ---
@@ -62,6 +62,7 @@
 
 ### 2. AI 어시스턴트 — "혼자 쓰는 것보다 낫다"
 
+- **💡 문장 추천**(`/suggestions`·`/voice-suggest`) — 막막할 때 **내 말투(voice 프로파일) 기반**으로 다음 대사를 추천 → 클릭하면 입력창에 채워짐 (백지 공포 해결)
 - **다음 전개 제안**(`/suggest`) · **막힘 도움**(`/stuck`) — 막혔을 때 행동/대사 후보 제시
 - **작가 리액션**(`/reaction`) — 사용자 대사에 작가가 즉각 짧게 반응('흥미로운데?')
 - **조연 다중 반응**(`/npc-react`) — 여러 조연이 각자 페르소나로 동시 반응
@@ -77,12 +78,15 @@
 
 - 🎭 **작가별 테마** — 작가 선택 시 전 화면 색/분위기 전환(새로고침에도 유지)
 - ⌨️ **타자기 효과** — 응답이 한 글자씩 흘러나와 "함께 쓰는" 느낌
-- 🗣️ **TTS 낭독** — 응답 첫 문장을 음성으로(`tts.py`, SSE `event:audio`)
+- 💡 **문장 추천(말투 기반)** — 막막할 때 내 말투(voice 프로파일)로 다음 대사를 추천 → 클릭해 입력
+- 🗣️ **TTS 낭독** — 응답 첫 문장을 작가 목소리로(`tts.py`, SSE `event:audio`)
 - 💬 **작가 리액션 자막** — 사용자 대사에 작가가 즉각 반응(사진 위 영화 자막 스타일)
 - 📝 **작가 메모** — 메모를 작성하면 이후 응답 프롬프트에 즉시 주입
 - 🔍 **일관성 검수** — 설정 모순을 잡아 알려줌
-- ✏️ **오탈자 교정 / 오답노트** — 작가가 '여백 메모'처럼 맞춤법을 짚어줌. **창작 고유명사(등장인물·세계관) 보호**·실시간 토글·마이페이지 개인 오답노트
-- 🎭 **@등장인물 멘션** — `@이름`으로 주인공 외 다른 인물로도 대사 입력 → 작가AI가 그 인물 시점·서사로 전개
+- ✏️ **오탈자 교정 / 오답노트(예측형)** — 작가가 '여백 메모'처럼 맞춤법을 짚어줌. **창작 고유명사 보호**·실시간 토글·개인 오답노트 + **능동 경고**(글쓰기 진입 시 자주 틀리는 것 미리 짚음 — 반응형→예측형)
+- 🎭 **@등장인물 멘션** — `@이름`으로 주인공 외 다른 인물로도 대사 입력 → 작가AI가 그 인물 시점·서사로 전개. **멀티워드 이름·주인공 @지정**도 지원
+- 🎯 **화자 고정·장면 일관성** — 응답 화자가 안 흔들리고(검증+프롬프트 2겹), **떠나거나 부재한 인물이 대사하지 않음**(혼자 장면 = 나레이션만)
+- 🖼️ **장면 삽화 생성** — 소설 장면을 삽화로(**Vertex Gemini 2.5 Flash Image**, 비전) → 내 삽화에 저장
 - 📚 **마이페이지(내 서재)** — 대시보드·취향 프로필·설정집·문장 보관함·오답노트·AI 작가 기록
 - ✒️ **집필형 에디터** — 채팅↔원고 전환, 자동저장·실시간 교정·작가 피드백
 - 📊 **토큰 사용량 분석**(`/api-logs`) — 세션·모델별 토큰/비용 집계
@@ -101,6 +105,8 @@
 | **Cache / 세션** | Redis — **Upstash** |
 | **LLM 엔진** | **Vertex AI Gemini 2.5 Flash-lite**(ADC) — Groq / OpenAI 폴백(`LLM_PROVIDER_CHAIN`) |
 | **임베딩 / RAG** | Gemini `text-multilingual-embedding-002` + 인앱 코사인 |
+| **삽화(비전)** | **Vertex Gemini 2.5 Flash Image** — 소설 장면 → 이미지(ADC·GCP 크레딧), 세션별 DB 저장 |
+| **음성(TTS)** | ElevenLabs — 작가별 음성으로 첫 문장 낭독 |
 | **배포** | 백엔드 GCP **Cloud Run**(Dockerfile + Secret Manager, Vertex는 ADC 자동) · 프론트 **Vercel**(정적 SPA·CDN) |
 
 ### 아키텍처
@@ -182,12 +188,12 @@ VITE_NEON_AUTH_URL=https://<neon-auth-endpoint>/neondb/auth
 NodeVelture/
 ├── backend/                 # FastAPI 서버
 │   ├── app/
-│   │   ├── api/v1/endpoints/ # chats · sessions · novels · worlds · characters · authors · users · api_logs · proofread · mypage · taste
+│   │   ├── api/v1/endpoints/ # chats · sessions · novels · worlds · characters · authors · users · api_logs · proofread · mypage · taste · illustrations · author_chat
 │   │   ├── core/            # config · personas · reactions
-│   │   ├── models/          # SQLAlchemy 모델 (user·session·world·character·dialogue·novel·api_log)
-│   │   ├── services/        # llm · memory(RAG) · consistency · style · evaluate · tts · proofread · llm_router
+│   │   ├── models/          # SQLAlchemy 모델 (user·session·world·character·dialogue·novel·api_log·illustration·saved_sentence·user_taste)
+│   │   ├── services/        # llm · memory(RAG) · consistency · style · evaluate · tts · proofread · illustration(Vertex 비전) · llm_router
 │   │   └── prompts/         # 시스템 프롬프트
-│   ├── scripts/             # e2e_smoke · persona_eval · evidence_report
+│   ├── scripts/             # rag/consistency/style_demo · persona_eval · evidence_report · completion_rate · ttfb_eval · cer_eval · e2e_smoke
 │   ├── alembic/             # DB 마이그레이션
 │   └── docs/                # setup · server-ops · architecture · api · models
 ├── frontend/                # React + Vite (src/pages · src/lib · src/hooks)

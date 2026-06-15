@@ -280,6 +280,12 @@ AUTHOR_ID_MAP: dict[int, str] = {
     4: "kimdohyeon",
 }
 
+
+def reaction_tone(persona_id: str) -> str:
+    """작가 말투 한 줄 묶음 — 리액션(F-AS-05) 생성 프롬프트용."""
+    p = _WORLD_PERSONA.get(persona_id) or _WORLD_PERSONA["baekya"]
+    return p["tone"]
+
 # ── PERSONA_PROMPTS (chats.py / llm_router.py 호환용) ──────────
 
 PERSONA_PROMPTS: dict[str, str] = {

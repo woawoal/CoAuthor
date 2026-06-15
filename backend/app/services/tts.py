@@ -30,8 +30,9 @@ _VOICE_MAP = {
 }
 
 # 작가별 API 키 매핑 (계정 2개로 분리)
+#   키1: 차로운·한여름  /  키2: 백야·김도현
 _API_KEY_MAP = {
-    "baekya":     "ELEVENLABS_API_KEY_1",
+    "baekya":     "ELEVENLABS_API_KEY_2",
     "charoun":    "ELEVENLABS_API_KEY_1",
     "hanyeoreum": "ELEVENLABS_API_KEY_1",
     "kimdohyeon": "ELEVENLABS_API_KEY_2",
