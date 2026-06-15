@@ -55,12 +55,13 @@ def parse_ai_response(raw: str) -> dict:
         data = json.loads(cleaned)
         # JSON null → None 이 그대로 넘어오면 이후 슬라이싱에서 터지므로 "" 로 강제
         return {
-            "narration":     data.get("narration") or "",
-            "speaker":       data.get("speaker") or "",
-            "dialogue":      data.get("dialogue") or "",
-            "state_changes": data.get("state_changes") or _default_state,
-            "story_phase":   data.get("story_phase") or "",
-            "internal_note": data.get("internal_note") or "",
+            "narration":             data.get("narration") or "",
+            "speaker":               data.get("speaker") or "",
+            "dialogue":              data.get("dialogue") or "",
+            "protagonist_dialogue":  data.get("protagonist_dialogue") or "",
+            "state_changes":         data.get("state_changes") or _default_state,
+            "story_phase":           data.get("story_phase") or "",
+            "internal_note":         data.get("internal_note") or "",
         }
     except (json.JSONDecodeError, AttributeError):
         pass

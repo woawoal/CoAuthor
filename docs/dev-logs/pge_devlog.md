@@ -2,6 +2,78 @@
 
 ---
 
+## 2026-06-15
+
+### 오늘 한 일
+
+**주인공 대사 추천 기능 완성 (protagonist_dialogue)**
+- 목표: `@박지훈: 박지훈이 대답했다` 입력 시 AI가 박지훈 대사 추천 + 오유리 반응을 한 번에 생성
+- `story.py` `OUTPUT_RULES` JSON 스키마에 `protagonist_dialogue` 필드 추가 → AI가 필드를 인지하게 됨
+- `chats.py` `_build_messages()`:
+  - `is_protagonist_speaker` 조기 계산 (protagonist_rule 빌드 전)
+  - 주인공 발화 턴: `protagonist_rule`을 "protagonist_dialogue에 대사 생성, speaker는 AI 캐릭터" 지시로 분기
+  - `[화자 지정]` 컨텍스트 주인공 발화 턴에서 스킵 (충돌 방지)
+- outer scope `_is_protagonist_speaker` 변수 추출 (generate 클로저에서 재사용)
+- 폴백 보정: AI가 `protagonist_dialogue` 대신 `dialogue`에 넣었을 때 자동 이관 (`reply_speaker` 비어있는 경우)
+- `reply_payload`에 `protagonist_dialogue` 필드 추가
+- `chatApi.js` reply 이벤트에서 `speaker`, `protagonist_dialogue` 수신 추가
+- `ui.jsx` `onMessage` 콜백에서 `protagonist_dialogue` 상태 반영
+- `Bubble` 컴포넌트: `protagonist_dialogue` 있을 때 주인공 오른쪽 + AI 왼쪽 두 버블을 Fragment로 렌더
+- `speakerIsProtagonist` fallback 유지 (AI 오응답 방어)
+
+### 이슈 / 논의
+
+- AI가 `protagonist_dialogue` 대신 `speaker: "박지훈"` + `dialogue`에 응답 → 시스템 프롬프트-유저 프롬프트 충돌이 원인, protagonist_rule 분기로 해결
+- `@태그` 없이 "박지훈이 대답했다" 텍스트만으로 자동 감지 논의 → 오탐 우려 + 사용 빈도 낮아 일단 `@태그` 방식 유지
+- 하드코딩 여부 확인: protagonist_name은 world_context에서 동적 추출 (`_extract_protagonist_name`) → 문제없음
+
+---
+
+## 2026-06-14
+
+### 오늘 한 일
+
+**Redis 다운 → 채팅 API 500 오류 해결**
+- 증상: 모든 채팅 엔드포인트 500 에러
+- 원인: Docker Desktop 재시작 후 Redis 컨테이너 자동 종료 (exited)
+- 해결: `docker start redis`, 재발 방지로 `docker update --restart always redis` 권장
+
+**참여형 → 집필형 전환 시 대화 내용 미반영 이슈 분석**
+- 실제 원인: Redis 다운으로 대화 이력 저장 실패 (위 Redis 이슈와 동일)
+- 추가 발견: 스트리밍 중 모드 전환 버튼 비활성화 안 됨 (race condition 가능성, 추후 개선 대상)
+
+**소설 변환 내용 확장 방지**
+- 문제: 참여형→집필형 변환 시 AI가 대화에 없는 새 장면·사건을 추가 생성
+- `personas.py` `build_novel_system()` 프롬프트 수정:
+  - "대화 로그에 있는 내용만 변환, 새로운 사건·묘사 추가 금지" 명시
+  - 변환 규칙 5개로 구체화 (대화 내용만 / 의미 변경 금지 / 대사 유지 / 초안 수준)
+
+**대화 블록 사이 줄바꿈 추가**
+- `llm_router.py` 소설 변환 블록 구분자 `"\n"` → `"\n\n"` 변경 (사용자/AI 발화 블록 분리)
+
+**집필형 → 참여형 전환 시 원고 블록 조건부 숨기기**
+- 이전 채팅 이력이 있을 때 원고(importedNarration) 블록 표시 안 함
+- `ui.jsx`: `{importedNarration && !loadingHistory && messages.length === 0 && (...)}`
+
+**@등장인물 태그 — 말풍선 좌우 분리**
+- `@조연B` 입력 시 `isSideChar: true` → 왼쪽 캐릭터 버블 + 이름 뱃지
+- `@박지훈`(주인공) 입력 시 `isSideChar: false` → 오른쪽 유저 버블
+  - `isSideChar = !!activeSpeaker && activeSpeaker.name !== protagonistName` 로 주인공 제외
+- `sendMessage` 호출에 `speaker` 파라미터 추가 (백엔드 화자 지정용)
+- `Bubble` 컴포넌트 `protagonistName` prop 추가, 3분기 렌더링 구조로 재설계
+
+**speaker DB 컬럼 추가**
+- `dialogues` 테이블에 `speaker TEXT NULLABLE` 컬럼 추가 (`dialogue.py` 모델)
+- Alembic 마이그레이션 `l2m3n4o5p6q7_add_speaker_to_dialogues.py` 생성 및 적용
+- 사용자 발화: `speaker=body.speaker`, AI 발화: `speaker=reply_speaker` 저장
+- 히스토리 복원 시 `d.speaker` 기반 `isSideChar` 재계산
+
+### 이슈 / 막힌 점
+- `alembic` PATH 미등록 → `.venv/Scripts/alembic upgrade head` 직접 경로로 실행
+- `is_protagonist_speaker` 체크 전 `protagonist_name` 추출 순서 문제 → 코드 구조 정리로 해결
+
+---
+
 ## 2026-06-11
 
 ### 오늘 한 일
