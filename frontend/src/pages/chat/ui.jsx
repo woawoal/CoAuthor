@@ -594,6 +594,14 @@ export default function Chat() {
         if (voiceReaction && reactionText) speakReaction(reactionText, currentAuthor.characterId);
         return;
       }
+      // 첫 채팅이면 무조건 /start 데모 리액션 — 결정론적 오프닝(API 생략)
+      if (isFirstChat) {
+        pendingReactionEmotionRef.current = 'start';
+        const startText = DEMO_REACTIONS['/start'].reactions[currentAuthor.characterId] ?? '';
+        showReaction(startText);
+        if (voiceReaction && startText) speakReaction(startText, currentAuthor.characterId);
+        return;
+      }
       getAuthorReaction(chatId, {
         content: userText,
         character_id: currentAuthor.characterId,
@@ -606,9 +614,7 @@ export default function Chat() {
             // 🔊 작가 목소리로 리액션 낭독
             if (voiceReaction) speakReaction(r.reaction, currentAuthor.characterId);
 
-            if (isFirstChat) {
-              pendingReactionEmotionRef.current = 'start';
-            } else if (r.emotion === 'joy' || r.emotion === 'tension') {
+            if (r.emotion === 'joy' || r.emotion === 'tension') {
               pendingReactionEmotionRef.current = r.emotion;
             }
           }
