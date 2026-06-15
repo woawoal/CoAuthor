@@ -5,7 +5,7 @@ from pydantic import BaseModel, EmailStr
 
 class UserCreate(BaseModel):
     username: str
-    email: EmailStr | None = None
+    email: str | None = None
     password: str | None = None
 
 
@@ -21,5 +21,5 @@ class UserResponse(BaseModel):
 
 class UserSync(BaseModel):
     id: str
-    email: EmailStr
+    email: str
     nickname: str

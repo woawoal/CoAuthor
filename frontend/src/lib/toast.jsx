@@ -29,7 +29,11 @@ export function ToastHost() {
   return (
     <div className="toast-host" role="status" aria-live="polite">
       {items.map((t) => (
-        <div key={t.id} className={`toast toast--${t.type}`}>{t.message}</div>
+        <div
+          key={t.id}
+          className={`toast toast--${t.type}`}
+          data-message={t.message}
+        />
       ))}
     </div>
   );

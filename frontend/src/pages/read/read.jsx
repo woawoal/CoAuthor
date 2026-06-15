@@ -41,21 +41,21 @@ function formatDate(iso) {
 }
 
 const STYLE_OPTIONS = [
-  { key: 'webtoon',    label: '웹소설 표지풍' },
+  { key: 'webtoon', label: '웹소설 표지풍' },
   { key: 'watercolor', label: '수채화풍' },
-  { key: 'ink',        label: '흑백 일러스트' },
-  { key: 'realistic',  label: '실사풍' },
-  { key: 'pastel',     label: '파스텔풍' },
+  { key: 'ink', label: '흑백 일러스트' },
+  { key: 'realistic', label: '실사풍' },
+  { key: 'pastel', label: '파스텔풍' },
 ];
 const MOOD_OPTIONS = [
-  { key: 'warm',     label: '따뜻함' },
-  { key: 'dark',     label: '어두움' },
-  { key: 'dreamy',   label: '몽환적' },
-  { key: 'tense',    label: '긴장감' },
+  { key: 'warm', label: '따뜻함' },
+  { key: 'dark', label: '어두움' },
+  { key: 'dreamy', label: '몽환적' },
+  { key: 'tense', label: '긴장감' },
   { key: 'romantic', label: '로맨틱' },
 ];
 const RATIO_OPTIONS = [
-  { key: '1:1',  label: '정사각형' },
+  { key: '1:1', label: '정사각형' },
   { key: '9:16', label: '세로형 (표지)' },
   { key: '16:9', label: '가로형' },
 ];
@@ -85,7 +85,7 @@ export default function ReadNovel() {
 
   useEffect(() => {
     if (!storyId) return;
-    listIllustrations(storyId).then(d => setSavedIllus(d.illustrations || [])).catch(() => {});
+    listIllustrations(storyId).then(d => setSavedIllus(d.illustrations || [])).catch(() => { });
   }, [storyId]);
 
   async function saveIllustration(url, caption) {
@@ -105,15 +105,15 @@ export default function ReadNovel() {
 
   async function deleteIllustration(id) {
     setSavedIllus(prev => prev.filter(it => it.id !== id));
-    try { await removeIllustration(storyId, id); } catch {}
+    try { await removeIllustration(storyId, id); } catch { }
   }
 
   // ── 삽화 생성 모달 상태 ───────────────────────────────────────────
-  const [illusOpen, setIllusOpen]   = useState(false);
-  const [illusStep, setIllusStep]   = useState('mode'); // mode|direct|recommend|style|generating|result|refine|blocked
+  const [illusOpen, setIllusOpen] = useState(false);
+  const [illusStep, setIllusStep] = useState('mode'); // mode|direct|recommend|style|generating|result|refine|blocked
   const [sceneInput, setSceneInput] = useState('');
   const [illusStyle, setIllusStyle] = useState('webtoon');
-  const [illusMood,  setIllusMood]  = useState('warm');
+  const [illusMood, setIllusMood] = useState('warm');
   const [illusRatio, setIllusRatio] = useState('1:1');
   const [illusScenes, setIllusScenes] = useState([]);
   const [scenesLoading, setScenesLoading] = useState(false);
@@ -146,9 +146,9 @@ export default function ReadNovel() {
         skip_filter: skipFilter,
       });
       setIllusResult(result);
-      if (result.status === 'generated')     setIllusStep('result');
+      if (result.status === 'generated') setIllusStep('result');
       else if (result.status === 'refine_needed') setIllusStep('refine');
-      else                                    setIllusStep('blocked');
+      else setIllusStep('blocked');
     } catch {
       setIllusStep('blocked');
       setIllusResult({ block_reason: '이미지 생성 중 오류가 발생했어요. 다시 시도해주세요.' });
@@ -179,6 +179,11 @@ export default function ReadNovel() {
       }
     }
     load();
+  }, [storyId]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(`bookmark_${storyId}`);
+    setBookmarked(saved === 'true');
   }, [storyId]);
 
   const handleScroll = useCallback(() => {
@@ -307,7 +312,7 @@ export default function ReadNovel() {
             />
             <StylePicker
               style={illusStyle} setStyle={setIllusStyle}
-              mood={illusMood}   setMood={setIllusMood}
+              mood={illusMood} setMood={setIllusMood}
               ratio={illusRatio} setRatio={setIllusRatio}
             />
             <button
@@ -354,7 +359,7 @@ export default function ReadNovel() {
             <p className="illus-selected-scene">{sceneInput}</p>
             <StylePicker
               style={illusStyle} setStyle={setIllusStyle}
-              mood={illusMood}   setMood={setIllusMood}
+              mood={illusMood} setMood={setIllusMood}
               ratio={illusRatio} setRatio={setIllusRatio}
             />
             <button
@@ -465,7 +470,11 @@ export default function ReadNovel() {
           <button
             className={`read-icon-btn${bookmarked ? ' read-icon-btn--active' : ''}`}
             title="북마크"
-            onClick={() => setBookmarked(b => !b)}
+            onClick={() => {
+              const next = !bookmarked;
+              setBookmarked(next);
+              localStorage.setItem(`bookmark_${storyId}`, String(next));
+            }}
           >
             {bookmarked ? '★' : '☆'}
           </button>

@@ -12,23 +12,57 @@
 }
 
 .toast {
-  min-width: 200px;
-  max-width: 90vw;
-  padding: 12px 22px;
+  width: min(600px, 90vw);
+  aspect-ratio: 1737 / 877;
   border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-  background: rgba(38, 38, 46, 0.96);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
-  text-align: center;
-  animation: toast-in 0.2s ease;
+
+  position: relative;
+
+  color: #5b4636;
+  background: url('/assets/alert.png') center / contain no-repeat;
 }
 
-.toast--error { background: rgba(198, 64, 74, 0.96); }
-.toast--success { background: rgba(58, 158, 100, 0.96); }
+/* 실제 책 영역 */
+.toast::after {
+  content: attr(data-message);
+
+  position: absolute;
+
+  left: 30%;
+  top: 58%;
+
+  width: 40%;
+  height: 20%;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: keep-all;
+
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.toast--error {
+  color: #7a1f2a;
+}
+
+.toast--success {
+  color: #1f6b43;
+}
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
