@@ -294,11 +294,10 @@ def build_messages(
     )
 
     # 주인공(사용자 캐릭터)을 world_context에서 추출해 최상단 규칙으로 주입
-    protagonist_name = _extract_protagonist_name(world_context)
-    ai_char_names    = _extract_ai_char_names(world_context)
-    ai_names_str = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
-    # 혼자/독백 장면: 사용자가 명시하면 그 턴은 어떤 인물도 등장시키지 않고 나레이션만
-    # (모델의 'AI 캐릭터 반응만 생성' 편향이 프롬프트 일반 규칙보다 세므로, 캐릭터 컨텍스트 자체를 빼고 규칙을 뒤집는다)
+    protagonist_name        = _extract_protagonist_name(world_context)
+    ai_char_names           = _extract_ai_char_names(world_context)
+    ai_names_str            = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
+    is_protagonist_speaker  = bool(speaker and protagonist_name and speaker == protagonist_name)
     _SOLO_SIGNALS = ("혼자", "홀로", "텅 빈", "텅빈", "아무도 없", "혼잣말", "독백", "적막")
     _is_solo = (not speaker) and any(s in (user_input or "") for s in _SOLO_SIGNALS)
     if _is_solo:
@@ -309,6 +308,16 @@ def build_messages(
             f"AI는 **어떤 등장인물도 등장시키거나 말하게 하지 않는다.** speaker와 dialogue를 반드시 빈 문자열(\"\")로 둔다.\n"
             f"주인공의 고독·내면·공간(빛·소리·냄새)을 narration으로만 작성한다.\n"
             f"절대 금지: 등록 인물({ai_names_str})을 장면에 끌어들이거나 대사를 만드는 것."
+        )
+    elif is_protagonist_speaker:
+        protagonist_rule = (
+            f"[최우선 규칙 — 역할 구분]\n"
+            f"이 채팅에서 사용자는 {protagonist_name} 역할을 연기합니다.\n"
+            f"이번 턴: {protagonist_name}의 대사 방향만 지시됨. 아직 실제 대사는 결정되지 않음.\n"
+            f"[지시] {protagonist_name}이 자연스럽게 할 법한 대사를 `protagonist_dialogue` 필드에 생성하세요.\n"
+            f"그 대사에 반응하는 {ai_names_str}의 나레이션·대사를 narration/speaker/dialogue 필드에 생성하세요.\n"
+            f"절대 금지: speaker 필드에 {protagonist_name}을 넣는 것 — speaker는 {ai_names_str} 중 하나여야 합니다.\n"
+            f"절대 금지: dialogue 필드에 {protagonist_name}의 대사를 넣는 것."
         )
     elif protagonist_name:
         protagonist_rule = (
@@ -363,21 +372,13 @@ def build_messages(
     if context.get("phase"):
         context_parts.append(f"[현재 스토리 단계]\n{context['phase']}\n(story_phase는 이 단계 이상만 출력 가능)")
 
-    # @등장인물: 이번 턴을 그 인물의 시점·서사로 전개하도록 작가 AI에 지시
-    if speaker:
-        _norm = lambda x: (x or "").replace(" ", "")
-        if protagonist_name and _norm(speaker) == _norm(protagonist_name):
-            # 주인공을 콕 지정해 대사를 친 경우(기본 입력과 동일) — "주인공이 아니라" 모순 없이 주인공 발화로 처리
-            context_parts.append(
-                f"[화자 지정] 이번 입력은 주인공 '{speaker}'의 대사/행동이다. "
-                f"주인공 시점 그대로 자연스럽게 장면을 이어가되, 주인공의 대사·내면을 AI가 새로 지어내지 말 것."
-            )
-        else:
-            context_parts.append(
-                f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
-                f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
-                f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
-            )
+    # @등장인물: 조연 시점 서사 지시 (주인공/solo 발화 턴은 protagonist_rule에서 처리하므로 스킵)
+    if speaker and not is_protagonist_speaker:
+        context_parts.append(
+            f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
+            f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
+            f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
+        )
 
     # 토큰 절약: 최근 PROMPT_HISTORY_LIMIT개만 verbatim 주입 (그 이전은 요약/RAG가 커버)
     recent_history = context["history"][:PROMPT_HISTORY_LIMIT]
@@ -389,7 +390,6 @@ def build_messages(
     ai_label = "·".join(ai_char_names) if ai_char_names else "AI 캐릭터"
     prot_label = protagonist_name or "사용자 캐릭터"
     speaker_prefix = f"{speaker}: " if speaker else ""
-    # _is_solo 는 위(protagonist_rule 분기)에서 이미 계산됨 — 같은 값 재사용
     if _is_solo:
         reaction_instruction = (
             f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. dialogue에 복사 금지]\n"
@@ -398,6 +398,15 @@ def build_messages(
             f"{ai_label} 등 **어떤 등장인물도 장면에 등장시키거나 말하게 하지 마라.** "
             f"speaker와 dialogue를 **반드시 빈 문자열(\"\")** 로 두고, 주인공의 고독·내면·공간(빛·소리·냄새)만 "
             f"narration으로 이어가라. 인물을 새로 끌어들이면 규칙 위반이다."
+        )
+    elif is_protagonist_speaker:
+        reaction_instruction = (
+            f"[{prot_label}의 행동 방향 — 아직 대사는 결정되지 않음]\n"
+            f"{user_input}\n\n"
+            f"[지시]\n"
+            f"1. 위 상황에서 {speaker}가 자연스럽게 할 법한 대사를 `protagonist_dialogue` 필드에 한 문장으로 생성하세요.\n"
+            f"2. 그 대사에 반응하는 {ai_label}의 새로운 대사·행동을 narration/speaker/dialogue 필드에 출력하세요.\n"
+            f"`protagonist_dialogue`는 따옴표 없이, {speaker}의 말투로 자연스럽게."
         )
     else:
         reaction_instruction = (
@@ -424,6 +433,7 @@ class MessageRequest(BaseModel):
     initial_state: str = ""
     initial_characters: str = ""
     initial_summary: str = ""
+    speaker: str = ""
 
 
 @router.post("/{chat_id}/messages", status_code=201)
@@ -453,6 +463,7 @@ async def send_message(
             dialogue = Dialogue(
                 session_id=session_uuid,
                 speaker_type=SpeakerType.USER,
+                speaker=body.speaker or None,
                 content=body.content,
                 turn_order=turn_count,
             )
@@ -503,8 +514,9 @@ async def stream_response(
             logger.warning("기억 검색 실패(보강 생략): %s", e)
 
     # [L1] 출력 화자 검증용 — 등록 인물/주인공 이름을 한 번만 추출(generate 클로저에서 사용)
-    _valid_ai_names = _extract_ai_char_names(world_context)
-    _prot_name = _extract_protagonist_name(world_context)
+    _valid_ai_names        = _extract_ai_char_names(world_context)
+    _prot_name             = _extract_protagonist_name(world_context)
+    _is_protagonist_speaker = bool(speaker and _prot_name and speaker == _prot_name)
 
     async def generate():
         try:
@@ -546,13 +558,19 @@ async def stream_response(
             logger.info("└───────────────────────────────────────────────────")
 
             parsed = parse_ai_response(raw)
-            narration     = parsed["narration"]
+            narration            = parsed["narration"]
             # [L1] AI가 정한 화자를 등록 인물로 강제 보정(흔들림 방지). 입력 speaker와 별개 변수.
-            reply_speaker = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name)
-            dialogue      = parsed["dialogue"]
-            state_changes = parsed["state_changes"]
-            internal_note = parsed["internal_note"]
-            suggested_phase = parsed.get("story_phase", "")
+            reply_speaker        = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name)
+            dialogue             = parsed["dialogue"]
+            protagonist_dialogue = parsed.get("protagonist_dialogue", "")
+            state_changes        = parsed["state_changes"]
+            internal_note        = parsed["internal_note"]
+            suggested_phase      = parsed.get("story_phase", "")
+
+            # [폴백] 주인공 발화 턴인데 AI가 protagonist_dialogue 대신 speaker=주인공+dialogue에 넣은 경우 보정
+            if _is_protagonist_speaker and not protagonist_dialogue and dialogue and not reply_speaker:
+                protagonist_dialogue = dialogue
+                dialogue = ""
 
             # story_phase: LLM 제안을 역행 방지 로직으로 적용
             current_phase = await redis_client.get(key_phase(chat_id)) or "도입부"
@@ -606,6 +624,7 @@ async def stream_response(
                         ai_dialogue = Dialogue(
                             session_id=session_uuid,
                             speaker_type=SpeakerType.CHARACTER,
+                            speaker=reply_speaker or None,
                             content=reply_text,
                             turn_order=turn_count,
                         )
@@ -640,15 +659,16 @@ async def stream_response(
             # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
             reply_payload = json.dumps(
                 {
-                    "messageId":     message_id,
-                    "narration":     narration,
-                    "speaker":       reply_speaker,
-                    "dialogue":      dialogue,
-                    "state_changes": state_changes,
-                    "turn":          turn,
-                    "story_phase":   new_phase,
-                    "memories":      relevant_memories,
-                    "consistency":   consistency_result,
+                    "messageId":            message_id,
+                    "narration":            narration,
+                    "speaker":              reply_speaker,
+                    "dialogue":             dialogue,
+                    "protagonist_dialogue": protagonist_dialogue,
+                    "state_changes":        state_changes,
+                    "turn":                 turn,
+                    "story_phase":          new_phase,
+                    "memories":             relevant_memories,
+                    "consistency":          consistency_result,
                 },
                 ensure_ascii=False,
             )

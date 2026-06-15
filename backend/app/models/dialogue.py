@@ -19,6 +19,7 @@ class Dialogue(Base):
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False)
     character_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("characters.id", ondelete="SET NULL"), nullable=True)
     speaker_type: Mapped[SpeakerType] = mapped_column(SAEnum(SpeakerType), nullable=False)
+    speaker: Mapped[str | None] = mapped_column(Text, nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     turn_order: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
