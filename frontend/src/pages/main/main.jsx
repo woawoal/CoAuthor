@@ -16,57 +16,6 @@ const FALLBACK_AUTHORS = [
     { id: 4, name: "김도현", genre: "일상 / 에세이", quote: "특별한 하루보다 평범한 순간이 더 문학적이다", image: "/assets/author4/author4.png", video: "/assets/author4/author4.mp4" },
 ];
 
-function HoverVideo({ src }) {
-    const videoRef = useRef(null);
-    const timeoutRef = useRef(null);
-
-    useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return;
-
-        video.muted = false;
-
-        video.play().catch(err => {
-            if (err.name === 'AbortError') return;
-            video.muted = true;
-            video.play().catch(e => { if (e.name !== 'AbortError') console.log("음소거 재생도 실패:", e); });
-        });
-
-        return () => {
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
-        };
-    }, []);
-
-    const handleVideoEnded = () => {
-        const video = videoRef.current;
-        if (!video) return;
-
-        timeoutRef.current = setTimeout(() => {
-            if (video) {
-                video.currentTime = 0;
-                video.play().catch(e => console.log("재시작 실패:", e));
-            }
-        }, 1000);
-    };
-
-    return (
-        <video
-            ref={videoRef}
-            src={src}
-            className="card-avatar-video"
-            autoPlay
-            playsInline
-            preload="auto"
-            onEnded={handleVideoEnded}
-            onError={() => { }}
-            onCanPlay={() => { }}
-        />
-    );
-}
-
-
 function VoicePopup({ onClose, onGo }) {
     return (
         <div className="popup-overlay" onClick={onClose}>
@@ -268,7 +217,6 @@ function Main() {
                                         alt={author.name}
                                         className="card-avatar-image"
                                     />
-                                    <HoverVideo src={author.video || `/assets/author${author.id}/default.mp4`} />
                                 </div>
 
                                 {/* 본문 텍스트 정보 */}
