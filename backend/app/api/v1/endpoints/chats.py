@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 
 from app.core.config import settings
-from app.core.personas import get_author_prompt, AUTHOR_ID_MAP
+from app.core.personas import get_author_prompt, AUTHOR_ID_MAP, reaction_tone
 from app.core.reactions import EMOTIONS, pick_reaction  # F-AS-05 작가 리액션 (머지 때 빠졌던 import 복구)
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
@@ -1040,25 +1040,71 @@ async def classify_emotion(text: str) -> str:
         return "calm"
 
 
+# 문맥(사용자 입력 + 작가 답변) → 작가 말투의 짧은 즉흥 리액션 1줄 + 감정.
+# 고정 풀 대신 LLM이 그 장면에 맞는 한마디를 작가 목소리로 생성(TTS로 낭독됨).
+def _reaction_gen_system(persona_id: str) -> str:
+    return (
+        f"{reaction_tone(persona_id)}\n\n"
+        "지금 인터랙티브 소설을 함께 쓰는 중이다. 아래에 [주인공이 방금 한 말/행동]과 "
+        "[네가 방금 이어 쓴 장면]이 주어진다. 이 흐름을 보고 작가인 네가 옆에서 혼잣말처럼 "
+        "툭 던지는 짧은 반응 한 마디를 네 말투로 만들어라(소리 내어 말하는 추임새).\n"
+        "규칙:\n"
+        "- 25자 이내, 한 문장. 따옴표·이모지·지문 없이 말만.\n"
+        "- 장면을 다시 서술하지 말 것. 새 사건을 만들지 말 것. 반응만.\n"
+        "- 이 순간의 감정을 다음 6개 중 하나로 함께 분류:\n"
+        "  tension(긴장·갈등) / fear(공포·불안) / sadness(슬픔·상실) / "
+        "joy(기쁨·설렘) / calm(평온·일상) / resolve(결심·각오)\n"
+        '반드시 JSON만: {"emotion":"...", "reaction":"..."}'
+    )
+
+
+async def generate_reaction(persona_id: str, user_input: str, author_reply: str) -> tuple[str, str]:
+    """문맥 기반 리액션 생성 → (emotion, reaction). 실패하면 ("", "")."""
+    ctx = f"[주인공이 방금 한 말/행동]\n{user_input}\n\n[네가 방금 이어 쓴 장면]\n{author_reply or '(아직 없음)'}"
+    try:
+        raw = await llm.generate(
+            _reaction_gen_system(persona_id),
+            [{"role": "user", "parts": [{"text": ctx}]}],
+        )
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.MULTILINE)
+        data = json.loads(cleaned)
+        emotion = data.get("emotion", "")
+        reaction = (data.get("reaction") or "").strip().strip('"').strip()
+        if reaction and emotion in EMOTIONS:
+            return emotion, reaction[:40]
+        if reaction:
+            return "calm", reaction[:40]
+    except Exception as e:
+        logger.warning("리액션 생성 실패(폴백) - %s", e)
+    return "", ""
+
+
 class ReactionRequest(BaseModel):
     content: str
     character_id: str = "baekya"
+    author_reply: str = ""   # 작가가 방금 이어 쓴 장면(문맥 감정 파악용)
 
 
 @router.post("/{chat_id}/reaction")
 async def author_reaction(chat_id: str, body: ReactionRequest):
-    """사용자 대사에 대한 작가의 짧은 리액션 말풍선 (F-AS-05).
+    """작가의 짧은 리액션 말풍선 (F-AS-05).
 
-    감정을 분류(LLM) → 그 감정 버킷에서 작가 톤 문장을 하나 꺼낸다.
-    직전 리액션(last_reaction)은 피해서 반복을 줄인다.
+    사용자 입력 + 작가 답변 문맥으로 감정을 잡고 그 감정에 맞는 한마디를 작가 말투로 생성.
+    생성 실패 시 고정 풀(reactions.py)로 폴백 → 톤 안전망. 직전 리액션은 피해 반복 감소.
     """
     text = (body.content or "").strip()
     if not text:
         return {"reaction": "", "emotion": ""}
 
-    emotion = await classify_emotion(text)
     last = await redis_client.get(key_last_reaction(chat_id))
-    reaction = pick_reaction(body.character_id, emotion, exclude=last)
+
+    # 1순위: 문맥 기반 생성(작가 답변 포함)
+    emotion, reaction = await generate_reaction(body.character_id, text, body.author_reply)
+    # 폴백: 생성 실패하면 사용자+답변 문맥으로 감정만 분류 → 고정 풀에서 한마디
+    if not reaction:
+        emotion = await classify_emotion(f"{text}\n{body.author_reply}".strip())
+        reaction = pick_reaction(body.character_id, emotion, exclude=last)
+
     if reaction:
         await redis_client.set(key_last_reaction(chat_id), reaction)
     logger.info("작가 리액션 - chat_id=%s emotion=%s → %s", chat_id, emotion, reaction)

@@ -7,6 +7,7 @@ import {
   getErrorWarmup, deleteMessage,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
+import { speakReaction, stopReaction } from '../../lib/ttsApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -348,6 +349,8 @@ export default function Chat() {
   // ── 자동 피드백 / 교정 상태 ──────────────────────────────
   const [autoFeedback, setAutoFeedback] = useState(false);
   const [realtimeProof, setRealtimeProof] = useState(false);
+  // 🔊 작가 리액션 음성(말로 반응) ON/OFF — 기본 ON, 사용자가 끄면 기억
+  const [voiceReaction, setVoiceReaction] = useState(() => localStorage.getItem('voice_reaction') !== 'off');
 
   // ── 사용자 ID ────────────────────────────────────────────
   const [userId, setUserId] = useState(null);
@@ -426,12 +429,19 @@ export default function Chat() {
     return () => clearTimeout(feedbackTimerRef.current);
   }, [streaming, autoFeedback, messages]);
 
-  // ── EventSource cleanup (페이지 이탈 시 스트림 정리) ────
+  // ── EventSource cleanup (페이지 이탈 시 스트림·리액션 음성 정리) ────
   useEffect(() => {
     return () => {
       if (esRef.current) { esRef.current.close(); esRef.current = null; }
+      stopReaction();
     };
   }, []);
+
+  // ── 리액션 음성 ON/OFF 영속 + OFF 시 재생 중인 음성 정지 ────
+  useEffect(() => {
+    localStorage.setItem('voice_reaction', voiceReaction ? 'on' : 'off');
+    if (!voiceReaction) stopReaction();
+  }, [voiceReaction]);
 
   // ── 컨텍스트 메뉴 외부 클릭 닫기 ─────────────────────────
   useEffect(() => {
@@ -574,36 +584,37 @@ export default function Chat() {
     const userMsgTempId = `temp_user_${Date.now()}`;
     setMessages(prev => [...prev, { id: userMsgTempId, role: 'user', name: speakerName, text: cleanUserText, isSideChar }]);
 
-    // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
-    getAuthorReaction(chatId, {
-      content: cleanUserText,
-      character_id: currentAuthor.characterId
-    })
-      .then(r => {
-        if (r.reaction) {
-          console.log(
-            `[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`
-          );
-
-
-          if (demoReaction) {
-            pendingReactionEmotionRef.current = demoReaction.emotion;
-            const reactionText = demoReaction.reactions[currentAuthor.characterId] ?? '';
-            showReaction(reactionText);
-          } else if (isFirstChat) {
-            pendingReactionEmotionRef.current = 'start';
-            showReaction(DEMO_REACTIONS['/start'].reactions[currentAuthor.characterId]);
-          } else if (r.emotion === 'joy' || r.emotion === 'tension') {
-            pendingReactionEmotionRef.current = r.emotion;
-            showReaction(r.reaction);
-          } else {
-            showReaction(r.reaction);
-          }
-        }
+    // 작가 리액션 — 사용자 입력 + 작가 답변 '문맥'으로 감정을 잡으려면 답변이 나온 뒤 호출해야 함.
+    // 데모 슬래시 명령(/start·/tension·/joy 등)이면 결정론적 리액션을 바로 표시(API 생략).
+    const fireReaction = (authorReply) => {
+      if (demoReaction) {
+        pendingReactionEmotionRef.current = demoReaction.emotion;
+        const reactionText = demoReaction.reactions[currentAuthor.characterId] ?? '';
+        showReaction(reactionText);
+        if (voiceReaction && reactionText) speakReaction(reactionText, currentAuthor.characterId);
+        return;
+      }
+      getAuthorReaction(chatId, {
+        content: userText,
+        character_id: currentAuthor.characterId,
+        author_reply: authorReply,
       })
-      .catch(err => {
-        console.error('[REACTION ERROR]', err);
-      });
+        .then(r => {
+          if (r.reaction) {
+            console.log(`[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`);
+            showReaction(r.reaction);
+            // 🔊 작가 목소리로 리액션 낭독
+            if (voiceReaction) speakReaction(r.reaction, currentAuthor.characterId);
+
+            if (isFirstChat) {
+              pendingReactionEmotionRef.current = 'start';
+            } else if (r.emotion === 'joy' || r.emotion === 'tension') {
+              pendingReactionEmotionRef.current = r.emotion;
+            }
+          }
+        })
+        .catch(err => console.error('[REACTION ERROR]', err));
+    };
 
     // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     if (realtimeProof) {
@@ -637,12 +648,16 @@ export default function Chat() {
           ? { ...m, text: '⏱️ 응답 시간이 초과되었습니다. 다시 시도해주세요.' }
           : m
       ));
+      // 수동 close는 onDone을 안 부르므로, 스트림이 멈춰도 리액션은 뜨게 여기서 보강
+      fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
     }, 50000);
 
+    let lastReply = { narration: '', dialogue: '' };   // 리액션 문맥용 — 작가가 쓴 장면 누적
     esRef.current = connectChatStream(
       chatId,
       { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
       ({ narration, speaker, dialogue, protagonist_dialogue }) => {
+        lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
         );
@@ -653,6 +668,8 @@ export default function Chat() {
         if (realMsgId) {
           setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, id: realMsgId } : m));
         }
+        // 작가 답변(나레이션+대사)을 문맥으로 넘겨 리액션 생성
+        fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
       },
     );
   }
@@ -816,6 +833,14 @@ export default function Chat() {
           <div className="chat-input-bar">
             <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천(말투 기반)">
               💡
+            </button>
+            <button
+              className="suggest-btn"
+              onClick={() => setVoiceReaction(v => !v)}
+              title={voiceReaction ? '작가 음성 리액션 끄기' : '작가 음성 리액션 켜기'}
+              aria-pressed={voiceReaction}
+            >
+              {voiceReaction ? '🔊' : '🔇'}
             </button>
             {speaker && (
               <span className="speaker-chip" title="이 인물의 대사로 전송됩니다">
