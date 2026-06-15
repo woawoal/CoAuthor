@@ -24,6 +24,54 @@ const AUTHOR_MAP = {
   4: { characterId: 'kimdohyeon', displayName: '김도현', image: '/assets/author4/author4.png' },
 };
 
+const DEMO_REACTIONS = {
+  '/start': {
+    emotion: 'start',
+    reactions: {
+      charoun: '좋은 출발입니다.',
+      hanyeoreum: '벌써 기대되는데요?',
+      baekya: '흥미롭군요.',
+      kimdohyeon: '이야기가 움직이기 시작했어요.',
+    },
+  },
+  '/tension': {
+    emotion: 'tension',
+    reactions: {
+      charoun: '그건 생각 못 했군요.',
+      hanyeoreum: '흥미로운데요?',
+      baekya: '그렇게 흘러가나요.',
+      kimdohyeon: '조금 의외인데요?',
+    },
+  },
+  '/joy': {
+    emotion: 'joy',
+    reactions: {
+      charoun: '이건, 계산된 한수처럼 보이는군요',
+      hanyeoreum: '정말 좋은 표현인데요?',
+      baekya: '설명하지 않아도 충분합니다.',
+      kimdohyeon: '이런 순간이 좋아요.',
+    },
+  },
+  '/delay': {
+    emotion: 'delays',
+    reactions: {
+      charoun: '막히셨나요? 괜찮습니다.',
+      hanyeoreum: '인물의 마음을 생각해볼까요?',
+      baekya: '조금 더 들여다보시죠.',
+      kimdohyeon: '천천히 써도 괜찮아요.',
+    },
+  },
+  '/read': {
+    emotion: 'read',
+    reactions: {
+      charoun: '이제 확인해볼 시간입니다.',
+      hanyeoreum: '끝까지 함께할 수 있어서 좋았어요.',
+      baekya: '이야기를 펼쳐볼 시간입니다.',
+      kimdohyeon: '자, 함께 이야기를 펼쳐볼까요?',
+    },
+  },
+};
+
 function buildWorldContext(world, characters) {
   if (!world) return '';
   const lines = [];
@@ -76,8 +124,10 @@ function TypedText({ text, speed = 30, step = 1, onType, onDone }) {
 
 // 작가 AI 메시지 — 라이브 응답이면 나레이션→대사 순으로 타이핑, 복원된 기록은 즉시 표시
 function CharMessage({ msg, characterName, hasBookmark, onType, onDone }) {
-  const live = !!msg.narration;                       // 스트림 응답만 타이핑(복원 기록 X)
-  const narration = formatText(msg.narration || msg.text || '');
+  const live = !!msg.narration && !msg.isRestored;   // 스트림 응답만 타이핑(복원 기록 X)
+  // 복원 메시지는 narration이 ""(빈 문자열)이어도 text로 fallback하지 않음 (?? 사용)
+  const rawNarration = msg.isRestored ? (msg.narration ?? msg.text ?? '') : (msg.narration || msg.text || '');
+  const narration = formatText(rawNarration);
   const hasDialogue = !!msg.dialogue;
   const charName = msg.speaker || characterName || msg.name;
   const [narrDone, setNarrDone] = useState(!live || !narration);
@@ -347,13 +397,42 @@ export default function Chat() {
             const isUser = d.speaker_type === 'user';
             const speakerName = d.speaker || (isUser ? protagonistName : storyAuthor.displayName);
             const isSideChar = isUser && !!d.speaker && d.speaker !== protagonistName;
+
+            // AI 응답: “나레이션\n\n\”대사\”” 형태로 저장됨 → 분리해서 복원
+            let narration = undefined;
+            let dialogue = undefined;
+            if (!isUser) {
+              const trimmed = (d.content || '').trim();
+              // Pattern 1: 나레이션\n\n”대사” 형식
+              // “=직선따옴표(DB저장형식), “”=곡선따옴표
+              // split 대신 regex 사용 — 대사 내부에 \n\n이 있어도 깨지지 않음
+              const m1 = trimmed.match(/^([\s\S]*?)\n\n["“”]([\s\S]*)["“”]$/);
+              if (m1) {
+                narration = m1[1].trim();
+                dialogue = m1[2];
+              } else {
+                // Pattern 2: 전체가 “대사”인 경우 (나레이션 없음)
+                const m2 = trimmed.match(/^["“”]([\s\S]*)["“”]$/);
+                if (m2) {
+                  narration = '';
+                  dialogue = m2[1];
+                } else {
+                  narration = trimmed;
+                  dialogue = '';
+                }
+              }
+            }
+
             return {
               id: d.id,
               role: isUser ? 'user' : 'character',
               name: speakerName,
               speaker: d.speaker || null,
               text: d.content,
+              narration,
+              dialogue,
               isSideChar,
+              isRestored: true,
             };
           });
           setMessages(restored);
@@ -518,6 +597,9 @@ export default function Chat() {
   async function handleSend() {
     if (!input.trim() || streaming) return;
     const userText = input.trim();
+    const demoEntry = Object.entries(DEMO_REACTIONS).find(([keyword]) => userText.includes(keyword));
+    const demoReaction = demoEntry?.[1];
+    const cleanUserText = demoEntry ? userText.replace(demoEntry[0], '').trim() : userText;
     const activeSpeaker = speaker;   // 화자 캡처(아래에서 상태는 즉시 초기화)
     setInput('');
     setSpeaker(null);
@@ -531,11 +613,26 @@ export default function Chat() {
     const speakerName = activeSpeaker?.name ?? protagonistName;
     const isSideChar = !!activeSpeaker && activeSpeaker.name !== protagonistName;
     const userMsgTempId = `temp_user_${Date.now()}`;
-    setMessages(prev => [...prev, { id: userMsgTempId, role: 'user', name: speakerName, text: userText, isSideChar }]);
+    setMessages(prev => [...prev, { id: userMsgTempId, role: 'user', name: speakerName, text: cleanUserText, isSideChar }]);
 
     // 작가 리액션 — 사용자 입력 + 작가 답변 '문맥'으로 감정을 잡으려면 답변이 나온 뒤 호출해야 함.
-    // (응답 완료 콜백에서 authorReply를 넘겨 fireReaction 호출) — 본 흐름과 독립, 실패해도 무시.
+    // 데모 슬래시 명령(/start·/tension·/joy 등)이면 결정론적 리액션을 바로 표시(API 생략).
     const fireReaction = (authorReply) => {
+      if (demoReaction) {
+        pendingReactionEmotionRef.current = demoReaction.emotion;
+        const reactionText = demoReaction.reactions[currentAuthor.characterId] ?? '';
+        showReaction(reactionText);
+        if (voiceReaction && reactionText) speakReaction(reactionText, currentAuthor.characterId);
+        return;
+      }
+      // 첫 채팅이면 무조건 /start 데모 리액션 — 결정론적 오프닝(API 생략)
+      if (isFirstChat) {
+        pendingReactionEmotionRef.current = 'start';
+        const startText = DEMO_REACTIONS['/start'].reactions[currentAuthor.characterId] ?? '';
+        showReaction(startText);
+        if (voiceReaction && startText) speakReaction(startText, currentAuthor.characterId);
+        return;
+      }
       getAuthorReaction(chatId, {
         content: userText,
         character_id: currentAuthor.characterId,
@@ -548,9 +645,7 @@ export default function Chat() {
             // 🔊 작가 목소리로 리액션 낭독
             if (voiceReaction) speakReaction(r.reaction, currentAuthor.characterId);
 
-            if (isFirstChat) {
-              pendingReactionEmotionRef.current = 'start';
-            } else if (r.emotion === 'joy' || r.emotion === 'tension') {
+            if (r.emotion === 'joy' || r.emotion === 'tension') {
               pendingReactionEmotionRef.current = r.emotion;
             }
           }
@@ -560,17 +655,17 @@ export default function Chat() {
 
     // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     if (realtimeProof) {
-      proofread(chatId, userText, currentAuthor.characterId)
+      proofread(chatId, cleanUserText, currentAuthor.characterId)
         .then(r => {
           if (r.errors?.length) {
             setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
             setStreaming(cur => { if (!cur) authorPanelRef.current?.showProofView(); return cur; });
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
-    const userMsgRealId = await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
+    const userMsgRealId = await sendMessage(chatId, { content: cleanUserText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
     if (userMsgRealId) {
       setMessages(prev => prev.map(m => m.id === userMsgTempId ? { ...m, id: userMsgRealId } : m));
     }
@@ -597,7 +692,7 @@ export default function Chat() {
     let lastReply = { narration: '', dialogue: '' };   // 리액션 문맥용 — 작가가 쓴 장면 누적
     esRef.current = connectChatStream(
       chatId,
-      { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
+      { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
       ({ narration, speaker, dialogue, protagonist_dialogue }) => {
         lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>

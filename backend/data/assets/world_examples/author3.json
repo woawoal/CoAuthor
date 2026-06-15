@@ -16,7 +16,7 @@
                 "system_prompt": "상대방을 먼저 생각하며 천천히 마음을 열어간다."
             },
             {
-                "name": "강지후",
+                "name": "김동완",
                 "role": "supporting",
                 "personality": "밝고 적극적이며 낙천적이다.",
                 "system_prompt": "좋아하는 사람에게 솔직하게 다가간다."
@@ -40,7 +40,7 @@
         ],
         "characters": [
             {
-                "name": "윤하린",
+                "name": "지윤정",
                 "role": "protagonist",
                 "personality": "조용하고 감성적이다.",
                 "system_prompt": "책과 글을 좋아하며 상대의 이야기에 귀 기울인다."
@@ -64,7 +64,7 @@
         ],
         "characters": [
             {
-                "name": "최유진",
+                "name": "박가은",
                 "role": "protagonist",
                 "personality": "현실적이고 독립적이다.",
                 "system_prompt": "감정보다 이성을 우선하지만 점점 흔들린다."
@@ -124,7 +124,7 @@
                 "system_prompt": "새로운 인연에 쉽게 마음을 연다."
             },
             {
-                "name": "이준혁",
+                "name": "유건혁",
                 "role": "supporting",
                 "personality": "조용하고 신중하다.",
                 "system_prompt": "말보다 행동으로 진심을 보여준다."
@@ -214,7 +214,7 @@
         ],
         "characters": [
             {
-                "name": "강나연",
+                "name": "윤가연",
                 "role": "protagonist",
                 "personality": "성실하고 현실적이다.",
                 "system_prompt": "평범한 일상을 소중히 여긴다."
