@@ -1,19 +1,16 @@
-"""설정 모순 탐지(F-QC-01) 정량 평가 — 라벨링된 세트로 분류 정확도 측정.
+"""설정 모순 탐지(F-QC-01) 정량 평가 — 출제 편향 제거판(독립 교차 라벨링).
 
-차별점 평가표의 '설정 모순 탐지' 행을 정량화한다. consistency_demo(질적 시연)의 수치판.
+차별점 평가표의 '설정 모순 탐지' 행을 정량화한다.
 
-방법: (확립된 설정, 검수 대상 문장, 정답라벨) 세트를 만들고 consistency.check 를 돌려
-  - 모순(라벨='모순')을 모순으로 잡는가      → 탐지율(recall)
-  - 정상(라벨='정상')을 정상으로 통과시키는가  → 통과율(specificity)
-  - 정상을 모순으로 잘못 잡는가              → 오탐(false alarm)
-를 집계한다. 정답은 사람이 라벨링한 ground-truth(자기채점 아님 — 검수기의 분류 정확도 측정).
-
-⚠️ 검수기는 우리(Gemini). 여기서 재는 건 "심판 우열"이 아니라 **우리 검수기가 사람 라벨과
-   얼마나 일치하는가**(분류 정확도). LLM 변동성 보정 위해 각 항목 REPEATS회 반복.
+⚠️ 이전 버전의 결함: 테스트 케이스를 '내가' 출제하고 '내가' 라벨링 → 선택/확증 편향.
+   이 판은 **독립 모델(Groq/Llama)이 같은 케이스를 따로 분류**하게 해 (저자 라벨 vs 독립 라벨)
+   합의를 만든다. 둘이 갈리는 항목(=라벨이 애매하거나 저자 편향)을 드러내고,
+   검수기(Gemini) 정확도를 ①저자 라벨 ②독립 라벨 ③합의셋(둘이 일치) 기준으로 각각 보고한다.
+   합의셋 정확도가 가장 신뢰할 수 있는 수치다.
 
 실행: backend 폴더에서
     python -m scripts.consistency_eval        (conda nodevelture, LLM 키 필요)
-서버·DB 불필요.
+서버·DB 불필요. 독립 라벨러=EVAL_JUDGE_PROVIDER(기본 groq).
 """
 import sys
 
@@ -22,9 +19,44 @@ try:
 except Exception:
     pass
 
+import os
+import re
+import json
 import asyncio
 
-from app.services import consistency
+from app.core.config import settings
+from app.services import consistency, llm
+
+
+# ── 독립 라벨러: 검수기(Gemini)와 다른 모델이 같은 케이스를 따로 분류 ──
+def _has_groq() -> bool:
+    return bool((settings.GROQ_API_KEY or "").strip() or (settings.GROQ_API_KEYS or "").strip())
+
+
+INDEP_PROVIDER = os.getenv("EVAL_JUDGE_PROVIDER") or ("groq" if _has_groq() else None)
+
+INDEP_SYSTEM = (
+    "너는 소설 설정 검수자다. [확립된 설정]을 기준으로 [문장]이 설정과 모순되는지 판정한다.\n"
+    "설정과 충돌(직접/간접/추론상)하면 label='모순', 충돌 없으면 label='정상'.\n"
+    '오직 JSON만: {"label": "모순"}  또는  {"label": "정상"}'
+)
+
+
+async def _indep_label(facts: str, text: str) -> str:
+    """독립 모델의 분류('모순'/'정상'). 실패 시 '불명'."""
+    if not INDEP_PROVIDER:
+        return "불명"
+    prompt = f"[확립된 설정]\n{facts}\n\n[문장]\n{text}"
+    try:
+        raw = await llm.generate(
+            INDEP_SYSTEM, [{"role": "user", "parts": [{"text": prompt}]}],
+            json_mode=True, provider=INDEP_PROVIDER,
+        )
+        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.MULTILINE)
+        lab = str(json.loads(cleaned).get("label", "")).strip()
+        return lab if lab in ("모순", "정상") else "불명"
+    except Exception:
+        return "불명"
 
 # ── 라벨링된 평가 세트 (사람 정답) ────────────────────────────────
 # tier: '명백'=직접 충돌 / '미묘'=시간선·인원수·관계·추론이 필요한 간접 모순
@@ -118,61 +150,94 @@ CASES = [
             {"text": "지훈은 의수로 상자를 받치고 성한 손으로 균형을 잡으며 옮겼다.", "label": "정상"},
         ],
     },
+    # ── 애매 (사람도 갈릴 수 있음 — 분쟁 surface 용) ─────────────
+    {
+        "tier": "애매",
+        "facts": "지아는 엄격한 채식주의자로, 고기를 일절 입에 대지 않는다.",
+        "items": [
+            # 먹었다고 명시 안 함 — 권유에 젓가락만 들었을 수도. 애매.
+            {"text": "회식 자리에서 동료가 고기를 권하자 지아는 마지못해 젓가락을 들었다.", "label": "정상"},
+            # 직접 먹음 → 모순(이건 비교적 분명)
+            {"text": "지아는 노릇하게 구워진 삼겹살을 입에 넣고 흡족하게 웃었다.", "label": "모순"},
+        ],
+    },
+    {
+        "tier": "애매",
+        "facts": "세라는 목소리를 내지 못하는 농인이며, 평소 수화로 대화한다.",
+        "items": [
+            # '발표'가 수화 발표일 수도 → 애매
+            {"text": "세라는 청중 앞에서 또박또박 발표를 이어 갔다.", "label": "정상"},
+            # 마이크로 열창 → 모순(비교적 분명)
+            {"text": "세라는 노래방에서 마이크를 잡고 큰 소리로 열창했다.", "label": "모순"},
+        ],
+    },
 ]
 
 REPEATS = 2
 BAR = "=" * 64
 
 
-def _line(tag, dh, dt, ph, pt):
-    dr = 100 * dh / dt if dt else 0
-    pr = 100 * ph / pt if pt else 0
-    ac = 100 * (dh + ph) / (dt + pt) if (dt + pt) else 0
-    return (f"  [{tag}] 모순탐지 {dh}/{dt}({dr:.0f}%) · "
-            f"정상통과 {ph}/{pt}({pr:.0f}%) · 정확도 {dh+ph}/{dt+pt}({ac:.0f}%)")
+def _verdict(flagged: int, repeats: int) -> str:
+    return "모순" if flagged >= (repeats + 1) // 2 else "정상"
+
+
+def _pct(a: int, b: int) -> str:
+    return f"{a}/{b} ({100*a/b:.0f}%)" if b else f"{a}/0 (-)"
 
 
 async def main():
-    tiers = sorted({c["tier"] for c in CASES})
+    n_items = sum(len(c["items"]) for c in CASES)
     print(BAR)
-    print(" 설정 모순 탐지(F-QC-01) 정량 평가 — 난이도별")
-    print(f" {len(CASES)} 대조쌍 × 각 {REPEATS}회 · 난이도 {tiers} · 검수기=Vertex Gemini")
+    print(" 설정 모순 탐지(F-QC-01) — 출제 편향 제거(독립 교차 라벨링)")
+    print(f" {len(CASES)}세트 · 항목 {n_items} · 검수기=Vertex Gemini · 독립라벨러={INDEP_PROVIDER or '없음'}")
     print(BAR)
 
-    # tier -> [det_hit, det_tot, pass_hit, pass_tot]
-    agg = {t: [0, 0, 0, 0] for t in tiers}
-
+    rows = []  # (tier, text, my, indep, checker)
     for case in CASES:
         facts, tier = case["facts"], case["tier"]
         print(f"\n[{tier}] {facts}")
         for item in case["items"]:
-            label = item["label"]
+            my = item["label"]
+            indep = await _indep_label(facts, item["text"])
             flagged = 0
             for _ in range(REPEATS):
                 r = await consistency.check(facts, item["text"])
                 if not r["consistent"]:
                     flagged += 1
-            if label == "모순":
-                agg[tier][0] += flagged
-                agg[tier][1] += REPEATS
-                mark = "✅탐지" if flagged >= (REPEATS + 1) // 2 else "❌놓침"
-            else:
-                agg[tier][2] += (REPEATS - flagged)
-                agg[tier][3] += REPEATS
-                mark = "✅통과" if flagged == 0 else f"⚠️오탐({flagged}/{REPEATS})"
-            print(f"   [{label}] {mark:<12} ← {item['text'][:34]}")
+            ck = _verdict(flagged, REPEATS)
+            rows.append((tier, item["text"], my, indep, ck))
+            agree = "✅" if ck == my else "❌"
+            disp = "" if my == indep else "  ⚠라벨분쟁"
+            print(f"   나={my} 독립={indep} 검수기={ck} {agree}{disp}  ← {item['text'][:26]}")
+
+    valid = [r for r in rows if r[3] in ("모순", "정상")]      # 독립 라벨 유효
+    consensus = [r for r in valid if r[2] == r[3]]            # 나==독립(신뢰 ground-truth)
+    disputed = [r for r in valid if r[2] != r[3]]
+
+    lab_agree = len(consensus)
+    ck_my = sum(1 for r in rows if r[4] == r[2])
+    ck_indep = sum(1 for r in valid if r[4] == r[3])
+    ck_cons = sum(1 for r in consensus if r[4] == r[2])
+    cons_mosun = [r for r in consensus if r[2] == "모순"]
+    cons_norm = [r for r in consensus if r[2] == "정상"]
+    rec = sum(1 for r in cons_mosun if r[4] == "모순")
+    spec = sum(1 for r in cons_norm if r[4] == "정상")
 
     print(f"\n{BAR}")
-    print(" 난이도별 / 종합  (모순탐지=recall · 정상통과=specificity)")
+    print(" 종합 — 라벨 신뢰도 먼저, 그 다음 검수기 정확도")
     print(BAR)
-    total = [0, 0, 0, 0]
-    for t in tiers:
-        dh, dt, ph, pt = agg[t]
-        total = [total[i] + agg[t][i] for i in range(4)]
-        print(_line(t, dh, dt, ph, pt))
-    print("  " + "-" * 58)
-    print(_line("종합", *total))
+    print(f"  라벨 합의(나↔독립)        : {_pct(lab_agree, len(valid))}  — 낮으면 내 라벨이 애매/편향")
+    print(f"  검수기 정확도 vs 내 라벨   : {_pct(ck_my, len(rows))}")
+    print(f"  검수기 정확도 vs 독립 라벨 : {_pct(ck_indep, len(valid))}")
+    print(f"  ▶ 검수기 정확도 vs 합의셋  : {_pct(ck_cons, len(consensus))}  ← 가장 신뢰 (둘 다 동의한 것만)")
+    print(f"      └ 합의셋 모순탐지(recall)     : {_pct(rec, len(cons_mosun))}")
+    print(f"      └ 합의셋 정상통과(specificity): {_pct(spec, len(cons_norm))}")
     print(BAR)
+    if disputed:
+        print(f" ⚠️ 라벨 분쟁 {len(disputed)}건 (나≠독립) — 내 출제/라벨이 애매했던 항목:")
+        for r in disputed:
+            print(f"    [{r[0]}] 나={r[2]} vs 독립={r[3]}  ← {r[1][:40]}")
+        print(BAR)
 
 
 if __name__ == "__main__":
