@@ -7,6 +7,9 @@ import { saveSentence } from '../lib/mypageApi';
 import { getTaste, analyzeTaste } from '../lib/tasteApi';
 import { applyGlobalVideoVolume, VIDEO_VOLUME_EVENT } from '../lib/videoVolume';
 
+// "=", “=", "=” — LLM이 따옴표를 포함해서 보낼 때 제거
+const stripOuterQuotes = s => s ? s.replace(/^["“”]+|["“”]+$/g, '').trim() : '';
+
 const AUTHOR_IDS = [1, 2, 3, 4];
 const AUTHOR_MAP = {
   1: { characterId: 'baekya', displayName: '백야', image: '/assets/author1/author1.png' },
@@ -534,12 +537,13 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                               <div key={i} className="author-msg author-msg--taste-rec taste-rec__card">
                                 {rec.type && <span className="taste-rec__type-badge">{rec.type}</span>}
                                 {rec.narration && <p className="taste-rec__narration">{rec.narration}</p>}
-                                {rec.dialogue && <p className="taste-rec__dialogue">"{rec.dialogue}"</p>}
+                                {rec.dialogue && <p className="taste-rec__dialogue">&ldquo;{stripOuterQuotes(rec.dialogue)}&rdquo;</p>}
                                 {rec.reason && <p className="taste-rec__reason">💡 {rec.reason}</p>}
                                 <button
                                   className="taste-rec__use-btn"
                                   onClick={() => {
-                                    const parts = [rec.narration, rec.dialogue ? `"${rec.dialogue}"` : ''].filter(Boolean);
+                                    const clean = stripOuterQuotes(rec.dialogue);
+                                    const parts = [rec.narration, clean ? `"${clean}"` : ''].filter(Boolean);
                                     onApplyText?.(parts.join('\n'));
                                   }}
                                 >이 문장 사용하기 →</button>
