@@ -19,6 +19,7 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
 from app.models.world import World
 from app.models.character import Character
+from app.models.user import User
 from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
@@ -101,7 +102,8 @@ async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
             names = ", ".join(c.name for c in ai_chars)
             parts.append(
                 f"[AI 서술 인물 — 이 인물들의 반응·대사를 생성]\n{lines}\n"
-                f"※ speaker 필드에 이번 턴에 말하는 인물 이름({names} 중 하나)을 반드시 명시."
+                f"※ 이 인물들이 **지금 장면에 함께 있을 때만** speaker에 그 이름({names} 중 하나)을 쓴다. "
+                f"인물이 떠났거나·자리에 없거나·주인공이 혼자인 장면이면 speaker·dialogue를 빈 문자열로 두고 나레이션만 출력."
             )
         elif not protagonist and chars:
             lines = "\n".join(
@@ -239,19 +241,22 @@ async def sync_to_db(chat_id: str):
 
 # ── 메시지 빌더 ────────────────────────────────────────────
 def _extract_protagonist_name(world_context: str) -> str:
-    """world_context에서 [사용자 조종 인물] 이름 추출."""
+    """world_context에서 [사용자 조종 인물] 이름 추출.
+
+    줄 형식: `- {이름} ({역할}): {성격}` → 이름은 ' (' 또는 ':' 앞까지 전체(공백 포함).
+    """
     import re
-    m = re.search(r'\[사용자 조종 인물[^\]]*\]\s*\n- ([^\s(]+)', world_context)
-    return m.group(1) if m else ""
+    m = re.search(r'\[사용자 조종 인물[^\]]*\]\s*\n-\s*(.+?)\s*(?:\(|:)', world_context)
+    return m.group(1).strip() if m else ""
 
 
 def _extract_ai_char_names(world_context: str) -> list[str]:
-    """world_context에서 [AI 서술 인물] 이름 목록 추출."""
+    """world_context에서 [AI 서술 인물] 이름 목록 추출(멀티워드 이름 보존, 예: '편의점 점장')."""
     import re
     m = re.search(r'\[AI 서술 인물[^\]]*\]\n((?:- .+\n?)+)', world_context)
     if not m:
         return []
-    return re.findall(r'^- ([^\s(]+)', m.group(1), re.MULTILINE)
+    return [n.strip() for n in re.findall(r'^-\s*(.+?)\s*(?:\(|:)', m.group(1), re.MULTILINE)]
 
 
 def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str) -> str:
@@ -291,8 +296,21 @@ def build_messages(
     # 주인공(사용자 캐릭터)을 world_context에서 추출해 최상단 규칙으로 주입
     protagonist_name = _extract_protagonist_name(world_context)
     ai_char_names    = _extract_ai_char_names(world_context)
-    if protagonist_name:
-        ai_names_str = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
+    ai_names_str = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
+    # 혼자/독백 장면: 사용자가 명시하면 그 턴은 어떤 인물도 등장시키지 않고 나레이션만
+    # (모델의 'AI 캐릭터 반응만 생성' 편향이 프롬프트 일반 규칙보다 세므로, 캐릭터 컨텍스트 자체를 빼고 규칙을 뒤집는다)
+    _SOLO_SIGNALS = ("혼자", "홀로", "텅 빈", "텅빈", "아무도 없", "혼잣말", "독백", "적막")
+    _is_solo = (not speaker) and any(s in (user_input or "") for s in _SOLO_SIGNALS)
+    if _is_solo:
+        _prot = f"({protagonist_name})" if protagonist_name else ""
+        protagonist_rule = (
+            f"[최우선 규칙 — 혼자 있는 장면]\n"
+            f"이번 턴은 주인공{_prot}이 **혼자 있는 장면**이다.\n"
+            f"AI는 **어떤 등장인물도 등장시키거나 말하게 하지 않는다.** speaker와 dialogue를 반드시 빈 문자열(\"\")로 둔다.\n"
+            f"주인공의 고독·내면·공간(빛·소리·냄새)을 narration으로만 작성한다.\n"
+            f"절대 금지: 등록 인물({ai_names_str})을 장면에 끌어들이거나 대사를 만드는 것."
+        )
+    elif protagonist_name:
         protagonist_rule = (
             f"[최우선 규칙 — 역할 구분]\n"
             f"이 채팅에서 사용자는 {protagonist_name} 역할을 직접 연기합니다.\n"
@@ -329,7 +347,8 @@ def build_messages(
     messages: list[dict] = [{"role": "system", "content": system}]
 
     context_parts = []
-    if context["characters"]:
+    # 혼자 장면이면 등장인물 목록을 프롬프트에서 빼서 모델이 끌어들일 인물이 없게 한다
+    if context["characters"] and not _is_solo:
         context_parts.append(f"[주요 등장인물]\n{context['characters']}")
     if context["summary"]:
         context_parts.append(f"[사건 요약]\n{context['summary']}")
@@ -346,11 +365,19 @@ def build_messages(
 
     # @등장인물: 이번 턴을 그 인물의 시점·서사로 전개하도록 작가 AI에 지시
     if speaker:
-        context_parts.append(
-            f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
-            f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
-            f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
-        )
+        _norm = lambda x: (x or "").replace(" ", "")
+        if protagonist_name and _norm(speaker) == _norm(protagonist_name):
+            # 주인공을 콕 지정해 대사를 친 경우(기본 입력과 동일) — "주인공이 아니라" 모순 없이 주인공 발화로 처리
+            context_parts.append(
+                f"[화자 지정] 이번 입력은 주인공 '{speaker}'의 대사/행동이다. "
+                f"주인공 시점 그대로 자연스럽게 장면을 이어가되, 주인공의 대사·내면을 AI가 새로 지어내지 말 것."
+            )
+        else:
+            context_parts.append(
+                f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
+                f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
+                f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
+            )
 
     # 토큰 절약: 최근 PROMPT_HISTORY_LIMIT개만 verbatim 주입 (그 이전은 요약/RAG가 커버)
     recent_history = context["history"][:PROMPT_HISTORY_LIMIT]
@@ -362,11 +389,24 @@ def build_messages(
     ai_label = "·".join(ai_char_names) if ai_char_names else "AI 캐릭터"
     prot_label = protagonist_name or "사용자 캐릭터"
     speaker_prefix = f"{speaker}: " if speaker else ""
-    reaction_instruction = (
-        f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. 여기 있는 대사를 dialogue 필드에 절대 복사하지 말 것]\n"
-        f"{speaker_prefix}{user_input}\n\n"
-        f"[지시] 위 내용에 반응하는 {ai_label}의 새로운 대사·행동만 JSON으로 출력하세요."
-    )
+    # _is_solo 는 위(protagonist_rule 분기)에서 이미 계산됨 — 같은 값 재사용
+    if _is_solo:
+        reaction_instruction = (
+            f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. dialogue에 복사 금지]\n"
+            f"{user_input}\n\n"
+            f"[★최우선 지시 — 혼자 장면] 지금은 **주인공이 혼자 있는 장면**이다. "
+            f"{ai_label} 등 **어떤 등장인물도 장면에 등장시키거나 말하게 하지 마라.** "
+            f"speaker와 dialogue를 **반드시 빈 문자열(\"\")** 로 두고, 주인공의 고독·내면·공간(빛·소리·냄새)만 "
+            f"narration으로 이어가라. 인물을 새로 끌어들이면 규칙 위반이다."
+        )
+    else:
+        reaction_instruction = (
+            f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. 여기 있는 대사를 dialogue 필드에 절대 복사하지 말 것]\n"
+            f"{speaker_prefix}{user_input}\n\n"
+            f"[지시] 위 내용에 이어지는 장면을 JSON으로 출력하세요. "
+            f"{ai_label}이 지금 장면에 함께 있으면 그 인물의 새 대사·행동을 생성하고, "
+            f"떠났거나·자리에 없거나·주인공이 혼자인 장면이면 speaker·dialogue를 빈 문자열로 두고 나레이션만 출력하세요."
+        )
     if prefix:
         user_content = f"{prefix}\n\n{reaction_instruction}"
     else:
@@ -706,6 +746,66 @@ async def get_suggestions(
         logger.warning("추천 생성 실패: %s", e)
 
     return {"suggestions": ["계속해볼까요?", "잠깐 기다려요.", "다른 방법이 있을 것 같아요."]}
+
+
+# ── 말투 기반 입력 추천 (F-VM: 💡 말투 추천) ──────────────────
+class VoiceSuggestRequest(BaseModel):
+    npc_dialogue: str = ""
+    genre: str = ""
+
+
+@router.post("/{chat_id}/voice-suggest")
+async def voice_suggest(
+    chat_id: str,
+    body: VoiceSuggestRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """사용자 말투 프로파일(F-VM) 기반으로 주인공의 다음 대사를 '내 말투'로 추천.
+    프로파일이 없거나 실패하면 빈 결과 → 프론트가 일반 추천으로 폴백한다."""
+    try:
+        session_uuid = uuid.UUID(chat_id)
+    except ValueError:
+        return {"suggestions": []}
+
+    result = await db.execute(select(Session).where(Session.id == session_uuid))
+    session = result.scalar_one_or_none()
+    if not session:
+        return {"suggestions": []}
+
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    profile = user.voice_profile if user else None
+    if not profile:
+        return {"suggestions": []}   # 말투 프로파일 없음 → 프론트 폴백
+
+    system_prompt = (
+        "당신은 인터랙티브 소설에서 사용자(주인공)가 다음에 할 대사를, "
+        "사용자 본인의 '말투 프로파일'에 맞춰 추천하는 어시스턴트입니다.\n"
+        "그 말투의 어미·호흡·어휘·존댓말/반말을 그대로 흉내 내세요.\n"
+        "반드시 JSON 형식으로만 응답하고 다른 텍스트는 절대 포함하지 마세요."
+    )
+    user_prompt = (
+        f"[사용자 말투 프로파일]\n{json.dumps(profile, ensure_ascii=False)}\n\n"
+        f"[장르]\n{body.genre or '일반'}\n\n"
+        f"[직전 상대(NPC) 대사]\n{body.npc_dialogue or '(없음)'}\n\n"
+        "위 대사에 이어 주인공이 할 수 있는 대사 3가지를 '사용자 말투'로 추천하세요.\n"
+        "각 추천은 짧고 자연스러운 한국어 한 문장(25자 이내)이어야 합니다.\n"
+        '{"suggestions": ["추천1", "추천2", "추천3"]}'
+    )
+
+    contents = [{"role": "user", "parts": [{"text": user_prompt}]}]
+    try:
+        raw = (await llm.generate(system_prompt, contents)).strip()
+        if raw.startswith("```"):
+            raw = "\n".join(raw.split("\n")[1:-1])
+        data = json.loads(raw)
+        suggestions = [s for s in data.get("suggestions", []) if isinstance(s, str)][:3]
+        if suggestions:
+            return {"suggestions": suggestions}
+    except Exception as e:
+        logger.warning("말투 기반 추천 생성 실패 - chat_id=%s: %s", chat_id, e)
+
+    return {"suggestions": []}   # 실패 → 프론트 폴백
 
 
 # ── 작가 메모 (F-CH-11) ────────────────────────────────────
