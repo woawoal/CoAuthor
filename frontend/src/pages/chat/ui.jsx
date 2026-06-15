@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, getAuthorReaction, proofread,
-  getErrorWarmup,
+  getErrorWarmup, deleteMessage,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { speakReaction, stopReaction } from '../../lib/ttsApi';
@@ -413,9 +413,14 @@ export default function Chat() {
     authorPanelRef.current?.openMemoFor(msgId);
   }
 
-  function handleDeleteMsg(msgId) {
+  async function handleDeleteMsg(msgId) {
     setContextMenu(prev => ({ ...prev, visible: false }));
     setMessages(prev => prev.filter(m => m.id !== msgId));
+    try {
+      await deleteMessage(chatId, msgId);
+    } catch (e) {
+      console.warn('메시지 DB 삭제 실패:', e);
+    }
   }
 
   function handleMemoClick(memo) {
@@ -525,7 +530,8 @@ export default function Chat() {
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
     const speakerName = activeSpeaker?.name ?? protagonistName;
     const isSideChar = !!activeSpeaker && activeSpeaker.name !== protagonistName;
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: speakerName, text: userText, isSideChar }]);
+    const userMsgTempId = `temp_user_${Date.now()}`;
+    setMessages(prev => [...prev, { id: userMsgTempId, role: 'user', name: speakerName, text: userText, isSideChar }]);
 
     // 작가 리액션 — 사용자 입력 + 작가 답변 '문맥'으로 감정을 잡으려면 답변이 나온 뒤 호출해야 함.
     // (응답 완료 콜백에서 authorReply를 넘겨 fireReaction 호출) — 본 흐름과 독립, 실패해도 무시.
@@ -564,7 +570,10 @@ export default function Chat() {
         .catch(() => {});
     }
 
-    await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
+    const userMsgRealId = await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
+    if (userMsgRealId) {
+      setMessages(prev => prev.map(m => m.id === userMsgTempId ? { ...m, id: userMsgRealId } : m));
+    }
 
     const streamMsgId = `stream_${Date.now()}`;
     setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: storyAuthor.displayName, text: '' }]);
@@ -581,6 +590,8 @@ export default function Chat() {
           ? { ...m, text: '⏱️ 응답 시간이 초과되었습니다. 다시 시도해주세요.' }
           : m
       ));
+      // 수동 close는 onDone을 안 부르므로, 스트림이 멈춰도 리액션은 뜨게 여기서 보강
+      fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
     }, 50000);
 
     let lastReply = { narration: '', dialogue: '' };   // 리액션 문맥용 — 작가가 쓴 장면 누적
@@ -593,9 +604,12 @@ export default function Chat() {
           prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
         );
       },
-      () => {
+      (realMsgId) => {
         clearTimeout(streamTimeoutId);
         setStreaming(false);
+        if (realMsgId) {
+          setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, id: realMsgId } : m));
+        }
         // 작가 답변(나레이션+대사)을 문맥으로 넘겨 리액션 생성
         fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
       },
