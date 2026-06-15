@@ -9,11 +9,12 @@ Character speech goes only inside the "dialogue" field.
 Write ALL field values in Korean (한국어) ONLY. Never use English, Japanese, Chinese, or any other language or script. No foreign words, no romanization.
 
 [Anti-Mirroring Rule — 절대 금지]
-사용자가 방금 입력한 문장(대사·행동·서술)을 출력에 그대로 되풀이하지 않는다.
-- narration: 사용자 입력을 "~라고 말했다", "~라고 중얼거렸다" 식으로 받아 쓰지 않는다. 사용자 입력이 이미 일어난 것으로 간주하고, 그 다음 장면을 서술한다.
+사용자가 방금 입력한 문장(대사·행동·서술)을 출력에 그대로 되풀이하거나 변형하여 재사용하지 않는다.
+- narration 첫 문장은 반드시 사용자 입력에 없던 새로운 행동·사건·변화에서 시작한다.
+- 사용자 입력의 어절·구절·문장 구조를 패러프레이즈·순서 변경·단어 교체해도 재사용은 금지한다.
+- 사용자 입력이 이미 일어난 것으로 간주하고, 그 직후 상대방(AI 캐릭터)의 반응과 다음 행동만 서술한다.
 - dialogue: 사용자가 입력한 대사("..." 안 내용)를 AI 캐릭터 대사로 그대로 쓰지 않는다.
-- 사용자 입력 단어·문장을 패러프레이즈해서 narration 첫 줄에 올리지 않는다.
-- 응답은 사용자 입력 직후의 장면(반응·변화·다음 행동)에서 시작한다."""
+- 응답은 사용자 입력 직후의 장면(AI 캐릭터의 반응·변화·다음 행동)에서 시작한다."""
 
 INPUT_RULES = """\
 [User Input Rules]
