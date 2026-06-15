@@ -23,6 +23,54 @@ const AUTHOR_MAP = {
   4: { characterId: 'kimdohyeon', displayName: '김도현', image: '/assets/author4/author4.png' },
 };
 
+const DEMO_REACTIONS = {
+  '/start': {
+    emotion: 'start',
+    reactions: {
+      charoun: '좋은 출발입니다.',
+      hanyeoreum: '벌써 기대되는데요?',
+      baekya: '흥미롭군요.',
+      kimdohyeon: '이야기가 움직이기 시작했어요.',
+    },
+  },
+  '/tension': {
+    emotion: 'tension',
+    reactions: {
+      charoun: '그건 생각 못 했군요.',
+      hanyeoreum: '흥미로운데요?',
+      baekya: '그렇게 흘러가나요.',
+      kimdohyeon: '조금 의외인데요?',
+    },
+  },
+  '/joy': {
+    emotion: 'joy',
+    reactions: {
+      charoun: '이건, 계산된 한수처럼 보이는군요',
+      hanyeoreum: '정말 좋은 표현인데요?',
+      baekya: '설명하지 않아도 충분합니다.',
+      kimdohyeon: '이런 순간이 좋아요.',
+    },
+  },
+  '/delay': {
+    emotion: 'delays',
+    reactions: {
+      charoun: '막히셨나요? 괜찮습니다.',
+      hanyeoreum: '인물의 마음을 생각해볼까요?',
+      baekya: '조금 더 들여다보시죠.',
+      kimdohyeon: '천천히 써도 괜찮아요.',
+    },
+  },
+  '/read': {
+    emotion: 'read',
+    reactions: {
+      charoun: '이제 확인해볼 시간입니다.',
+      hanyeoreum: '끝까지 함께할 수 있어서 좋았어요.',
+      baekya: '이야기를 펼쳐볼 시간입니다.',
+      kimdohyeon: '자, 함께 이야기를 펼쳐볼까요?',
+    },
+  },
+};
+
 function buildWorldContext(world, characters) {
   if (!world) return '';
   const lines = [];
@@ -503,6 +551,9 @@ export default function Chat() {
   async function handleSend() {
     if (!input.trim() || streaming) return;
     const userText = input.trim();
+    const demoEntry = Object.entries(DEMO_REACTIONS).find(([keyword]) => userText.includes(keyword));
+    const demoReaction = demoEntry?.[1];
+    const cleanUserText = demoEntry ? userText.replace(demoEntry[0], '').trim() : userText;
     const activeSpeaker = speaker;   // 화자 캡처(아래에서 상태는 즉시 초기화)
     setInput('');
     setSpeaker(null);
@@ -515,25 +566,35 @@ export default function Chat() {
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
     const speakerName = activeSpeaker?.name ?? protagonistName;
     const isSideChar = !!activeSpeaker && activeSpeaker.name !== protagonistName;
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: speakerName, text: userText, isSideChar }]);
+    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: speakerName, text: cleanUserText, isSideChar }]);
 
     // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
     getAuthorReaction(chatId, {
-      content: userText,
+      content: cleanUserText,
       character_id: currentAuthor.characterId
     })
       .then(r => {
+        console.log('[DEMO] userText =', userText);
+        console.log('[DEMO] cleanUserText =', cleanUserText);
+
         if (r.reaction) {
           console.log(
             `[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`
           );
 
-          showReaction(r.reaction);
 
-          if (isFirstChat) {
+          if (demoReaction) {
+            pendingReactionEmotionRef.current = demoReaction.emotion;
+            const reactionText = demoReaction.reactions[currentAuthor.characterId] ?? '';
+            showReaction(reactionText);
+          } else if (isFirstChat) {
             pendingReactionEmotionRef.current = 'start';
+            showReaction(DEMO_REACTIONS['/start'].reactions[currentAuthor.characterId]);
           } else if (r.emotion === 'joy' || r.emotion === 'tension') {
             pendingReactionEmotionRef.current = r.emotion;
+            showReaction(r.reaction);
+          } else {
+            showReaction(r.reaction);
           }
         }
       })
@@ -543,17 +604,17 @@ export default function Chat() {
 
     // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     if (realtimeProof) {
-      proofread(chatId, userText, currentAuthor.characterId)
+      proofread(chatId, cleanUserText, currentAuthor.characterId)
         .then(r => {
           if (r.errors?.length) {
             setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
             setStreaming(cur => { if (!cur) authorPanelRef.current?.showProofView(); return cur; });
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
 
-    await sendMessage(chatId, { content: userText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
+    await sendMessage(chatId, { content: cleanUserText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
 
     const streamMsgId = `stream_${Date.now()}`;
     setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: storyAuthor.displayName, text: '' }]);
@@ -574,7 +635,7 @@ export default function Chat() {
 
     esRef.current = connectChatStream(
       chatId,
-      { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
+      { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
       ({ narration, speaker, dialogue, protagonist_dialogue }) => {
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
