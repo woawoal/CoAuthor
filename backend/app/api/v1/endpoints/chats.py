@@ -19,6 +19,7 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.session import Session
 from app.models.world import World
 from app.models.character import Character
+from app.models.user import User
 from app.services.llm_router import calc_cost, PRIMARY_MODEL
 from app.services import llm
 from app.services import memory
@@ -239,19 +240,22 @@ async def sync_to_db(chat_id: str):
 
 # ── 메시지 빌더 ────────────────────────────────────────────
 def _extract_protagonist_name(world_context: str) -> str:
-    """world_context에서 [사용자 조종 인물] 이름 추출."""
+    """world_context에서 [사용자 조종 인물] 이름 추출.
+
+    줄 형식: `- {이름} ({역할}): {성격}` → 이름은 ' (' 또는 ':' 앞까지 전체(공백 포함).
+    """
     import re
-    m = re.search(r'\[사용자 조종 인물[^\]]*\]\s*\n- ([^\s(]+)', world_context)
-    return m.group(1) if m else ""
+    m = re.search(r'\[사용자 조종 인물[^\]]*\]\s*\n-\s*(.+?)\s*(?:\(|:)', world_context)
+    return m.group(1).strip() if m else ""
 
 
 def _extract_ai_char_names(world_context: str) -> list[str]:
-    """world_context에서 [AI 서술 인물] 이름 목록 추출."""
+    """world_context에서 [AI 서술 인물] 이름 목록 추출(멀티워드 이름 보존, 예: '편의점 점장')."""
     import re
     m = re.search(r'\[AI 서술 인물[^\]]*\]\n((?:- .+\n?)+)', world_context)
     if not m:
         return []
-    return re.findall(r'^- ([^\s(]+)', m.group(1), re.MULTILINE)
+    return [n.strip() for n in re.findall(r'^-\s*(.+?)\s*(?:\(|:)', m.group(1), re.MULTILINE)]
 
 
 def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str) -> str:
@@ -706,6 +710,66 @@ async def get_suggestions(
         logger.warning("추천 생성 실패: %s", e)
 
     return {"suggestions": ["계속해볼까요?", "잠깐 기다려요.", "다른 방법이 있을 것 같아요."]}
+
+
+# ── 말투 기반 입력 추천 (F-VM: 💡 말투 추천) ──────────────────
+class VoiceSuggestRequest(BaseModel):
+    npc_dialogue: str = ""
+    genre: str = ""
+
+
+@router.post("/{chat_id}/voice-suggest")
+async def voice_suggest(
+    chat_id: str,
+    body: VoiceSuggestRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """사용자 말투 프로파일(F-VM) 기반으로 주인공의 다음 대사를 '내 말투'로 추천.
+    프로파일이 없거나 실패하면 빈 결과 → 프론트가 일반 추천으로 폴백한다."""
+    try:
+        session_uuid = uuid.UUID(chat_id)
+    except ValueError:
+        return {"suggestions": []}
+
+    result = await db.execute(select(Session).where(Session.id == session_uuid))
+    session = result.scalar_one_or_none()
+    if not session:
+        return {"suggestions": []}
+
+    user_result = await db.execute(select(User).where(User.id == session.user_id))
+    user = user_result.scalar_one_or_none()
+    profile = user.voice_profile if user else None
+    if not profile:
+        return {"suggestions": []}   # 말투 프로파일 없음 → 프론트 폴백
+
+    system_prompt = (
+        "당신은 인터랙티브 소설에서 사용자(주인공)가 다음에 할 대사를, "
+        "사용자 본인의 '말투 프로파일'에 맞춰 추천하는 어시스턴트입니다.\n"
+        "그 말투의 어미·호흡·어휘·존댓말/반말을 그대로 흉내 내세요.\n"
+        "반드시 JSON 형식으로만 응답하고 다른 텍스트는 절대 포함하지 마세요."
+    )
+    user_prompt = (
+        f"[사용자 말투 프로파일]\n{json.dumps(profile, ensure_ascii=False)}\n\n"
+        f"[장르]\n{body.genre or '일반'}\n\n"
+        f"[직전 상대(NPC) 대사]\n{body.npc_dialogue or '(없음)'}\n\n"
+        "위 대사에 이어 주인공이 할 수 있는 대사 3가지를 '사용자 말투'로 추천하세요.\n"
+        "각 추천은 짧고 자연스러운 한국어 한 문장(25자 이내)이어야 합니다.\n"
+        '{"suggestions": ["추천1", "추천2", "추천3"]}'
+    )
+
+    contents = [{"role": "user", "parts": [{"text": user_prompt}]}]
+    try:
+        raw = (await llm.generate(system_prompt, contents)).strip()
+        if raw.startswith("```"):
+            raw = "\n".join(raw.split("\n")[1:-1])
+        data = json.loads(raw)
+        suggestions = [s for s in data.get("suggestions", []) if isinstance(s, str)][:3]
+        if suggestions:
+            return {"suggestions": suggestions}
+    except Exception as e:
+        logger.warning("말투 기반 추천 생성 실패 - chat_id=%s: %s", chat_id, e)
+
+    return {"suggestions": []}   # 실패 → 프론트 폴백
 
 
 # ── 작가 메모 (F-CH-11) ────────────────────────────────────
