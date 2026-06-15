@@ -5,7 +5,7 @@ import { toast } from '../../lib/toast';
 import { getSession, getWorld } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import LoadingVideo from '../../components/loadingVideo';
-import { getIllustrationScenes, generateIllustration, listIllustrations, createIllustration, removeIllustration } from '../../lib/illustrationApi';
+import { getIllustrationScenes, generateIllustration, generateIllustrationOpenAI, listIllustrations, createIllustration, removeIllustration } from '../../lib/illustrationApi';
 import './read.css';
 
 const CHAPTER_SIZE = 5;
@@ -132,6 +132,30 @@ export default function ReadNovel() {
       setIllusScenes(data.scenes ?? []);
     } finally {
       setScenesLoading(false);
+    }
+  }
+
+  const STYLE_TO_OPENAI = {
+    webtoon: ['webtoon'], watercolor: ['watercolor'],
+    ink: ['webtoon'], realistic: ['webtoon'], pastel: ['watercolor'],
+  };
+  const MOOD_TO_OPENAI = {
+    warm: [], dark: ['fantasy'], dreamy: [], tense: ['fantasy'], romantic: ['romance'],
+  };
+
+  async function handleGenerateOpenAI(sceneDesc) {
+    setIllusStep('generating');
+    try {
+      const styleNames = [...new Set([
+        ...(STYLE_TO_OPENAI[illusStyle] ?? ['webtoon']),
+        ...(MOOD_TO_OPENAI[illusMood] ?? []),
+      ])];
+      const data = await generateIllustrationOpenAI(storyId, styleNames, sceneDesc);
+      setIllusResult({ status: 'generated', image_url: data.image_url });
+      setIllusStep('result');
+    } catch (err) {
+      setIllusStep('blocked');
+      setIllusResult({ block_reason: `[OpenAI] ${err.message || '이미지 생성 중 오류가 발생했어요.'}` });
     }
   }
 
@@ -315,11 +339,18 @@ export default function ReadNovel() {
               mood={illusMood} setMood={setIllusMood}
               ratio={illusRatio} setRatio={setIllusRatio}
             />
-            <button
-              className="illus-btn-primary"
-              disabled={!sceneInput.trim()}
-              onClick={() => handleGenerate(sceneInput.trim())}
-            >삽화 생성하기</button>
+            <div className="illus-generate-row">
+              <button
+                className="illus-btn-primary"
+                disabled={!sceneInput.trim()}
+                onClick={() => handleGenerate(sceneInput.trim())}
+              >Gemini로 생성</button>
+              <button
+                className="illus-btn-openai"
+                disabled={!sceneInput.trim()}
+                onClick={() => handleGenerateOpenAI(sceneInput.trim())}
+              >OpenAI로 생성</button>
+            </div>
           </>
         )}
 
@@ -362,10 +393,16 @@ export default function ReadNovel() {
               mood={illusMood} setMood={setIllusMood}
               ratio={illusRatio} setRatio={setIllusRatio}
             />
-            <button
-              className="illus-btn-primary"
-              onClick={() => handleGenerate(sceneInput, true)}
-            >삽화 생성하기</button>
+            <div className="illus-generate-row">
+              <button
+                className="illus-btn-primary"
+                onClick={() => handleGenerate(sceneInput, true)}
+              >Gemini로 생성</button>
+              <button
+                className="illus-btn-openai"
+                onClick={() => handleGenerateOpenAI(sceneInput)}
+              >OpenAI로 생성</button>
+            </div>
           </>
         )}
 

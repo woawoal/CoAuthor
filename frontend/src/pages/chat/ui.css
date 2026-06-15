@@ -342,6 +342,18 @@
   border-top-right-radius: 4px;
 }
 
+/* 주인공 독백/내면 — 점선 테두리 + 이탤릭 */
+.bubble--monologue {
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--text-main) 25%, transparent);
+  border-top-right-radius: 4px;
+  color: color-mix(in srgb, var(--text-main) 70%, transparent);
+}
+.bubble--monologue em {
+  font-style: italic;
+  font-size: 0.95em;
+}
+
 /* ── 마크다운 버블 ── */
 .bubble--markdown p {
   margin: 0;

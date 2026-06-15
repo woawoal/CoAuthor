@@ -37,3 +37,22 @@ export async function createIllustration(sessionId, payload) {
 export async function removeIllustration(sessionId, illusId) {
   await fetch(`${API_BASE_URL}/sessions/${sessionId}/illustrations/${illusId}`, { method: 'DELETE' });
 }
+
+// ── OpenAI gpt-image-1 삽화 생성 ─────────────────────────────────────
+// style_names: ["watercolor", "romance"] 등 조합 가능. 생략하면 기본 스타일(webtoon)
+// sceneDescription: 사용자 입력 or AI 추천 장면. 생략하면 세계관 정보로 자동 생성
+export async function generateIllustrationOpenAI(sessionId, styleNames = [], sceneDescription = '') {
+  const res = await fetch(
+    `${API_BASE_URL}/sessions/${sessionId}/illustrations/generate-openai`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ style_names: styleNames, scene_description: sceneDescription }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || 'OpenAI 삽화 생성에 실패했어요.');
+  }
+  return res.json();
+}

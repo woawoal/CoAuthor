@@ -16,6 +16,7 @@ from app.models.novel import Novel
 from app.models.session import Session
 from app.models.world import World
 from app.services import illustration as svc
+from app.services import illustration_openai as openai_svc
 
 router = APIRouter()
 
@@ -176,6 +177,52 @@ async def save_illustration(
     await db.commit()
     await db.refresh(row)
     return _illus_dict(row)
+
+
+class OpenAIGenerateRequest(BaseModel):
+    style_names: list[str] = []    # 예) ["watercolor", "romance"] — 빈 배열이면 기본 스타일
+    scene_description: str = ""   # 사용자 입력 or AI 추천 장면. 비어 있으면 세계관 정보로 자동 생성
+
+
+@router.post("/{session_id}/illustrations/generate-openai")
+async def generate_illustration_openai(
+    session_id: str,
+    body: OpenAIGenerateRequest = OpenAIGenerateRequest(),
+    db: AsyncSession = Depends(get_db),
+):
+    """세계관 정보를 바탕으로 OpenAI gpt-image-1 로 삽화를 생성한다.
+
+    body.style_names 로 스타일 프리셋을 조합할 수 있다.
+    사용 가능한 키: webtoon / watercolor / romance / fantasy / ghibli
+    """
+    session = (
+        await db.execute(select(Session).where(Session.id == session_id))
+    ).scalar_one_or_none()
+    if not session:
+        raise HTTPException(404, "세션을 찾을 수 없습니다.")
+
+    world = (
+        await db.execute(select(World).where(World.id == session.world_id))
+    ).scalar_one_or_none()
+
+    title = (world.title or "") if world else ""
+    genre = (world.genre or "") if world else ""
+    description = (world.description or "") if world else ""
+
+    try:
+        image_url = await openai_svc.generate_image(
+            title=title,
+            genre=genre,
+            description=description,
+            style_names=body.style_names or None,
+            scene=body.scene_description,
+        )
+    except Exception as e:
+        import logging as _log
+        _log.getLogger(__name__).error("OpenAI 삽화 생성 실패: %s", e, exc_info=True)
+        raise HTTPException(502, detail=str(e)) from e
+
+    return {"image_url": image_url, "status": "generated"}
 
 
 @router.delete("/{session_id}/illustrations/{illus_id}")
