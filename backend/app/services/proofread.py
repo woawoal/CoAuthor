@@ -24,11 +24,26 @@ logger = logging.getLogger(__name__)
 _JAMO_ONLY = re.compile(r"^[ㄱ-ㅎㅏ-ㅣ]+$")   # 순수 자모만으로 된 어절
 _REPEAT3 = re.compile(r"(.)\1\1")              # 같은 글자 3연속(늘임)
 
+# 문장부호(. ? ! …) 뒤 한 칸 띄우고 여는 따옴표가 오는 건 정상 표기.
+# 네이버가 그 공백을 지우라고 해도(`옮겼다. "이제` → `옮겼다."이제`) 오탐 → 교정 제외.
+_PUNCT_QUOTE_SPACE = re.compile(r'([.?!…])\s+(["\'“‘「『])')
+
 
 def _is_stylistic(word: str) -> bool:
     """ㅋㅋ·ㅠㅠ 같은 자모, '좋아아아' 같은 늘임은 의도된 표현 → 맞춤법 제외."""
     w = (word or "").strip()
     return bool(w) and bool(_JAMO_ONLY.match(w) or _REPEAT3.search(w))
+
+
+def _is_punct_quote_fp(original: str, corrected: str) -> bool:
+    """오류쌍의 차이가 '문장부호 뒤 공백 + 여는 따옴표'의 공백을 없애는 것뿐이면 오탐.
+
+    온점/물음표/느낌표 뒤 한 칸 띄우고 따옴표가 오는 건 자연스러운 표기라
+    검사기가 붙이라고 제안해도 교정에서 제외한다(공백 외 글자 변화가 있으면 적용 안 함).
+    """
+    if original.replace(" ", "") != corrected.replace(" ", ""):
+        return False  # 글자 자체가 바뀐 건 여기서 거르지 않음(순수 띄어쓰기 차이만 대상)
+    return _PUNCT_QUOTE_SPACE.sub(r"\1\2", original) == corrected
 
 # 자주 틀리는 한국어 혼동쌍 → 유형 라벨. (검출이 아니라 분류·코칭용)
 # key는 '틀린 표기에 포함되는 조각', value=(올바른 예, 유형 라벨).
@@ -107,6 +122,8 @@ def _diff_errors(original: str, corrected: str, protected: set[str] | None = Non
                 errors.append({"original": o, "corrected": c, "type": _classify(o, c)})
     # 자모·늘임(ㅋㅋ·좋아아아)은 표현이므로 항상 제외
     errors = [e for e in errors if not _is_stylistic(e["original"])]
+    # 문장부호 뒤 공백+따옴표(`다. "이제`)는 정상 표기 → 공백 제거 제안은 오탐이라 제외
+    errors = [e for e in errors if not _is_punct_quote_fp(e["original"], e["corrected"])]
     if protected:
         # 등장인물·세계관 고유명사가 닿은 오류쌍은 버린다(일반 맞춤법기가 모르는 창작 명사)
         errors = [e for e in errors if not _touches_protected(e["original"], protected)]

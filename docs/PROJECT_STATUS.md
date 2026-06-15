@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD022 MD032 MD031 MD036 MD060 MD040 -->
 # NodeVelture 프로젝트 현황
 
-> 최종 갱신: 2026-06-14 (3주차) — **클라우드 풀스택 라이브**(백엔드 Cloud Run · 프론트 Vercel · Neon · Upstash · Vertex). 코어 6단계 + RAG 3종 + 오탈자 교정 + @등장인물 멘션까지 동작.
+> 최종 갱신: 2026-06-15 (3주차) — **클라우드 풀스택 라이브**(백엔드 Cloud Run · 프론트 Vercel · Neon · Upstash · Vertex). 코어 6단계 + RAG 3종 + 오탈자 교정/능동경고 + @등장인물 멘션 + **삽화 생성(Vertex 비전)** + **화자 고정·장면 일관성**까지 동작.
 > Node + Novel + Adventure — AI(작가 페르소나)와 놀듯 대화하면, 그 대화가 진짜 *내 소설*이 되는 협업 창작 플랫폼.
 
 분야(백엔드 / 프론트엔드 / AI)별 **현재 진행상황과 다음 할 일**. 기능 상세는 [기능정의서.md](기능정의서.md), 담당은 [업무분담.md](업무분담.md).
@@ -13,7 +13,7 @@
 ```
 1단계 작가 선택 → 세계관 설정   (작가 페르소나 + 세계관 폼/프리셋 + 태그 자동분류)
 2단계 대화형 창작              (사용자=주인공 / @등장인물로 다른 인물도 연기 / AI 응답 + RAG 일관성 + 어시스턴트 유도)
-3단계 소설 변환 → 검수 → 읽기  (대화 로그 → 작가 문체 소설 → 일관성 검수 → read 화면)
+3단계 소설 변환 → 검수 → 읽기  (대화 로그 → 작가 문체 소설 → 일관성 검수 → read 화면 + 삽화 생성)
 ```
 
 작가 페르소나 4명: **백야**(호러·미스터리) / **차로운**(추리) / **한여름**(로맨스) / **김도현**(일상·에세이)
@@ -29,11 +29,12 @@
 | 프론트엔드 | React 19 + Vite + react-router-dom | main/worldview/intro/chat/editor/storylist/read/mypage/voice/login/dashboard 등, **Vercel 배포** |
 | 백엔드 | FastAPI (Python 3.11) | v1 API 완성, **Cloud Run 배포(라이브)** |
 | AI 엔진 | **Vertex AI Gemini 2.5 Flash-lite** (`USE_VERTEX`) | thinking off로 ~2s·언어누수 해결. Groq/Gemini/OpenAI 폴백 유지(`.env` 한 줄) |
-| DB | **Neon PostgreSQL**(공유) + SQLAlchemy + Alembic | asyncpg·SSL 자동. 마이그레이션 head = `j0k1l2m3n4o5` |
+| DB | **Neon PostgreSQL**(공유) + SQLAlchemy + Alembic | asyncpg·SSL 자동. 마이그레이션 head = `k1l2m3n4o5p6`(illustrations) |
 | 캐시/세션 | **Upstash Redis**(클라우드) | 프롬프트 컨텍스트·최근 대화 관리 |
 | RAG | Gemini 임베딩 + in-app 코사인 top-K | 기억·검수·문체 3종 (별도 벡터DB 없이 단편 규모 충분) |
 | 음성(TTS) | ElevenLabs(작가별 음성ID) | 프론트 연동 ✅ · ⚠️ 무료플랜 클라우드 IP 차단(401) |
-| 평가 | LLM-as-Judge(4축) + 정량 리포트 | `evaluate.py` · `scripts/` 데모/리포트 |
+| 삽화(비전) | **Vertex Gemini 2.5 Flash Image** | fal.ai 403→전환, ADC·GCP크레딧. 세션별 DB 저장 ✅ |
+| 평가 | LLM-as-Judge(4축) + 정량 리포트 | `evaluate.py` · `scripts/`(rag/style/persona/evidence + **완료율·TTFB·CER**). 실측: 완료율 65.2%·TTFB p50 8.7s |
 | 자체 모델 | Qwen2.5 (파인튜닝) | 스텁(우선순위 하락 — API 허용) |
 
 > ✅ **클라우드 풀스택 라이브**: 백엔드(Cloud Run, us-central1) + 프론트(Vercel) + Neon + Upstash + Vertex. 팀 전원 같은 데이터.
