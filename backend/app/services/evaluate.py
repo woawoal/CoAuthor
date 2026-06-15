@@ -78,8 +78,13 @@ def _empty(comment: str = "평가 실패") -> dict:
     return out
 
 
-async def score_novel(novel_text: str, world_desc: str = "", persona_desc: str = "") -> dict:
-    """소설 텍스트를 4개 축으로 채점. 반환: {dim:1~5, comment, total}."""
+async def score_novel(novel_text: str, world_desc: str = "", persona_desc: str = "",
+                      judge_provider: str | None = None) -> dict:
+    """소설 텍스트를 4개 축으로 채점. 반환: {dim:1~5, comment, total}.
+
+    judge_provider="openai" 등을 주면 채점관을 그 모델로 강제한다 — 선수(우리=Gemini)와
+    다른 모델로 채점해 '심판 독립성'을 확보하기 위함. None이면 기존 체인.
+    """
     if not (novel_text or "").strip():
         return _empty("빈 텍스트")
 
@@ -89,6 +94,7 @@ async def score_novel(novel_text: str, world_desc: str = "", persona_desc: str =
             EVAL_SYSTEM,
             [{"role": "user", "parts": [{"text": prompt}]}],
             json_mode=True,
+            provider=judge_provider,
         )
         cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (raw or "").strip(), flags=re.MULTILINE)
         data = json.loads(cleaned)
