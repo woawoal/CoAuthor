@@ -7,6 +7,7 @@ import {
   getErrorWarmup,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
+import { speakReaction, stopReaction } from '../../lib/ttsApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -300,6 +301,8 @@ export default function Chat() {
   // ── 자동 피드백 / 교정 상태 ──────────────────────────────
   const [autoFeedback, setAutoFeedback] = useState(false);
   const [realtimeProof, setRealtimeProof] = useState(false);
+  // 🔊 작가 리액션 음성(말로 반응) ON/OFF — 기본 ON, 사용자가 끄면 기억
+  const [voiceReaction, setVoiceReaction] = useState(() => localStorage.getItem('voice_reaction') !== 'off');
 
   // ── 사용자 ID ────────────────────────────────────────────
   const [userId, setUserId] = useState(null);
@@ -378,12 +381,19 @@ export default function Chat() {
     return () => clearTimeout(feedbackTimerRef.current);
   }, [streaming, autoFeedback, messages]);
 
-  // ── EventSource cleanup (페이지 이탈 시 스트림 정리) ────
+  // ── EventSource cleanup (페이지 이탈 시 스트림·리액션 음성 정리) ────
   useEffect(() => {
     return () => {
       if (esRef.current) { esRef.current.close(); esRef.current = null; }
+      stopReaction();
     };
   }, []);
+
+  // ── 리액션 음성 ON/OFF 영속 + OFF 시 재생 중인 음성 정지 ────
+  useEffect(() => {
+    localStorage.setItem('voice_reaction', voiceReaction ? 'on' : 'off');
+    if (!voiceReaction) stopReaction();
+  }, [voiceReaction]);
 
   // ── 컨텍스트 메뉴 외부 클릭 닫기 ─────────────────────────
   useEffect(() => {
@@ -529,6 +539,8 @@ export default function Chat() {
           );
 
           showReaction(r.reaction);
+          // 🔊 작가 목소리로 리액션 낭독(전송 직후 = 사용자 제스처 컨텍스트 → 자동재생 허용)
+          if (voiceReaction) speakReaction(r.reaction, currentAuthor.characterId);
 
           if (isFirstChat) {
             pendingReactionEmotionRef.current = 'start';
@@ -746,6 +758,14 @@ export default function Chat() {
           <div className="chat-input-bar">
             <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천(말투 기반)">
               💡
+            </button>
+            <button
+              className="suggest-btn"
+              onClick={() => setVoiceReaction(v => !v)}
+              title={voiceReaction ? '작가 음성 리액션 끄기' : '작가 음성 리액션 켜기'}
+              aria-pressed={voiceReaction}
+            >
+              {voiceReaction ? '🔊' : '🔇'}
             </button>
             {speaker && (
               <span className="speaker-chip" title="이 인물의 대사로 전송됩니다">
