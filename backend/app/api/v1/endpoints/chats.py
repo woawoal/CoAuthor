@@ -102,7 +102,8 @@ async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
             names = ", ".join(c.name for c in ai_chars)
             parts.append(
                 f"[AI 서술 인물 — 이 인물들의 반응·대사를 생성]\n{lines}\n"
-                f"※ speaker 필드에 이번 턴에 말하는 인물 이름({names} 중 하나)을 반드시 명시."
+                f"※ 이 인물들이 **지금 장면에 함께 있을 때만** speaker에 그 이름({names} 중 하나)을 쓴다. "
+                f"인물이 떠났거나·자리에 없거나·주인공이 혼자인 장면이면 speaker·dialogue를 빈 문자열로 두고 나레이션만 출력."
             )
         elif not protagonist and chars:
             lines = "\n".join(
@@ -295,8 +296,21 @@ def build_messages(
     # 주인공(사용자 캐릭터)을 world_context에서 추출해 최상단 규칙으로 주입
     protagonist_name = _extract_protagonist_name(world_context)
     ai_char_names    = _extract_ai_char_names(world_context)
-    if protagonist_name:
-        ai_names_str = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
+    ai_names_str = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
+    # 혼자/독백 장면: 사용자가 명시하면 그 턴은 어떤 인물도 등장시키지 않고 나레이션만
+    # (모델의 'AI 캐릭터 반응만 생성' 편향이 프롬프트 일반 규칙보다 세므로, 캐릭터 컨텍스트 자체를 빼고 규칙을 뒤집는다)
+    _SOLO_SIGNALS = ("혼자", "홀로", "텅 빈", "텅빈", "아무도 없", "혼잣말", "독백", "적막")
+    _is_solo = (not speaker) and any(s in (user_input or "") for s in _SOLO_SIGNALS)
+    if _is_solo:
+        _prot = f"({protagonist_name})" if protagonist_name else ""
+        protagonist_rule = (
+            f"[최우선 규칙 — 혼자 있는 장면]\n"
+            f"이번 턴은 주인공{_prot}이 **혼자 있는 장면**이다.\n"
+            f"AI는 **어떤 등장인물도 등장시키거나 말하게 하지 않는다.** speaker와 dialogue를 반드시 빈 문자열(\"\")로 둔다.\n"
+            f"주인공의 고독·내면·공간(빛·소리·냄새)을 narration으로만 작성한다.\n"
+            f"절대 금지: 등록 인물({ai_names_str})을 장면에 끌어들이거나 대사를 만드는 것."
+        )
+    elif protagonist_name:
         protagonist_rule = (
             f"[최우선 규칙 — 역할 구분]\n"
             f"이 채팅에서 사용자는 {protagonist_name} 역할을 직접 연기합니다.\n"
@@ -333,7 +347,8 @@ def build_messages(
     messages: list[dict] = [{"role": "system", "content": system}]
 
     context_parts = []
-    if context["characters"]:
+    # 혼자 장면이면 등장인물 목록을 프롬프트에서 빼서 모델이 끌어들일 인물이 없게 한다
+    if context["characters"] and not _is_solo:
         context_parts.append(f"[주요 등장인물]\n{context['characters']}")
     if context["summary"]:
         context_parts.append(f"[사건 요약]\n{context['summary']}")
@@ -374,11 +389,24 @@ def build_messages(
     ai_label = "·".join(ai_char_names) if ai_char_names else "AI 캐릭터"
     prot_label = protagonist_name or "사용자 캐릭터"
     speaker_prefix = f"{speaker}: " if speaker else ""
-    reaction_instruction = (
-        f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. 여기 있는 대사를 dialogue 필드에 절대 복사하지 말 것]\n"
-        f"{speaker_prefix}{user_input}\n\n"
-        f"[지시] 위 내용에 반응하는 {ai_label}의 새로운 대사·행동만 JSON으로 출력하세요."
-    )
+    # _is_solo 는 위(protagonist_rule 분기)에서 이미 계산됨 — 같은 값 재사용
+    if _is_solo:
+        reaction_instruction = (
+            f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. dialogue에 복사 금지]\n"
+            f"{user_input}\n\n"
+            f"[★최우선 지시 — 혼자 장면] 지금은 **주인공이 혼자 있는 장면**이다. "
+            f"{ai_label} 등 **어떤 등장인물도 장면에 등장시키거나 말하게 하지 마라.** "
+            f"speaker와 dialogue를 **반드시 빈 문자열(\"\")** 로 두고, 주인공의 고독·내면·공간(빛·소리·냄새)만 "
+            f"narration으로 이어가라. 인물을 새로 끌어들이면 규칙 위반이다."
+        )
+    else:
+        reaction_instruction = (
+            f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. 여기 있는 대사를 dialogue 필드에 절대 복사하지 말 것]\n"
+            f"{speaker_prefix}{user_input}\n\n"
+            f"[지시] 위 내용에 이어지는 장면을 JSON으로 출력하세요. "
+            f"{ai_label}이 지금 장면에 함께 있으면 그 인물의 새 대사·행동을 생성하고, "
+            f"떠났거나·자리에 없거나·주인공이 혼자인 장면이면 speaker·dialogue를 빈 문자열로 두고 나레이션만 출력하세요."
+        )
     if prefix:
         user_content = f"{prefix}\n\n{reaction_instruction}"
     else:
