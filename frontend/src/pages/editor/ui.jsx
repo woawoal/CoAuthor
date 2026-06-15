@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread, addGlossaryTerm } from '../../lib/chatApi';
+import { API_BASE_URL } from '../../lib/apiBase';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -125,7 +126,7 @@ export default function Editor() {
   // ── 기존 초안 로드 ────────────────────────────────────────
   useEffect(() => {
     if (!chatId) return;
-    fetch(`/api/v1/sessions/${chatId}/novel`)
+    fetch(`${API_BASE_URL}/sessions/${chatId}/novel`)
       .then(r => r.ok ? r.json() : null)
       .then(novel => { if (novel?.content) setContent(novel.content); })
       .catch(() => { });
@@ -235,7 +236,7 @@ export default function Editor() {
     if (!chatId) return;
     setSaveStatus('saving');
     try {
-      await fetch(`/api/v1/sessions/${chatId}/novel/draft`, {
+      await fetch(`${API_BASE_URL}/sessions/${chatId}/novel/draft`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
