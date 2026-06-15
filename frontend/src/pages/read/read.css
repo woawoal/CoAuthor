@@ -421,6 +421,27 @@
 .illus-btn-primary:hover { opacity: 0.85; }
 .illus-btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 
+.illus-generate-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.illus-btn-openai {
+  flex: 1;
+  padding: 12px;
+  background: #10a37f;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.illus-btn-openai:hover { opacity: 0.85; }
+.illus-btn-openai:disabled { opacity: 0.45; cursor: not-allowed; }
+
 .illus-btn-secondary {
   flex: 1;
   padding: 12px;
