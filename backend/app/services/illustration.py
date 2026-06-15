@@ -8,6 +8,7 @@ DALL-E 3 호출은 동기 OpenAI 클라이언트를 asyncio.to_thread로 감싼�
 LLM 호출 실패 시 대화 흐름을 막지 않도록 예외를 흡수한다.
 """
 import asyncio
+import base64
 import json
 import logging
 
@@ -138,36 +139,41 @@ async def filter_and_refine(
         }
 
 
-_FAL_SIZE_MAP = {
-    "1:1":  "square_hd",       # 1024×1024
-    "9:16": "portrait_16_9",   # 576×1024
-    "16:9": "landscape_16_9",  # 1024×576
+# ── 이미지 생성: Vertex Gemini 2.5 Flash Image ──────────────────────────
+# fal.ai(유료·데이터센터 IP 차단) 대신 GCP Vertex 사용 → ADC 인증이라 Cloud Run에서
+# IP 차단 없이 동작 + 기존 GCP 크레딧으로 결제. 응답 이미지 바이트 → base64 data URL로
+# 반환(별도 스토리지 불필요, 프론트 <img src>가 그대로 표시).
+_IMAGE_MODEL = "gemini-2.5-flash-image"
+
+_RATIO_HINT = {
+    "1:1":  "square 1:1 aspect ratio composition",
+    "16:9": "wide 16:9 cinematic landscape composition",
+    "9:16": "tall 9:16 vertical portrait composition",
 }
 
-_FAL_ENDPOINT = "https://fal.run/fal-ai/flux/dev"
+
+def _generate_image_sync(prompt: str, ratio: str) -> str:
+    """Vertex Gemini 2.5 Flash Image로 이미지 생성 → base64 data URL(동기)."""
+    from vertexai.generative_models import GenerativeModel
+    llm._ensure_vertex()   # llm.py와 동일한 vertexai.init(ADC) 재사용
+    hint = _RATIO_HINT.get(ratio, _RATIO_HINT["1:1"])
+    full_prompt = f"{prompt}\n\n{hint}. High-quality illustration. No text, letters, or watermark."
+    model = GenerativeModel(_IMAGE_MODEL)
+    resp = model.generate_content(
+        full_prompt,
+        generation_config={"response_modalities": ["TEXT", "IMAGE"]},
+    )
+    for cand in (getattr(resp, "candidates", None) or []):
+        content = getattr(cand, "content", None)
+        for part in (getattr(content, "parts", None) or []):
+            inline = getattr(part, "inline_data", None)
+            if inline and getattr(inline, "data", None):
+                mime = getattr(inline, "mime_type", None) or "image/png"
+                b64 = base64.b64encode(inline.data).decode()
+                return f"data:{mime};base64,{b64}"
+    raise RuntimeError("이미지 응답에 이미지 파트가 없습니다(안전필터 차단 또는 모델 미지원).")
 
 
 async def generate_image(prompt: str, ratio: str = "1:1") -> str:
-    """FLUX.1-dev(fal.ai)로 이미지를 생성하고 URL을 반환."""
-    if not settings.FAL_KEY:
-        raise RuntimeError("FAL_KEY 환경변수가 설정되지 않았습니다.")
-
-    import httpx
-    size = _FAL_SIZE_MAP.get(ratio, "square_hd")
-    async with httpx.AsyncClient(timeout=120) as client:
-        resp = await client.post(
-            _FAL_ENDPOINT,
-            headers={"Authorization": f"Key {settings.FAL_KEY}"},
-            json={
-                "prompt": prompt,
-                "image_size": size,
-                "num_inference_steps": 28,
-                "guidance_scale": 3.5,
-                "num_images": 1,
-                "enable_safety_checker": True,
-                "output_format": "jpeg",
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    return data["images"][0]["url"]
+    """프롬프트 → 이미지(base64 data URL). 동기 Vertex 호출을 thread로 감싼다(루프 비차단)."""
+    return await asyncio.to_thread(_generate_image_sync, prompt, ratio)

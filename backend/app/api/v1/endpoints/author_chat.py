@@ -17,12 +17,13 @@ from app.models.character import Character
 from app.models.dialogue import Dialogue, SpeakerType
 from app.models.user_taste_profile import UserTasteProfile
 from app.core.taste_recommend_prompt import (
-    TASTE_RECOMMEND_SYSTEM, build_taste_section, build_novel_section, build_dialogue_section,
+    TASTE_RECOMMEND_SYSTEM, build_taste_section, build_novel_section,
+    build_dialogue_section, build_author_taste_section,
 )
 from app.services.chat_context import (
     redis_client,
     get_author_history, append_author_history, get_prev_user_questions,
-    key_memos,
+    key_memos, key_history, key_summary,
 )
 from app.services import llm, memory
 from app.prompts.author import build_author_messages
@@ -250,6 +251,7 @@ async def generate_rewrite(
 
 class TasteRecommendRequest(BaseModel):
     user_id: str
+    author_id: str = "baekya"
 
 
 class RecommendationItem(BaseModel):
@@ -285,31 +287,31 @@ async def taste_recommend(
     # 2. 소설 컨텍스트 (세계관 + 줄거리 요약)
     world_context, story_summary = await _get_story_context(chat_id, db)
 
-    # 3. 최근 대화 (DB, 최근 10개 역순 → 시간순 정렬)
+    # Redis summary가 DB보다 최신일 수 있으므로 우선 사용
+    redis_summary = await redis_client.get(key_summary(chat_id))
+    if redis_summary:
+        story_summary = redis_summary
+
+    # 3. 최근 대화 — Redis에서 직접 (DB sync 주기와 무관하게 항상 최신)
     recent_dialogues: list[dict] = []
     try:
-        sid = uuid.UUID(chat_id)
-        rows = (await db.execute(
-            select(Dialogue)
-            .where(Dialogue.session_id == sid)
-            .order_by(Dialogue.created_at.desc())
-            .limit(10)
-        )).scalars().all()
+        raw_history = await redis_client.lrange(key_history(chat_id), 0, 9)
         recent_dialogues = [
             {
-                "role": "user" if r.speaker_type == SpeakerType.USER else "character",
-                "content": r.content,
+                "role": entry["role"] if entry["role"] == "user" else "character",
+                "content": entry["content"],
             }
-            for r in reversed(rows)
+            for entry in (json.loads(r) for r in reversed(raw_history))
         ]
     except Exception as e:
-        logger.warning("대화 기록 조회 실패: %s", e)
+        logger.warning("Redis 대화 기록 조회 실패: %s", e)
 
     # 4. 프롬프트 조립
     system_prompt = TASTE_RECOMMEND_SYSTEM.format(
         taste_section=build_taste_section(taste_profile),
         novel_section=build_novel_section(world_context, story_summary),
         dialogue_section=build_dialogue_section(recent_dialogues),
+        author_section=build_author_taste_section(body.author_id),
     )
     contents = [{"role": "user", "parts": [{"text": "취향에 맞는 다음 문장을 추천해주세요."}]}]
 

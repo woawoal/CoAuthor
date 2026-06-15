@@ -566,7 +566,7 @@ export default function Chat() {
       recommendations: [],
     }]);
     try {
-      const data = await getTasteRecommend(chatId, userId);
+      const data = await getTasteRecommend(chatId, userId, currentAuthor.characterId);
       setAuthorMessages(prev => prev.map(m =>
         m.id === loadingId ? { ...m, loading: false, ...data } : m
       ));

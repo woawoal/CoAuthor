@@ -5,7 +5,7 @@ import { toast } from '../../lib/toast';
 import { getSession, getWorld } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import LoadingVideo from '../../components/loadingVideo';
-import { getIllustrationScenes, generateIllustration } from '../../lib/illustrationApi';
+import { getIllustrationScenes, generateIllustration, listIllustrations, createIllustration, removeIllustration } from '../../lib/illustrationApi';
 import './read.css';
 
 const CHAPTER_SIZE = 5;
@@ -77,6 +77,36 @@ export default function ReadNovel() {
   const [loading, setLoading] = useState(true);
   const [showLoading, setShowLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+
+  // ── 저장된 삽화(이 소설) — DB 영속(기기/계정 무관) ────────────────
+  const [savedIllus, setSavedIllus] = useState([]);   // [{id, image_url, caption, created_at}]
+  const [savingIllus, setSavingIllus] = useState(false);   // 저장 중 표시(base64 업로드 지연)
+  const [lightbox, setLightbox] = useState(null);     // {url, caption} | null
+
+  useEffect(() => {
+    if (!storyId) return;
+    listIllustrations(storyId).then(d => setSavedIllus(d.illustrations || [])).catch(() => {});
+  }, [storyId]);
+
+  async function saveIllustration(url, caption) {
+    if (!url || savingIllus) return;
+    setSavingIllus(true);
+    try {
+      const saved = await createIllustration(storyId, { image_url: url, caption: caption || '' });
+      setSavedIllus(prev => [saved, ...prev]);
+      toast('내 삽화에 저장했어요.', 'success');
+      setIllusOpen(false);   // 저장 완료 후 모달 닫기
+    } catch {
+      toast('삽화 저장에 실패했어요.', 'error');
+    } finally {
+      setSavingIllus(false);
+    }
+  }
+
+  async function deleteIllustration(id) {
+    setSavedIllus(prev => prev.filter(it => it.id !== id));
+    try { await removeIllustration(storyId, id); } catch {}
+  }
 
   // ── 삽화 생성 모달 상태 ───────────────────────────────────────────
   const [illusOpen, setIllusOpen]   = useState(false);
@@ -349,11 +379,13 @@ export default function ReadNovel() {
             <h2 className="illus-title">✨ 삽화 완성!</h2>
             <img className="illus-result-img" src={illusResult.image_url} alt="생성된 삽화" />
             <div className="illus-result-actions">
-              <a className="illus-btn-primary" href={illusResult.image_url} target="_blank" rel="noreferrer" download>
-                저장하기
-              </a>
-              <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')}>다시 만들기</button>
-              <button className="illus-btn-secondary" onClick={() => setIllusOpen(false)}>닫기</button>
+              <button
+                className="illus-btn-primary"
+                onClick={() => saveIllustration(illusResult.image_url, sceneInput)}
+                disabled={savingIllus}
+              >{savingIllus ? '삽화 저장 중…' : '저장하기'}</button>
+              <button className="illus-btn-secondary" onClick={() => setIllusStep('mode')} disabled={savingIllus}>다시 만들기</button>
+              <button className="illus-btn-secondary" onClick={() => setIllusOpen(false)} disabled={savingIllus}>닫기</button>
             </div>
           </>
         )}
@@ -444,6 +476,11 @@ export default function ReadNovel() {
             ✨ 삽화 생성
           </button>
         </div>
+      </div>
+
+      {/* 읽기 진행률 — position:fixed 로 뷰포트 최상단 고정(상위 overflow-x:hidden 으로 sticky가 깨져 fixed 사용). 스크롤해도 항상 보임 */}
+      <div className="read-progress-fixed">
+        <div className="read-progress-fixed__fill" style={{ width: `${progress}%` }} />
       </div>
 
       <div className="read-layout">
@@ -569,7 +606,40 @@ export default function ReadNovel() {
             </div>
           </div>
         </main>
+
+        <aside className="read-illus-panel">
+          <div className="read-illus-panel__head">
+            <span className="read-sidebar__label">삽화</span>
+            {savedIllus.length > 0 && <span className="read-illus-count">{savedIllus.length}</span>}
+          </div>
+          {savedIllus.length === 0 ? (
+            <p className="read-illus-empty">아직 삽화가 없어요.<br />상단 <b>✨ 삽화 생성</b>으로<br />장면을 그려보세요.</p>
+          ) : (
+            <div className="read-illus-list">
+              {savedIllus.map(it => (
+                <div className="read-illus-item" key={it.id}>
+                  <img
+                    src={it.image_url}
+                    alt={it.caption || '삽화'}
+                    onClick={() => setLightbox({ url: it.image_url, caption: it.caption })}
+                  />
+                  <button className="read-illus-del" title="삭제" onClick={() => deleteIllustration(it.id)}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </aside>
       </div>
+
+      {lightbox && (
+        <div className="read-lightbox" onClick={() => setLightbox(null)}>
+          <div className="read-lightbox__inner" onClick={e => e.stopPropagation()}>
+            <img src={lightbox.url} alt="삽화 확대" />
+            {lightbox.caption && <p className="read-lightbox__caption">{lightbox.caption}</p>}
+          </div>
+          <button className="read-lightbox__close" onClick={() => setLightbox(null)}>✕</button>
+        </div>
+      )}
       {illusModal}
     </div>
   );

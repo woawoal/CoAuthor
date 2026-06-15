@@ -57,6 +57,23 @@
   letter-spacing: 0.01em;
 }
 
+/* 읽기 진행률 — position:fixed 로 뷰포트 최상단 고정(상위 overflow-x:hidden 이 sticky를 깨뜨려 fixed 사용) */
+.read-progress-fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  z-index: 200;
+  background: color-mix(in srgb, var(--text-main) 8%, transparent);
+}
+
+.read-progress-fixed__fill {
+  height: 100%;
+  background: var(--theme-color);
+  transition: width 0.15s ease-out;
+}
+
 .read-top-bar__right {
   display: flex;
   align-items: center;
@@ -479,8 +496,8 @@
 /* ── LAYOUT ── */
 .read-layout {
   display: grid;
-  grid-template-columns: 240px 1fr;
-  max-width: 1100px;
+  grid-template-columns: 240px minmax(0, 1fr) 300px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -569,6 +586,130 @@
 .read-main-content {
   padding: 3rem 4rem;
   max-width: 760px;
+}
+
+/* ── 삽화 패널 (오른쪽) ── */
+.read-illus-panel {
+  padding: 2rem 1.25rem;
+  border-left: 0.5px solid color-mix(in srgb, var(--text-main) 15%, transparent);
+  position: sticky;
+  top: 56px;
+  height: calc(100vh - 56px);
+  overflow-y: auto;
+}
+.read-illus-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.read-illus-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--theme-color);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.read-illus-empty {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 2rem;
+}
+.read-illus-empty b { color: var(--theme-color); }
+.read-illus-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.read-illus-item {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
+}
+.read-illus-item img {
+  display: block;
+  width: 100%;
+  cursor: zoom-in;
+  transition: transform 0.2s;
+}
+.read-illus-item img:hover { transform: scale(1.03); }
+.read-illus-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.read-illus-item:hover .read-illus-del { opacity: 1; }
+
+/* ── 삽화 확대 (라이트박스) ── */
+.read-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vh 4vw;
+  cursor: zoom-out;
+}
+.read-lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  border-radius: 8px;
+  cursor: default;
+}
+.read-lightbox__close {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+.read-lightbox__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  cursor: default;
+}
+.read-lightbox__inner img { max-height: 78vh; }   /* 캡션 자리 확보 */
+.read-lightbox__caption {
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.6;
+  max-width: 640px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 10px 18px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+}
+
+/* 좁은 화면: 오른쪽 삽화 패널 숨김(본문 우선) */
+@media (max-width: 1024px) {
+  .read-layout { grid-template-columns: 240px 1fr; }
+  .read-illus-panel { display: none; }
 }
 
 /* ── COVER ── */

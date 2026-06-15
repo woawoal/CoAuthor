@@ -582,22 +582,36 @@ async def get_dashboard(
         ldt = last_updated.replace(tzinfo=timezone.utc) if last_updated.tzinfo is None else last_updated
         days_since_active = (now - ldt).days
 
-    # resume_work: 가장 최근 세션
+    # resume_work / recent_feedback / weekly_chars
+    # ※ 동시 다중 세션(독립 커넥션) 병렬화는 Neon에서 커넥션 establish 경합으로 오히려 느림(실측).
+    #   단일 세션 순차로 두되, Novel은 세션 전체분을 한 번에 가져와 latest/weekly 둘 다 커버(2쿼리→1쿼리).
     latest = sessions[0]
-    latest_novel = (await db.execute(
-        select(Novel).where(Novel.session_id == latest.id)
-    )).scalar_one_or_none()
+    week_ago = now - timedelta(days=7)
+    weekly_sids = {
+        s.id for s in sessions
+        if s.updated_at and (
+            s.updated_at.replace(tzinfo=timezone.utc) if s.updated_at.tzinfo is None else s.updated_at
+        ) >= week_ago
+    }
+
+    novels = (await db.execute(
+        select(Novel).where(Novel.session_id.in_(session_ids))
+    )).scalars().all()
+    latest_novel = next((n for n in novels if n.session_id == latest.id), None)
+    weekly_chars = sum(len(n.content or "") for n in novels if n.session_id in weekly_sids)
+
     latest_world = None
     if latest.world_id:
         latest_world = (await db.execute(
             select(World).where(World.id == latest.world_id)
         )).scalar_one_or_none()
-    author_str = AUTHOR_ID_MAP.get(latest.author_id) if latest.author_id else None
     protagonist = None
     if latest.protagonist_id:
         protagonist = (await db.execute(
             select(Character).where(Character.id == latest.protagonist_id)
         )).scalar_one_or_none()
+
+    author_str = AUTHOR_ID_MAP.get(latest.author_id) if latest.author_id else None
     resume_work = {
         "session_id": str(latest.id),
         "title": latest_novel.title if latest_novel else (latest_world.title if latest_world else "제목 없음"),
@@ -630,20 +644,7 @@ async def get_dashboard(
             "content": trimmed,
         }
 
-    # weekly_chars: 최근 7일 내 수정된 세션들의 novel 글자 합산
-    week_ago = now - timedelta(days=7)
-    weekly_sids = [
-        s.id for s in sessions
-        if s.updated_at and (
-            s.updated_at.replace(tzinfo=timezone.utc) if s.updated_at.tzinfo is None else s.updated_at
-        ) >= week_ago
-    ]
-    weekly_chars = 0
-    if weekly_sids:
-        wnovels = (await db.execute(
-            select(Novel).where(Novel.session_id.in_(weekly_sids))
-        )).scalars().all()
-        weekly_chars = sum(len(n.content or "") for n in wnovels)
+    # weekly_chars 는 위 novels 한 번 조회에서 이미 계산됨
 
     # author_shares
     author_counts = Counter(
