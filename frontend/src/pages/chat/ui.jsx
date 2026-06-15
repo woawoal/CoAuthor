@@ -527,31 +527,30 @@ export default function Chat() {
     const isSideChar = !!activeSpeaker && activeSpeaker.name !== protagonistName;
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: speakerName, text: userText, isSideChar }]);
 
-    // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
-    getAuthorReaction(chatId, {
-      content: userText,
-      character_id: currentAuthor.characterId
-    })
-      .then(r => {
-        if (r.reaction) {
-          console.log(
-            `[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`
-          );
-
-          showReaction(r.reaction);
-          // 🔊 작가 목소리로 리액션 낭독(전송 직후 = 사용자 제스처 컨텍스트 → 자동재생 허용)
-          if (voiceReaction) speakReaction(r.reaction, currentAuthor.characterId);
-
-          if (isFirstChat) {
-            pendingReactionEmotionRef.current = 'start';
-          } else if (r.emotion === 'joy' || r.emotion === 'tension') {
-            pendingReactionEmotionRef.current = r.emotion;
-          }
-        }
+    // 작가 리액션 — 사용자 입력 + 작가 답변 '문맥'으로 감정을 잡으려면 답변이 나온 뒤 호출해야 함.
+    // (응답 완료 콜백에서 authorReply를 넘겨 fireReaction 호출) — 본 흐름과 독립, 실패해도 무시.
+    const fireReaction = (authorReply) => {
+      getAuthorReaction(chatId, {
+        content: userText,
+        character_id: currentAuthor.characterId,
+        author_reply: authorReply,
       })
-      .catch(err => {
-        console.error('[REACTION ERROR]', err);
-      });
+        .then(r => {
+          if (r.reaction) {
+            console.log(`[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`);
+            showReaction(r.reaction);
+            // 🔊 작가 목소리로 리액션 낭독
+            if (voiceReaction) speakReaction(r.reaction, currentAuthor.characterId);
+
+            if (isFirstChat) {
+              pendingReactionEmotionRef.current = 'start';
+            } else if (r.emotion === 'joy' || r.emotion === 'tension') {
+              pendingReactionEmotionRef.current = r.emotion;
+            }
+          }
+        })
+        .catch(err => console.error('[REACTION ERROR]', err));
+    };
 
     // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     if (realtimeProof) {
@@ -584,10 +583,12 @@ export default function Chat() {
       ));
     }, 50000);
 
+    let lastReply = { narration: '', dialogue: '' };   // 리액션 문맥용 — 작가가 쓴 장면 누적
     esRef.current = connectChatStream(
       chatId,
       { content: userText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
       ({ narration, speaker, dialogue, protagonist_dialogue }) => {
+        lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
         );
@@ -595,6 +596,8 @@ export default function Chat() {
       () => {
         clearTimeout(streamTimeoutId);
         setStreaming(false);
+        // 작가 답변(나레이션+대사)을 문맥으로 넘겨 리액션 생성
+        fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
       },
     );
   }
