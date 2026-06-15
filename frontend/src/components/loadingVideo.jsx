@@ -65,7 +65,7 @@ const subtitleStyle = {
     wordBreak: 'keep-all',
 };
 
-function LoadingVideo({ loading = true, minDuration = 3000, onFinish }) {
+function LoadingVideo({ loading = true, minDuration = 5000, onFinish }) {
     const startTimeRef = useRef(Date.now());
     const videoRef = useRef(null);
     const [volume, setVolume] = useState(() => getGlobalVideoVolume());
