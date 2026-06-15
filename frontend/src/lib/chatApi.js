@@ -1,11 +1,13 @@
 import { API_BASE_URL } from './apiBase';
 
 export async function sendMessage(chatId, payload) {
-  return fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  const data = await res.json().catch(() => ({}));
+  return data.messageId ?? null;
 }
 
 // F-AS-05 작가 리액션 — 사용자 대사 → 작가 짧은 반응 한 줄(아바타 자막용)
@@ -86,8 +88,9 @@ export function connectChatStream(
     }
   });
 
-  es.addEventListener("done", () => {
-    onDone?.();
+  es.addEventListener("done", (event) => {
+    const data = event.data ? JSON.parse(event.data) : {};
+    onDone?.(data.messageId ?? null);
     es.close();
   });
 
@@ -164,6 +167,13 @@ export async function generateAuthorRewrite(chatId, payload) {
   });
   if (!res.ok) throw new Error('추천 문장 생성 실패');
   return res.json();
+}
+
+export async function deleteMessage(chatId, messageId) {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/messages/${messageId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 404) throw new Error('메시지 삭제 실패');
 }
 
 export async function getMemos(chatId) {

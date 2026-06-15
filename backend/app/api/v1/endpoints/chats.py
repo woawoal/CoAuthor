@@ -4,11 +4,11 @@ import uuid
 import logging
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 
 from app.core.config import settings
 from app.core.personas import get_author_prompt, AUTHOR_ID_MAP
@@ -641,6 +641,8 @@ async def stream_response(
                         )
                         save_session.add(api_log)
                         await save_session.commit()
+                        await save_session.refresh(ai_dialogue)
+                        message_id = str(ai_dialogue.id)
             except Exception as e:
                 logger.warning("대화/토큰 로그 저장 실패: %s", e)
 
@@ -987,6 +989,24 @@ async def delete_memo(chat_id: str, index: int):
         target = memos[index]
         await redis_client.lrem(key_memos(chat_id), 1, target)
     return {"memos": await redis_client.lrange(key_memos(chat_id), 0, -1)}
+
+
+@router.delete("/{chat_id}/messages/{message_id}", status_code=204)
+async def delete_message(chat_id: str, message_id: str, db: AsyncSession = Depends(get_db)):
+    """대화 메시지를 DB에서 삭제한다 (참여형에서 지운 대화가 집필형에 남지 않도록)."""
+    try:
+        msg_uuid = uuid.UUID(message_id)
+        session_uuid = uuid.UUID(chat_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="잘못된 ID 형식입니다.")
+    result = await db.execute(
+        select(Dialogue).where(Dialogue.id == msg_uuid, Dialogue.session_id == session_uuid)
+    )
+    dialogue = result.scalar_one_or_none()
+    if not dialogue:
+        raise HTTPException(status_code=404, detail="메시지를 찾을 수 없습니다.")
+    await db.execute(delete(Dialogue).where(Dialogue.id == msg_uuid))
+    await db.flush()
 
 
 # ── 작가 리액션 (F-AS-05) ──────────────────────────────────
