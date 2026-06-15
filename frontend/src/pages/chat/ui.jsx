@@ -572,7 +572,7 @@ export default function Chat() {
     const speakerName = activeSpeaker?.name ?? protagonistName;
     const isSideChar = !!activeSpeaker && activeSpeaker.name !== protagonistName;
     const userMsgTempId = `temp_user_${Date.now()}`;
-    setMessages(prev => [...prev, { id: userMsgTempId, role: 'user', name: speakerName, text: userText, isSideChar }]);
+    setMessages(prev => [...prev, { id: userMsgTempId, role: 'user', name: speakerName, text: cleanUserText, isSideChar }]);
 
     // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
     getAuthorReaction(chatId, {
@@ -580,9 +580,6 @@ export default function Chat() {
       character_id: currentAuthor.characterId
     })
       .then(r => {
-        console.log('[DEMO] userText =', userText);
-        console.log('[DEMO] cleanUserText =', cleanUserText);
-
         if (r.reaction) {
           console.log(
             `[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`
