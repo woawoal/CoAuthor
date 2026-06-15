@@ -19,6 +19,20 @@ import './ui.css';
 
 const AUTHOR_IDS = [1, 2, 3, 4];
 
+function parseNumberedChoices(text) {
+  const re = /\*\*\d+\.\s+[^*\n]+\*\*/g;
+  const headers = [...text.matchAll(re)];
+  if (headers.length < 2) return null;
+  return headers.map((h, i) => {
+    const start = h.index + h[0].length;
+    const end = headers[i + 1]?.index ?? text.length;
+    const body = text.slice(start, end).replace(/^[:\s]+/, '').trim();
+    const title = h[0].replace(/\*\*/g, '').replace(/^\d+\.\s*/, '').replace(/:$/, '').trim();
+    return { title, body };
+  });
+}
+
+
 const AUTHOR_TAGS = [
   { label: '#세계관', prompt: null },
   { label: '#등장인물', prompt: null },
@@ -516,6 +530,13 @@ export default function Chat() {
     }
   }
 
+  function handleChoiceSelect(msg, choice) {
+    setAuthorMessages(prev => prev.map(m =>
+      m.id === msg.id ? { ...m, selectedChoice: choice.title } : m
+    ));
+    fetchRecommendation(msg.id, currentAuthor.characterId, msg.userText, choice.body);
+  }
+
   async function handleSendAuthorMessage(overrideText, { skipRecommend = false, mode = 'chat', hideUser = false } = {}) {
     const text = (overrideText ?? authorInput).trim();
     if (!text || authorLoading) return;
@@ -531,9 +552,14 @@ export default function Chat() {
         author_id: currentAuthor.characterId,
         mode,
       });
-      setAuthorMessages(prev => [...prev, { id: data.messageId, role: 'ai', type: 'feedback', content: data.content }]);
-
-      if (!skipRecommend && data.shouldRecommend !== false) fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
+      const choices = parseNumberedChoices(data.content);
+      setAuthorMessages(prev => [...prev, {
+        id: data.messageId, role: 'ai', type: 'feedback', content: data.content,
+        ...(choices ? { choices, userText: text } : {}),
+      }]);
+      if (!skipRecommend && !choices && data.shouldRecommend !== false) {
+        fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
+      }
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
@@ -1274,6 +1300,18 @@ export default function Chat() {
                               setContextMenu({ visible: true, x: e.clientX, y: e.clientY, msgId: null, recContent: null, copyContent: msg.content });
                             }}
                           >{msg.content}</div>
+                          {msg.choices && msg.selectedChoice == null && (
+                            <div className="author-choices">
+                              {msg.choices.map((c, i) => (
+                                <button key={i} className="author-choice-btn" onClick={() => handleChoiceSelect(msg, c)}>
+                                  {c.title}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {msg.selectedChoice != null && (
+                            <div className="author-choice-selected">✓ {msg.selectedChoice}</div>
+                          )}
                         </div>
                       );
                     })}

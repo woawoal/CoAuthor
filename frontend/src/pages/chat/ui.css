@@ -1117,6 +1117,35 @@
   background: color-mix(in srgb, var(--theme-color) 14%, transparent);
 }
 
+.author-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.author-choice-btn {
+  padding: 5px 12px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
+  background: color-mix(in srgb, var(--theme-color) 10%, transparent);
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.author-choice-btn:hover {
+  background: color-mix(in srgb, var(--theme-color) 25%, transparent);
+  border-color: color-mix(in srgb, var(--theme-color) 80%, transparent);
+}
+
+.author-choice-selected {
+  margin-top: 6px;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--theme-color) 80%, transparent);
+}
+
 .rec-context-menu {
   position: fixed;
   z-index: 1000;
