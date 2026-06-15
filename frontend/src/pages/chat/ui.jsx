@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, getAuthorReaction, proofread,
-  getErrorWarmup,
+  getErrorWarmup, deleteMessage,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
@@ -451,9 +451,14 @@ export default function Chat() {
     authorPanelRef.current?.openMemoFor(msgId);
   }
 
-  function handleDeleteMsg(msgId) {
+  async function handleDeleteMsg(msgId) {
     setContextMenu(prev => ({ ...prev, visible: false }));
     setMessages(prev => prev.filter(m => m.id !== msgId));
+    try {
+      await deleteMessage(chatId, msgId);
+    } catch (e) {
+      console.warn('메시지 DB 삭제 실패:', e);
+    }
   }
 
   function handleMemoClick(memo) {
@@ -566,7 +571,8 @@ export default function Chat() {
     const protagonistName = dbCharacters.find(c => c.role === 'protagonist')?.name ?? '나';
     const speakerName = activeSpeaker?.name ?? protagonistName;
     const isSideChar = !!activeSpeaker && activeSpeaker.name !== protagonistName;
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', name: speakerName, text: cleanUserText, isSideChar }]);
+    const userMsgTempId = `temp_user_${Date.now()}`;
+    setMessages(prev => [...prev, { id: userMsgTempId, role: 'user', name: speakerName, text: userText, isSideChar }]);
 
     // 작가 리액션 자막 — 메인 응답과 독립(느려도/실패해도 본 흐름 안 막음)
     getAuthorReaction(chatId, {
@@ -614,7 +620,10 @@ export default function Chat() {
         .catch(() => { });
     }
 
-    await sendMessage(chatId, { content: cleanUserText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
+    const userMsgRealId = await sendMessage(chatId, { content: cleanUserText, character_id: storyAuthor.characterId, speaker: activeSpeaker?.name ?? '' });
+    if (userMsgRealId) {
+      setMessages(prev => prev.map(m => m.id === userMsgTempId ? { ...m, id: userMsgRealId } : m));
+    }
 
     const streamMsgId = `stream_${Date.now()}`;
     setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: storyAuthor.displayName, text: '' }]);
@@ -641,9 +650,12 @@ export default function Chat() {
           prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
         );
       },
-      () => {
+      (realMsgId) => {
         clearTimeout(streamTimeoutId);
         setStreaming(false);
+        if (realMsgId) {
+          setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, id: realMsgId } : m));
+        }
       },
     );
   }
