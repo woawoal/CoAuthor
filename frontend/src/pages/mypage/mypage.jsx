@@ -12,6 +12,7 @@ import { getVoiceProfile } from '../../lib/voiceApi';
 import { toast } from '../../lib/toast';
 import './mypage.css';
 import VideoPreviewModal from '../../components/videoPreviewModal';
+import { getGlobalVideoVolume, setGlobalVideoVolume } from '../../lib/videoVolume';
 
 const WORK_GOAL_CHARS = 30000;
 
@@ -202,6 +203,18 @@ function MyPage() {
             toast('삭제에 실패했어요. 잠시 후 다시 시도해주세요.', 'error');
         }
     };
+
+    const [bgmVolume, setBgmVolume] = useState(() => {
+        const saved = localStorage.getItem('bgm_volume');
+        return saved !== null ? Number(saved) : 0.2;
+    });
+
+    const [bgmPlaying, setBgmPlaying] = useState(() => {
+        const saved = localStorage.getItem('bgm_playing');
+        return saved === null ? true : saved === 'true';
+    });
+
+    const [videoVolume, setVideoVolume] = useState(() => getGlobalVideoVolume());
 
     return (
         <div className="mp">
@@ -863,8 +876,71 @@ function MyPage() {
 
                 {/* ── 환경설정 ── */}
                 {active === '환경설정' && (
-                    <div className="mp-placeholder">
-                        <p>환경설정은 준비 중이에요.</p>
+                    <div className="mp-settings">
+                        <div className="mp-setting-card">
+                            <div className="mp-setting-title">
+                                배경음악
+                            </div>
+                            <div className="mp-setting-body">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.01"
+                                    value={bgmVolume}
+                                    onChange={(e) => {
+                                        const volume = Number(e.target.value);
+
+                                        setBgmVolume(volume);
+                                        localStorage.setItem('bgm_volume', String(volume));
+
+                                        window.dispatchEvent(
+                                            new Event('bgm-volume-changed')
+                                        );
+                                    }}
+                                />
+
+                                <button
+                                    onClick={() => {
+                                        const next = !bgmPlaying;
+
+                                        setBgmPlaying(next);
+                                        localStorage.setItem('bgm_playing', String(next));
+
+                                        window.dispatchEvent(
+                                            new Event('bgm-playing-changed')
+                                        );
+                                    }}
+                                >
+                                    {bgmPlaying ? '🔊' : '🔇'}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="mp-setting-card">
+                            <div className="mp-setting-title">
+                                영상
+                            </div>
+
+                            <div className="mp-setting-body">
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="1"
+                                    step="0.05"
+                                    value={videoVolume}
+                                    onChange={(e) => {
+                                        const volume = Number(e.target.value);
+
+                                        setVideoVolume(volume);
+                                        setGlobalVideoVolume(volume);
+                                    }}
+                                />
+
+                                <span>
+                                    {videoVolume === 0 ? '🔇' : '🔊'}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 )}
 

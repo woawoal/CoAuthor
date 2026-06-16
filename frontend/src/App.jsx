@@ -11,6 +11,7 @@ import VoiceProfile from './pages/voice/voice';
 import TokenDashboard from './pages/tokenDashboard/tokenDashboard';
 import MyPage from './pages/mypage/mypage';
 import { ToastHost } from './lib/toast';
+import BgmPlayer from './components/BgmPlayer';
 
 function App() {
   useEffect(() => {
@@ -27,6 +28,7 @@ function App() {
   return (
     <Router>
       <ToastHost />
+      <BgmPlayer />
       <Routes>
         <Route path="/" element={<Main />} />
         <Route path="/worldview" element={<Worldview />} />
