@@ -20,10 +20,35 @@ except Exception:
 
 import asyncio
 import json
+import os
 from datetime import datetime
 
+from app.core.config import settings
 from app.services import llm, evaluate
 from app.services.llm_router import LLMRouter
+
+# ── 비교 엔진 결정 (강사님: "한쪽 GPT / 한쪽 우리") ─────────────────
+# 베이스라인='맨손', 채점관='독립 심판'을 우리(Gemini)와 다른 계열 모델로 강제해 공정성 확보.
+#   자동 선택: openai(GPT) → groq(Llama) 순으로 '살아있는' 첫 독립 모델(둘 다 Gemini와 다름).
+#   - EVAL_GPT=0 으로 비교 비활성(전부 Gemini)
+#   - EVAL_BASELINE_PROVIDER / EVAL_JUDGE_PROVIDER 로 수동 강제 가능(openai|groq|gemini)
+_AUTO_ORDER = ["openai", "groq"]  # GPT 우선, 없거나 죽으면 Groq
+
+
+def _has(provider: str) -> bool:
+    if provider == "openai":
+        return bool((settings.OPENAI_API_KEY or "").strip() or (settings.OPENAI_API_KEYS or "").strip())
+    if provider == "groq":
+        return bool((settings.GROQ_API_KEY or "").strip() or (settings.GROQ_API_KEYS or "").strip())
+    return True  # gemini(우리 엔진)
+
+
+_DISABLED = os.getenv("EVAL_GPT", "1") == "0"
+_BASE_ENV = os.getenv("EVAL_BASELINE_PROVIDER")
+_JUDGE_ENV = os.getenv("EVAL_JUDGE_PROVIDER")
+# 실제 값은 main()의 사전점검(_pick) 후 확정 — 죽은 모델을 자동 회피하기 위함.
+BASELINE_PROVIDER = None
+JUDGE_PROVIDER = None
 
 # ── 테스트 시나리오 ────────────────────────────────────────────
 # 여러 시나리오로 돌릴수록 신뢰도 올라감
@@ -69,12 +94,13 @@ SCENARIOS = [
 
 BASELINE_SYSTEM = """\
 당신은 한국 소설을 잘 쓰는 AI입니다.
-아래 대화를 읽고 소설 한 장면으로 변환해주세요.
+주어진 [세계관]과 [작가 문체]를 최대한 살려, 아래 [대화]를 소설 한 장면으로 변환하세요.
 
 조건:
 - 한국어로만 작성
-- 지문과 대사를 자연스럽게 섞어서
-- 인물의 감정과 분위기가 느껴지도록
+- 제시된 세계관 설정(인물·장소·관계)을 정확히 반영
+- 제시된 작가 문체/성향을 살릴 것
+- 지문과 대사를 자연스럽게 섞어, 인물의 감정과 분위기가 느껴지도록
 - 300자 내외로
 """
 
@@ -98,17 +124,23 @@ async def run_scenario(router: LLMRouter, scenario: dict, repeat: int = 3) -> di
 
     base_scores, ours_scores = [], []
 
+    # 공정 ablation: 맨손에도 세계관+페르소나를 똑같이 준다(='맥락 잘 준 사용자').
+    # 우리와의 유일한 차이는 RAG(장기기억) 검색뿐 → 차이 = 순수 RAG 기여.
+    baseline_user = f"[세계관]\n{world_desc}\n\n[작가 문체]\n{persona_desc}\n\n[대화]\n{_block(dialogue)}"
+
     for i in range(repeat):
-        # 맨손
+        # 맨손 — 맥락 포함(세계관·페르소나). RAG만 빠짐. provider 지정 시 진짜 GPT/Llama.
         baseline = await llm.generate(
             BASELINE_SYSTEM,
-            [{"role": "user", "parts": [{"text": _block(dialogue)}]}],
+            [{"role": "user", "parts": [{"text": baseline_user}]}],
+            provider=BASELINE_PROVIDER,
         )
         # 우리
         ours = await router.generate_novel(dialogue, world_desc, persona_id=persona_id)
 
-        s_base = await evaluate.score_novel(baseline, world_desc, persona_desc)
-        s_ours = await evaluate.score_novel(ours, world_desc, persona_desc)
+        # 채점관 — 선수와 다른 독립 모델로(있으면)
+        s_base = await evaluate.score_novel(baseline, world_desc, persona_desc, judge_provider=JUDGE_PROVIDER)
+        s_ours = await evaluate.score_novel(ours, world_desc, persona_desc, judge_provider=JUDGE_PROVIDER)
 
         base_scores.append(s_base)
         ours_scores.append(s_ours)
@@ -163,12 +195,70 @@ def print_result(result: dict):
     print(f"\n판정: {verdict} (격차 {sign}{total_diff:.1f}점)")
 
 
+async def _preflight(provider: str) -> bool:
+    """provider를 실제 1회 호출해 살아있는지 확인. 실패(크레딧 없음·인증 등) 시 사유 출력 후 False."""
+    try:
+        await llm.generate("ping", [{"role": "user", "parts": [{"text": "hi"}]}], provider=provider)
+        return True
+    except Exception as e:  # noqa: BLE001
+        msg = str(e).lower()
+        if "insufficient_quota" in msg or "quota" in msg or "429" in msg:
+            why = "크레딧/잔액 없음 또는 쿼터 초과"
+        elif "401" in msg or "invalid api key" in msg or "unauthorized" in msg:
+            why = "키 인증 실패"
+        else:
+            why = f"{e.__class__.__name__}: {str(e)[:80]}"
+        print(f" ⚠️  '{provider}' 사전점검 실패 → {why}")
+        return False
+
+
+async def _pick(explicit: str | None) -> str | None:
+    """수동 지정이면 그것만 점검; 아니면 openai→groq 순으로 살아있는 첫 독립 모델 선택."""
+    if explicit:
+        return explicit if (explicit == "gemini" or await _preflight(explicit)) else None
+    for p in _AUTO_ORDER:
+        if _has(p) and await _preflight(p):
+            return p
+    return None
+
+
 async def main():
+    global BASELINE_PROVIDER, JUDGE_PROVIDER
     router = LLMRouter()
     all_results = []
 
+    # 살아있는 독립 모델 자동 선택(죽은 모델은 크래시 대신 자동 회피)
+    if not _DISABLED:
+        BASELINE_PROVIDER = await _pick(_BASE_ENV)
+        JUDGE_PROVIDER = (await _pick(_JUDGE_ENV)) if _JUDGE_ENV else BASELINE_PROVIDER
+
+    ours_engine = "Vertex Gemini" if settings.USE_VERTEX else (settings.GEMINI_MODEL or "Gemini")
+
+    def _label(provider: str | None) -> str:
+        if provider == "openai":
+            return settings.OPENAI_MODEL or "openai"
+        if provider == "groq":
+            return settings.GROQ_MODEL or "groq"
+        return ours_engine
+
+    base_engine = _label(BASELINE_PROVIDER)
+    judge_engine = _label(JUDGE_PROVIDER)
+    judge_independent = JUDGE_PROVIDER in ("openai", "groq")   # 심판이 우리(Gemini)와 다른 계열
+    same_base = base_engine == ours_engine                      # 맨손=우리 베이스 모델 동일 → 순수 RAG ablation
+    independent = base_engine != ours_engine                    # 맨손이 외부(타사) 모델
+
     print(BAR)
     print(" F-EV-06 차별점 근거 리포트 — 맨손 vs 우리 서비스")
+    print(BAR)
+    print(f" 베이스라인(맨손) 엔진 : {base_engine}")
+    print(f" 우리 서비스    엔진 : {ours_engine} + RAG")
+    print(f" 채점관(심판)   엔진 : {judge_engine}")
+    if same_base:
+        print(" ℹ️  맨손=우리와 같은 베이스 모델 + 동일 맥락(세계관·페르소나) → 차이 = 순수 RAG(장기기억) 기여 (공정 ablation).")
+    if judge_independent:
+        print(" ✅  채점관이 우리 엔진과 다른 계열 → 심판 독립성 확보.")
+    else:
+        print(" ⚠️  채점관이 우리 엔진과 같은 계열 → 심판 독립성 약함(자기채점 위험).")
     print(BAR)
 
     for scenario in SCENARIOS:
@@ -187,10 +277,15 @@ async def main():
         sign = "+" if diff > 0 else ""
         print(f"{evaluate._DIM_LABEL[k]:<18}{base_avg:>6}{ours_avg:>6}{sign}{diff:>5.1f}")
 
-    # JSON 저장 (발표 자료용)
+    # JSON 저장 (발표 자료용) — 어떤 엔진으로 쟀는지 함께 기록(출처 추적)
+    payload = {
+        "engines": {"baseline": base_engine, "ours": f"{ours_engine}+RAG", "judge": judge_engine},
+        "independent_comparison": independent,
+        "results": all_results,
+    }
     output_path = f"evidence_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_results, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     print(f"\n📄 결과 저장: {output_path}")
     print(BAR)
 

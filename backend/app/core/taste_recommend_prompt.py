@@ -6,11 +6,14 @@ TASTE_RECOMMEND_SYSTEM = """\
 
 {taste_section}
 
+{user_voice_section}
+
 {novel_section}
 
 {dialogue_section}
 
 [금지 조건]
+- [현재 소설 정보]의 장르·배경·규칙과 어긋나는 요소를 새로 만들지 마라(예: 현실 배경에 용·마법·초능력).
 - 새로운 인물을 갑자기 등장시키지 마라.
 - 사건을 급격히 해결하지 마라.
 - 사용자가 쓰던 문체와 어조를 유지하라.
@@ -36,6 +39,22 @@ TASTE_RECOMMEND_SYSTEM = """\
     }}
   ]
 }}"""
+
+
+def build_user_voice_section(sentences: list[str]) -> str:
+    """사용자가 ✓ 저장한 문장(개인화 RAG로 현재 장면과 가까운 것) → 톤 참고 섹션.
+
+    빈 리스트면 빈 문자열(섹션 자체를 생략 → 정적 취향 프로필로만 추천).
+    """
+    if not sentences:
+        return ""
+    lines = "\n".join(f"- {s}" for s in sentences)
+    return (
+        "[사용자가 저장한 문장 — 톤 참고]\n"
+        f"{lines}\n"
+        "위는 이 사용자가 마음에 들어 직접 저장한 문장이다. "
+        "어휘·리듬·정서의 '취향'을 참고하되, 문장을 베끼지 말고 현재 장면에 맞는 새 문장을 추천하라."
+    )
 
 
 def build_taste_section(taste_profile: dict) -> str:
