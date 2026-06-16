@@ -18,14 +18,14 @@ from app.models.dialogue import Dialogue, SpeakerType
 from app.models.user_taste_profile import UserTasteProfile
 from app.core.taste_recommend_prompt import (
     TASTE_RECOMMEND_SYSTEM, build_taste_section, build_novel_section,
-    build_dialogue_section, build_author_taste_section,
+    build_dialogue_section, build_author_taste_section, build_user_voice_section,
 )
 from app.services.chat_context import (
     redis_client,
     get_author_history, append_author_history, get_prev_user_questions,
     key_memos, key_history, key_summary,
 )
-from app.services import llm, memory
+from app.services import llm, memory, personalize
 from app.prompts.author import build_author_messages
 from app.core.personas import build_feedback_prompt, build_rewrite_prompt
 
@@ -306,13 +306,25 @@ async def taste_recommend(
     except Exception as e:
         logger.warning("Redis 대화 기록 조회 실패: %s", e)
 
+    # 3.5 개인화 RAG: 사용자가 저장한 문장에서 '현재 장면과 가까운 본인 톤' 검색
+    #     (정적 취향 프로필을 넘어, 실제 저장 문장으로 취향을 근거화 — 없으면 빈 섹션)
+    scene_query = (recent_dialogues[-1]["content"] if recent_dialogues else "") or story_summary
+    user_voice: list[str] = []
+    try:
+        user_voice = await personalize.retrieve_user_voice(db, body.user_id, scene_query, k=3)
+    except Exception as e:
+        logger.warning("개인화 RAG 실패(생략): %s", e)
+
     # 4. 프롬프트 조립
     system_prompt = TASTE_RECOMMEND_SYSTEM.format(
         taste_section=build_taste_section(taste_profile),
+        user_voice_section=build_user_voice_section(user_voice),
         novel_section=build_novel_section(world_context, story_summary),
         dialogue_section=build_dialogue_section(recent_dialogues),
         author_section=build_author_taste_section(body.author_id),
     )
+    if user_voice:
+        logger.info("개인화 RAG - chat_id=%s 저장문장 %d개 톤 참고", chat_id, len(user_voice))
     contents = [{"role": "user", "parts": [{"text": "취향에 맞는 다음 문장을 추천해주세요."}]}]
 
     # 5. LLM 호출 + JSON 파싱

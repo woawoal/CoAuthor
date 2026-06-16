@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import {
   sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, getAuthorReaction, proofread,
-  getErrorWarmup, deleteMessage,
+  getErrorWarmup, deleteMessage, setGenreOpen,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { speakReaction, stopReaction } from '../../lib/ttsApi';
@@ -353,6 +353,9 @@ export default function Chat() {
   const [realtimeProof, setRealtimeProof] = useState(false);
   // 🔊 작가 리액션 음성(말로 반응) ON/OFF — 기본 ON, 사용자가 끄면 기억
   const [voiceReaction, setVoiceReaction] = useState(() => localStorage.getItem('voice_reaction') !== 'off');
+  // 장르 가드: 장르 밖 감지 알림(비차단 칩) + 세션 확장 승인 여부
+  const [genreAlert, setGenreAlert] = useState(null);   // { note } | null
+  const [genreOpen, setGenreOpen_] = useState(false);   // 이 세션에서 '판타지로 도입' 승인됨
 
   // ── 사용자 ID ────────────────────────────────────────────
   const [userId, setUserId] = useState(null);
@@ -550,6 +553,17 @@ export default function Chat() {
     pendingReactionEmotionRef.current = null;
   }
 
+  // 장르 가드 — '판타지로 도입' 승인(이후 턴 감지 끔) / '그대로 유지'(칩만 닫음)
+  async function acceptGenre() {
+    setGenreOpen_(true);
+    setGenreAlert(null);
+    await setGenreOpen(chatId, true);
+    toast('장르 확장을 켰어요. 자유롭게 전개하세요.');
+  }
+  function keepGenre() {
+    setGenreAlert(null);
+  }
+
   function resetDelayTimer() {
     if (delayTimerRef.current) clearTimeout(delayTimerRef.current);
 
@@ -693,11 +707,13 @@ export default function Chat() {
     esRef.current = connectChatStream(
       chatId,
       { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
-      ({ narration, speaker, dialogue, protagonist_dialogue }) => {
+      ({ narration, speaker, dialogue, protagonist_dialogue, out_of_genre, genre_note }) => {
         lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
         );
+        // 장르 밖 감지 → 비차단 칩(이미 도입 승인했으면 무시)
+        if (out_of_genre && !genreOpen) setGenreAlert({ note: genre_note });
       },
       (realMsgId) => {
         clearTimeout(streamTimeoutId);
@@ -830,6 +846,20 @@ export default function Chat() {
           <div ref={bottomRef} />
         </div>
 
+
+        {genreAlert && (
+          <div className="genre-alert">
+            <span className="genre-alert__text">
+              ⚠️ 장르 밖 요소 감지{genreAlert.note ? ` — ${genreAlert.note}` : ''}
+            </span>
+            <button className="genre-alert__btn genre-alert__btn--accept" onClick={acceptGenre}>
+              판타지로 도입
+            </button>
+            <button className="genre-alert__btn" onClick={keepGenre}>
+              그대로 유지
+            </button>
+          </div>
+        )}
 
         {suggestions.length > 0 && !streaming && (
           <div className="chat-suggestions">

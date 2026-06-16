@@ -62,6 +62,8 @@ def parse_ai_response(raw: str) -> dict:
             "state_changes":         data.get("state_changes") or _default_state,
             "story_phase":           data.get("story_phase") or "",
             "internal_note":         data.get("internal_note") or "",
+            "out_of_genre":          bool(data.get("out_of_genre")),
+            "genre_note":            data.get("genre_note") or "",
         }
     except (json.JSONDecodeError, AttributeError):
         pass
