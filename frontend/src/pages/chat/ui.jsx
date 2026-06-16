@@ -201,8 +201,8 @@ function Bubble({ msg, persona, characterName, protagonistName, streaming, hasBo
             {msg.narration && <p className="narration-text" style={{ textAlign: 'right' }}>{msg.narration}</p>}
             {msg.dialogue && (
               <div className="dialogue-block" style={{ alignItems: 'flex-end' }}>
-                <span className="badge badge--user">{msg.speaker}</span>
-                <div className="bubble bubble--user">&ldquo;{msg.dialogue}&rdquo;</div>
+                <span className="badge badge--user">💭 {msg.speaker}</span>
+                <div className="bubble bubble--monologue"><em>{msg.dialogue}</em></div>
               </div>
             )}
           </div>

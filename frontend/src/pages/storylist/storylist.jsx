@@ -39,7 +39,6 @@ export default function StoryList() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showLoading, setShowLoading] = useState(true);
-
   useAuthorTheme(resolveAuthorId(null));
 
   useEffect(() => {
@@ -126,6 +125,7 @@ export default function StoryList() {
           ))}
         </div>
       </div>
+
     </div>
   );
 }

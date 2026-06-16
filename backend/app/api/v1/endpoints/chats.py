@@ -271,7 +271,7 @@ def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str) -> st
         return ""
     norm = lambda x: (x or "").replace(" ", "")
     if protagonist_name and norm(s) == norm(protagonist_name):
-        return ""
+        return protagonist_name  # 혼자 장면 독백용 — 프론트에서 주인공 버블로 처리
     for name in ai_names:
         if norm(s) == norm(name):
             return name
@@ -323,10 +323,10 @@ def build_messages(
         protagonist_rule = (
             f"[최우선 규칙 — 역할 구분]\n"
             f"이 채팅에서 사용자는 {protagonist_name} 역할을 직접 연기합니다.\n"
-            f"AI는 {ai_names_str}의 반응·대사만 생성합니다.\n"
+            f"조연({ai_names_str})이 있는 장면: AI는 조연의 반응·대사만 생성합니다. speaker는 조연 이름.\n"
+            f"★ {protagonist_name}이 혼자인 장면: speaker={protagonist_name}, dialogue=독백·내면 한 문장 허용.\n"
             f"절대 금지: {protagonist_name}의 내면·감정·생각을 narration에 서술하는 것.\n"
-            f"절대 금지: {protagonist_name}의 대사를 dialogue에 생성하는 것.\n"
-            f"절대 금지: speaker 필드에 {protagonist_name}을 넣는 것."
+            f"절대 금지: 조연이 있는 장면에서 speaker에 {protagonist_name}을 넣는 것."
         )
     else:
         protagonist_rule = ""
@@ -571,6 +571,17 @@ async def stream_response(
             if _is_protagonist_speaker and not protagonist_dialogue and dialogue and not reply_speaker:
                 protagonist_dialogue = dialogue
                 dialogue = ""
+
+            # [나레이션 일관성 강제] AI가 나레이션에 "혼자/아무도 없" 등을 쓰고도
+            # 조연을 speaker로 내보내는 모순을 코드 레벨에서 차단
+            _SOLO_NARR = ("혼자", "홀로", "텅 빈", "텅빈", "아무도 없", "혼잣말", "독백", "적막")
+            if narration and any(sig in narration for sig in _SOLO_NARR):
+                if reply_speaker and reply_speaker in _valid_ai_names:
+                    logger.info(
+                        "나레이션 솔로 신호 → 조연 speaker 강제 제거 (was=%s)", reply_speaker
+                    )
+                    reply_speaker = ""
+                    dialogue = ""
 
             # story_phase: LLM 제안을 역행 방지 로직으로 적용
             current_phase = await redis_client.get(key_phase(chat_id)) or "도입부"
