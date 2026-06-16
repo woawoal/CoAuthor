@@ -65,6 +65,12 @@
   gap: 14px;
 }
 
+/* worldview.css의 .form-group{height:275px}는 '생성 페이지'용 — 수정 화면에선 한 줄
+   입력에도 275px가 잡혀 과한 세로 공백이 생긴다. 이 페이지만 내용 높이로 되돌린다. */
+.worldedit-container .form-group {
+  height: auto;
+}
+
 .worldedit-section-head {
   display: flex;
   align-items: center;

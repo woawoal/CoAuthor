@@ -23,7 +23,7 @@ let _newCharSeq = 0;
 export default function WorldEdit() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { chatId, worldId: worldIdFromState, authorId: authorIdRaw } = location.state ?? {};
+  const { chatId, worldId: worldIdFromState, authorId: authorIdRaw, from: fromMode } = location.state ?? {};
 
   useAuthorTheme(resolveAuthorId(authorIdRaw));
 
@@ -148,8 +148,11 @@ export default function WorldEdit() {
       );
 
       toast('세계관을 저장했어요.', 'success');
-      if (chatId) {
-        navigate('/chat', { state: { chatId, authorId: resolveAuthorId(authorIdRaw) } });
+      // 들어온 모드로 복귀: 채팅→/chat, 집필형→/editor, 그 외(목록 등)→뒤로.
+      if (fromMode === 'editor' && chatId) {
+        navigate('/editor', { state: { worldId, chatId, authorId: resolveAuthorId(authorIdRaw) } });
+      } else if (fromMode === 'chat' && chatId) {
+        navigate('/chat', { state: { worldId, chatId, authorId: resolveAuthorId(authorIdRaw) } });
       } else {
         navigate(-1);
       }

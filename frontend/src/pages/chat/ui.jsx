@@ -809,7 +809,7 @@ export default function Chat() {
             </button>
             <button
               className="editor-back-btn"
-              onClick={() => navigate('/worldedit', { state: { worldId: world?.id, chatId, authorId } })}
+              onClick={() => navigate('/worldedit', { state: { worldId: world?.id, chatId, authorId, from: 'chat' } })}
               disabled={!world?.id}
               title="세계관 수정 — 다음 대화부터 반영"
             >✎ 세계관</button>
