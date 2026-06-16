@@ -59,6 +59,12 @@ export default function StoryList() {
     navigate(`/read/${session.id}`, { state: { authorId: session.author_id } });
   };
 
+  const handleEditWorld = (session) => {
+    navigate('/worldedit', {
+      state: { worldId: session.world_id, chatId: session.id, authorId: session.author_id },
+    });
+  };
+
   const handleDelete = async (session) => {
     if (!window.confirm(`"${session.world_title}" 세션을 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) return;
     try {
@@ -114,6 +120,9 @@ export default function StoryList() {
                     읽기
                   </button>
                 )}
+                <button className="storylist-card__btn storylist-card__btn--read" onClick={() => handleEditWorld(s)}>
+                  ✎ 세계관
+                </button>
                 <button className="storylist-card__btn" onClick={() => handleResume(s)}>
                   이어쓰기 →
                 </button>

@@ -125,6 +125,87 @@ export async function getCharacters(worldId) {
 }
 
 /**
+ * 세계관 수정 (부분 업데이트 — 보낸 필드만 반영)
+ * @param {string} worldId
+ * @param {{title?:string, description?:string, genre?:string, setting?:string, rules?:string}} patch
+ * @returns {Promise<object>} WorldResponse
+ */
+export async function updateWorld(worldId, patch) {
+  const res = await fetch(`${API_BASE_URL}/worlds/${worldId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || '세계관 수정 실패');
+  }
+  return res.json();
+}
+
+/**
+ * 캐릭터 추가 (수정 화면에서 신규 인물 등록)
+ * @param {string} worldId
+ * @param {{name:string, role:string, personality?:string, prompt?:string}} char
+ * @returns {Promise<object>} CharacterResponse
+ */
+export async function createCharacter(worldId, char) {
+  const userId = await getCurrentUserId();
+  const res = await fetch(`${API_BASE_URL}/worlds/${worldId}/characters/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_id: userId,
+      name: char.name,
+      role: char.role,
+      personality: char.personality ?? '',
+      prompt: char.prompt ?? '',
+      is_ai_controlled: true,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `캐릭터 '${char.name}' 추가 실패`);
+  }
+  return res.json();
+}
+
+/**
+ * 캐릭터 수정 (부분 업데이트 — 이름 변경은 호출부에서 정책상 제한)
+ * @param {string} worldId
+ * @param {string} characterId
+ * @param {{name?:string, role?:string, personality?:string, prompt?:string}} patch
+ * @returns {Promise<object>} CharacterResponse
+ */
+export async function updateCharacter(worldId, characterId, patch) {
+  const res = await fetch(`${API_BASE_URL}/worlds/${worldId}/characters/${characterId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || '캐릭터 수정 실패');
+  }
+  return res.json();
+}
+
+/**
+ * 캐릭터 삭제 (수정 화면에서 신규 인물 취소용)
+ * @param {string} worldId
+ * @param {string} characterId
+ */
+export async function deleteCharacter(worldId, characterId) {
+  const res = await fetch(`${API_BASE_URL}/worlds/${worldId}/characters/${characterId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || '캐릭터 삭제 실패');
+  }
+}
+
+/**
  * 세션 삭제
  * @param {string} sessionId
  */

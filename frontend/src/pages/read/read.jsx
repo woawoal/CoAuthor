@@ -73,6 +73,7 @@ export default function ReadNovel() {
   const [fontPanelOpen, setFontPanelOpen] = useState(false);
   const [bookmarked, setBookmarked] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [activeChapter, setActiveChapter] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showLoading, setShowLoading] = useState(true);
@@ -215,6 +216,7 @@ export default function ReadNovel() {
     const docH = document.documentElement.scrollHeight - window.innerHeight;
     const pct = docH > 0 ? Math.round((scrollTop / docH) * 100) : 0;
     setProgress(pct);
+    setShowScrollTop(scrollTop > 300);
     chapterRefs.current.forEach((el, i) => {
       if (el && el.getBoundingClientRect().top < 120) setActiveChapter(i);
     });
@@ -229,6 +231,8 @@ export default function ReadNovel() {
     chapterRefs.current[idx]?.scrollIntoView({ behavior: 'smooth' });
     setActiveChapter(idx);
   };
+
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
   const handleRegenerate = async () => {
     setRegenerating(true);
@@ -685,6 +689,14 @@ export default function ReadNovel() {
           </div>
           <button className="read-lightbox__close" onClick={() => setLightbox(null)}>✕</button>
         </div>
+      )}
+      {showScrollTop && (
+        <button
+          className="read-scroll-top"
+          onClick={(e) => { e.stopPropagation(); scrollToTop(); }}
+          title="맨 위로"
+          aria-label="맨 위로"
+        >↑</button>
       )}
       {illusModal}
     </div>

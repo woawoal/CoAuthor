@@ -1015,6 +1015,41 @@
   overflow-y: auto;
 }
 
+/* 설정 검수 — 모순 경고 배너 */
+.consistency-alert {
+  margin: 8px 16px 0;
+  padding: 10px 12px;
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  border: 1px solid color-mix(in srgb, #ef4444 38%, transparent);
+  border-radius: 10px;
+  font-size: 13px;
+}
+.consistency-alert__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.consistency-alert__title { font-weight: 700; color: var(--text-main); }
+.consistency-alert__x {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-sub, #888); font-size: 13px;
+}
+.consistency-alert__item {
+  display: flex; align-items: flex-start; gap: 8px; margin-top: 4px;
+}
+.consistency-alert__sev {
+  flex-shrink: 0;
+  font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 999px;
+  background: color-mix(in srgb, #ef4444 20%, transparent);
+  color: #b91c1c;
+}
+.consistency-alert__sev--high { background: #ef4444; color: #fff; }
+.consistency-alert__sev--low { background: color-mix(in srgb, #f59e0b 20%, transparent); color: #b45309; }
+.consistency-alert__text { color: var(--text-main); line-height: 1.5; }
+.suggest-btn--on { background: color-mix(in srgb, var(--theme-color) 25%, transparent); }
+
 .world-info-card__row {
   display: flex;
   gap: 8px;

@@ -43,6 +43,36 @@ DB_SYNC_INTERVAL = 5
 
 PHASE_ORDER = ["도입부", "전개", "절정", "결말"]
 
+# 토큰 스트리밍 중 부분 JSON에서 narration 값만 추출(닫는 따옴표 전까지, 이스케이프 간이 처리).
+_NARR_KEY = re.compile(r'"narration"\s*:\s*"')
+
+# 토큰 스트리밍 부분 JSON / 깨진 JSON에서 narration·dialogue 값에 새어든 구조적 조각 제거.
+# 산문은 '{'로 시작하거나 '}'로 끝나지 않으므로 끝의 '}'(앞 쉼표·공백 포함)·시작의 '{'를 안전하게 정리.
+def _strip_json_artifacts(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r'[\s,]*\}+\s*$', '', s)   # 끝에 새어든 } (및 그 앞 쉼표/공백)
+    s = re.sub(r'^\s*\{+[\s,]*', '', s)   # 시작에 새어든 {
+    return s.strip()
+
+
+def _partial_narration(buf: str) -> str:
+    m = _NARR_KEY.search(buf)
+    if not m:
+        return ""
+    rest = buf[m.end():]
+    out, i, n = [], 0, len(rest)
+    while i < n:
+        c = rest[i]
+        if c == "\\" and i + 1 < n:
+            out.append({"n": "\n", "t": "\t", '"': '"', "\\": "\\", "/": "/"}.get(rest[i + 1], rest[i + 1]))
+            i += 2
+            continue
+        if c == '"':
+            break
+        out.append(c)
+        i += 1
+    return _strip_json_artifacts("".join(out))
+
 def _advance_phase(current: str, suggested: str) -> str:
     """LLM이 제안한 phase가 현재보다 앞이면 전진, 뒤(역행)면 현재 유지."""
     try:
@@ -540,9 +570,9 @@ async def stream_response(
     # history는 lpush로 저장되어 최신순 정렬 → index 0이 가장 최근 메시지
     if context["history"] and context["history"][0].get("role") == "user":
         context["history"] = context["history"][1:]
-    # 프론트가 world_context를 안 보내면 세션에서 세계관·등장인물을 직접 조회해 주입
-    if not world_context:
-        world_context = await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(프론트 전송값은 무시).
+    # 화자 추출 정규식(_extract_*)이 서버 포맷에만 매칭되므로 서버 권위가 정확.
+    world_context = await _build_world_context(chat_id, db)
 
     # RAG: 현재 입력과 관련된 '오래된' 과거 대화를 검색해 보강 (요약이 놓친 구체 사건)
     # use_rag=false 면 검색을 건너뛴다(시연/디버깅용 대조).
@@ -597,8 +627,19 @@ async def stream_response(
             ]
             usage: list = []
             _t_gen0 = _time.perf_counter()
-            raw = await llm.generate(system_prompt, contents, usage_out=usage, json_mode=True)
-            logger.info("[TTFB] generation=%.2fs", _time.perf_counter() - _t_gen0)
+            # 토큰 스트리밍: 부분 응답에서 narration을 추출해 delta로 즉시 흘림(체감 TTFB↓).
+            buf, _last_narr, _first = "", "", True
+            async for _piece in llm.stream(system_prompt, contents, usage_out=usage, json_mode=True):
+                buf += _piece
+                if _first:
+                    logger.info("[TTFB] first-token=%.2fs", _time.perf_counter() - _t_gen0)
+                    _first = False
+                _narr = _partial_narration(buf)
+                if _narr and _narr != _last_narr:
+                    _last_narr = _narr
+                    yield f"event: delta\ndata: {json.dumps({'narration': _narr}, ensure_ascii=False)}\n\n"
+            raw = buf
+            logger.info("[TTFB] full-generation=%.2fs", _time.perf_counter() - _t_gen0)
             prompt_tokens     = usage[0]["prompt_tokens"]     if usage else 0
             completion_tokens = usage[0]["completion_tokens"] if usage else 0
 
@@ -608,10 +649,10 @@ async def stream_response(
             logger.info("└───────────────────────────────────────────────────")
 
             parsed = parse_ai_response(raw)
-            narration            = parsed["narration"]
+            narration            = _strip_json_artifacts(parsed["narration"])
             # [L1] AI가 정한 화자를 등록 인물로 강제 보정(흔들림 방지). 입력 speaker와 별개 변수.
             reply_speaker        = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name)
-            dialogue             = parsed["dialogue"]
+            dialogue             = _strip_json_artifacts(parsed["dialogue"])
             protagonist_dialogue = parsed.get("protagonist_dialogue", "")
             state_changes        = parsed["state_changes"]
             internal_note        = parsed["internal_note"]
@@ -805,7 +846,8 @@ async def get_suggestions(
     if not context["history"]:
         return {"suggestions": ["안녕하세요.", "시작해볼까요?", "어떤 이야기를 쓸까요?"]}
 
-    world_context = body.world_context or await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(body.world_context 무시)
+    world_context = await _build_world_context(chat_id, db)
 
     recent = list(reversed(context["history"]))[-6:]
     history_text = "\n".join(
@@ -933,8 +975,8 @@ async def suggest_next(
 ):
     """막혔을 때 다음 전개(주인공 행동/대사) 후보 3개를 제안. 입력이 없을 때 '유도'용."""
     context = await get_context(chat_id, db)
-    if not world_context:
-        world_context = await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성
+    world_context = await _build_world_context(chat_id, db)
 
     parts = []
     if world_context:
@@ -986,7 +1028,8 @@ async def stuck_help(
 ):
     """창작이 막혔을 때 힌트 3개 제공 (F-AS-02)."""
     context = await get_context(chat_id, db)
-    world_context = body.world_context or await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(body.world_context 무시)
+    world_context = await _build_world_context(chat_id, db)
 
     parts = []
     if world_context:
@@ -1020,7 +1063,8 @@ async def npc_react(
     db: AsyncSession = Depends(get_db),
 ):
     """조연 NPC들의 다중 반응 생성 (F-CH-09)."""
-    world_context = body.world_context or await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(body.world_context 무시)
+    world_context = await _build_world_context(chat_id, db)
 
     recent_dialogue = body.recent_dialogue
     if not recent_dialogue:

@@ -116,11 +116,13 @@
 
 ### ③ 배포 (backend 폴더에서, 한 줄)
 ```
-gcloud run deploy nodevelture-api --source . --region us-central1 --allow-unauthenticated --set-env-vars "USE_VERTEX=true,GOOGLE_CLOUD_PROJECT=nodevelture-499003,GOOGLE_CLOUD_LOCATION=us-central1,LLM_PROVIDER=gemini,GEMINI_MODEL=gemini-2.5-flash-lite,GEMINI_FALLBACK_MODEL=gemini-2.5-flash" --set-secrets "DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,FAL_KEY=FAL_KEY:latest"
+gcloud run deploy nodevelture-api --source . --region us-central1 --allow-unauthenticated --min-instances=1 --set-env-vars "USE_VERTEX=true,GOOGLE_CLOUD_PROJECT=nodevelture-499003,GOOGLE_CLOUD_LOCATION=us-central1,LLM_PROVIDER=gemini,GEMINI_MODEL=gemini-2.5-flash-lite,GEMINI_FALLBACK_MODEL=gemini-2.5-flash" --set-secrets "DATABASE_URL=DATABASE_URL:latest,REDIS_URL=REDIS_URL:latest,FAL_KEY=FAL_KEY:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest"
 ```
 - 출력된 `https://nodevelture-api-xxxx.run.app` 가 ngrok 대체. `/health` → `{"status":"ok"}` 확인.
-- **비밀 아닌 설정만 `--set-env-vars`**, DB/Redis URL·FAL_KEY는 `--set-secrets`로.
-- ⚠️ **`--set-secrets`/`--set-env-vars`는 전체 교체**다. 시크릿 하나라도 빠뜨리면 그게 **삭제**된다(삽화 `FAL_KEY` 누락 → fal.ai 502가 단골 사고). **현재 서비스의 시크릿 전체**(`DATABASE_URL`·`REDIS_URL`·`FAL_KEY`)를 항상 같이 적을 것. 새 키 추가 시 이 줄도 갱신.
+- **비밀 아닌 설정만 `--set-env-vars`**, DB/Redis URL·FAL_KEY·OPENAI_API_KEY는 `--set-secrets`로.
+- ⚠️ **`--set-secrets`/`--set-env-vars`는 전체 교체**다. 시크릿 하나라도 빠뜨리면 그게 **삭제**된다(삽화 `FAL_KEY` 누락 → fal.ai 502가 단골 사고. 2026-06-16엔 표준 명령에 `OPENAI_API_KEY`가 빠져 있어 폴백 키가 지워질 뻔했음). **현재 서비스의 시크릿 전체**(`DATABASE_URL`·`REDIS_URL`·`FAL_KEY`·`OPENAI_API_KEY`)를 항상 같이 적을 것. 새 키 추가 시 이 줄도 갱신.
+- 💡 **시크릿/ env를 건드리고 싶지 않으면**(코드만 재배포) `--set-*`를 **생략**하면 기존 설정이 전부 보존된다: `gcloud run deploy nodevelture-api --source . --region us-central1 --min-instances=1`. 시크릿 누락 사고를 원천 차단하는 가장 안전한 재배포.
+- 🔥 **`--min-instances=1`** — scale-to-zero 콜드스타트(첫 요청 ~5초, 프로덕션 TTFB p50 8.7s의 주범) 제거. 인스턴스 1개 상시 워밍(소량 과금). 2026-06-16부터 적용.
 
 ### ④ 함정
 - **프로젝트 번호**: 꺾쇠 `<...>` 그대로 넣지 말고 실제 숫자로 치환.
