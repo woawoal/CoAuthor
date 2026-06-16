@@ -103,10 +103,16 @@ async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
                 f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in ai_chars
             )
             names = ", ".join(c.name for c in ai_chars)
+            multi_rule = (
+                f"\n※ 인물이 여럿일 때: 지금 장면·맥락에 **personality(직업·관계·역할)가 가장 적합한 한 명**이 speaker가 된다. "
+                f"직업(예: 알바·직원)이 있는 인물이 해당 업무를 처리하고, 손님·친구 역할 인물은 그 업무를 대신하지 않는다."
+                if len(ai_chars) > 1 else ""
+            )
             parts.append(
                 f"[AI 서술 인물 — 이 인물들의 반응·대사를 생성]\n{lines}\n"
                 f"※ 이 인물들이 **지금 장면에 함께 있을 때만** speaker에 그 이름({names} 중 하나)을 쓴다. "
                 f"인물이 떠났거나·자리에 없거나·주인공이 혼자인 장면이면 speaker·dialogue를 빈 문자열로 두고 나레이션만 출력."
+                f"{multi_rule}"
             )
         elif not protagonist and chars:
             lines = "\n".join(
@@ -244,22 +250,40 @@ async def sync_to_db(chat_id: str):
 
 # ── 메시지 빌더 ────────────────────────────────────────────
 def _extract_protagonist_name(world_context: str) -> str:
-    """world_context에서 [사용자 조종 인물] 이름 추출.
+    """world_context에서 주인공 이름 추출.
 
+    백엔드 포맷([사용자 조종 인물...])과 프론트 포맷(등장인물: - 이름 (주인공)) 모두 지원.
     줄 형식: `- {이름} ({역할}): {성격}` → 이름은 ' (' 또는 ':' 앞까지 전체(공백 포함).
     """
     import re
+    # 백엔드 포맷
     m = re.search(r'\[사용자 조종 인물[^\]]*\]\s*\n-\s*(.+?)\s*(?:\(|:)', world_context)
-    return m.group(1).strip() if m else ""
+    if m:
+        return m.group(1).strip()
+    # 프론트 포맷: "등장인물:" 섹션에서 (주인공) 역할 추출
+    m2 = re.search(r'-\s*(.+?)\s*\(주인공\)', world_context)
+    return m2.group(1).strip() if m2 else ""
 
 
 def _extract_ai_char_names(world_context: str) -> list[str]:
-    """world_context에서 [AI 서술 인물] 이름 목록 추출(멀티워드 이름 보존, 예: '편의점 점장')."""
+    """world_context에서 AI 인물 이름 목록 추출.
+
+    백엔드 포맷([AI 서술 인물...])과 프론트 포맷(등장인물:) 모두 지원."""
     import re
+    # 백엔드 포맷
     m = re.search(r'\[AI 서술 인물[^\]]*\]\n((?:- .+\n?)+)', world_context)
-    if not m:
-        return []
-    return [n.strip() for n in re.findall(r'^-\s*(.+?)\s*(?:\(|:)', m.group(1), re.MULTILINE)]
+    if m:
+        return [n.strip() for n in re.findall(r'^-\s*(.+?)\s*(?:\(|:)', m.group(1), re.MULTILINE)]
+    # 프론트 포맷: "등장인물:" 섹션에서 주인공 제외
+    m2 = re.search(r'등장인물:\n((?:- .+\n?)+)', world_context)
+    if m2:
+        names = []
+        for hit in re.finditer(r'^-\s*(.+?)\s*\(([^)]+)\)', m2.group(1), re.MULTILINE):
+            name, role = hit.group(1).strip(), hit.group(2).strip()
+            if role != '주인공':
+                names.append(name)
+        return names
+    return []
 
 
 def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str) -> str:
@@ -338,12 +362,21 @@ def build_messages(
     # [L2] 화자 고정 — speaker는 등록 인물 enum 안에서만, 새 인물 임의 등장 금지
     if ai_char_names:
         _names = ", ".join(ai_char_names)
+        multi_speaker_rule = (
+            f"\n[다중 인물 화자 선택 규칙 — 반드시 적용]\n"
+            f"여러 AI 인물이 있을 때, 각 인물의 personality(성격·직업 설명)에서 직업·역할을 유추하여 대사를 배분한다.\n"
+            f"• personality에 '직원·알바·점원·바리스타·종업원·스태프' 등이 포함된 인물 → 주문 응대·음료 서빙·안내는 그 인물만 한다\n"
+            f"• personality에 '손님·단골·고객·방문객·친구·동행' 등이 포함된 인물 → 서비스를 이용하는 역할이므로 서빙·주문 응대 대사 불가\n"
+            f"narration에서 행동 주체가 명시된 경우(예: 'A가 커피를 내줬다', 'B가 자리에 앉았다') → dialogue의 speaker도 반드시 그 A여야 한다.\n"
+            f"위 규칙으로 판단이 어려운 경우에만 맥락(장면·감정)으로 가장 적합한 인물을 고른다."
+        ) if len(ai_char_names) > 1 else ""
         speaker_rule = (
             f"[화자 고정 규칙 — 엄수]\n"
             f"speaker 필드는 반드시 다음 등장인물 중 정확히 하나이거나 빈 문자열(나레이션만)이어야 한다: {_names}.\n"
             f"이 목록에 없는 이름을 speaker에 넣지 말 것.\n"
             f"등록된 등장인물 외의 새 인물을 임의로 등장시키지 말 것 — 스쳐가는 인물이 필요하면 "
             f"narration으로만 묘사하고 speaker에는 쓰지 말 것."
+            f"{multi_speaker_rule}"
         )
     else:
         speaker_rule = ""
