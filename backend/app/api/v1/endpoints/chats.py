@@ -46,6 +46,15 @@ PHASE_ORDER = ["도입부", "전개", "절정", "결말"]
 # 토큰 스트리밍 중 부분 JSON에서 narration 값만 추출(닫는 따옴표 전까지, 이스케이프 간이 처리).
 _NARR_KEY = re.compile(r'"narration"\s*:\s*"')
 
+# 토큰 스트리밍 부분 JSON / 깨진 JSON에서 narration·dialogue 값에 새어든 구조적 조각 제거.
+# 산문은 '{'로 시작하거나 '}'로 끝나지 않으므로 끝의 '}'(앞 쉼표·공백 포함)·시작의 '{'를 안전하게 정리.
+def _strip_json_artifacts(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r'[\s,]*\}+\s*$', '', s)   # 끝에 새어든 } (및 그 앞 쉼표/공백)
+    s = re.sub(r'^\s*\{+[\s,]*', '', s)   # 시작에 새어든 {
+    return s.strip()
+
+
 def _partial_narration(buf: str) -> str:
     m = _NARR_KEY.search(buf)
     if not m:
@@ -62,7 +71,7 @@ def _partial_narration(buf: str) -> str:
             break
         out.append(c)
         i += 1
-    return "".join(out)
+    return _strip_json_artifacts("".join(out))
 
 def _advance_phase(current: str, suggested: str) -> str:
     """LLM이 제안한 phase가 현재보다 앞이면 전진, 뒤(역행)면 현재 유지."""
@@ -607,10 +616,10 @@ async def stream_response(
             logger.info("└───────────────────────────────────────────────────")
 
             parsed = parse_ai_response(raw)
-            narration            = parsed["narration"]
+            narration            = _strip_json_artifacts(parsed["narration"])
             # [L1] AI가 정한 화자를 등록 인물로 강제 보정(흔들림 방지). 입력 speaker와 별개 변수.
             reply_speaker        = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name)
-            dialogue             = parsed["dialogue"]
+            dialogue             = _strip_json_artifacts(parsed["dialogue"])
             protagonist_dialogue = parsed.get("protagonist_dialogue", "")
             state_changes        = parsed["state_changes"]
             internal_note        = parsed["internal_note"]
