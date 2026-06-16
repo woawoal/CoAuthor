@@ -9,8 +9,11 @@ const wrapStyle = {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    // 불투명 중립색 — 반투명이면 뒤 페이지(테마색)가 비쳐 핑크/앰버로 보였음
-    background: '#f4f3f7',
+    // 흰 바탕 대신 '어두운 반투명 + 블러' — 뒤 페이지(테마색)를 어둡게 가려
+    // 핑크/앰버가 안 비치게 함(흰 반투명은 밝은 핑크가 비쳐서 불투명으로 막았던 것).
+    background: 'rgba(18, 16, 26, 0.72)',
+    backdropFilter: 'blur(10px)',
+    WebkitBackdropFilter: 'blur(10px)',
 };
 
 const videoBoxStyle = {
