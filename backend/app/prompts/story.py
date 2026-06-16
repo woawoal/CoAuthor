@@ -35,7 +35,9 @@ OUTPUT_RULES = """\
     "event": null
   },
   "story_phase": "도입부",
-  "internal_note": "서버 저장용 요약. 사용자에게 보이지 않음"
+  "internal_note": "서버 저장용 요약. 사용자에게 보이지 않음",
+  "out_of_genre": false,
+  "genre_note": ""
 }
 
 - narration          : 장면 묘사, 행동, 감정 서술만. 대사 없음. 사용자 조종 인물의 내면·감정을 AI가 추측해서 서술하지 않음
@@ -54,7 +56,16 @@ OUTPUT_RULES = """\
 - state_changes.trust_delta : 신뢰도 변화량 (-5 ~ +5 정수), 변화 없으면 0
 - state_changes.event : 새로운 사건 시작 시 한 줄 요약, 없으면 null
 - story_phase : "도입부" | "전개" | "절정" | "결말" 중 하나. 이야기 흐름상 현재 단계를 판단해 출력. 이전 단계로 되돌아갈 수 없음
-- internal_note : 이번 턴의 서사 핵심을 한 줄로 (장소·상태·핵심사건)"""
+- internal_note : 이번 턴의 서사 핵심을 한 줄로 (장소·상태·핵심사건)
+- ★[장르 가드]
+  이 작가의 장르를 기본으로 유지한다. 사용자 입력에 장르와 **명백히 어긋나는 초자연/판타지 요소**
+  (예: 일상·로맨스·추리 장르에 용·마법·외계인·좀비·도시 파괴 등)가 들어오면:
+  → narration은 장르 톤을 **무너뜨리지 않는다.** 그 요소를 과장 없이 현실적으로 받아넘기거나
+     (착각·꿈·비유·간판/행사 등으로) 일상 톤으로 풀어낸다. 판타지로 끌려가 페르소나를 깨지 않는다.
+  → out_of_genre 를 true 로 두고, genre_note 에 무엇이 장르 밖인지 한 줄 적는다.
+  명백한 경우만 true (살짝 비현실적인 정도·은유는 false). [장르 확장 허용됨]이 주어지면 항상 false.
+- out_of_genre : 위 [장르 가드] 규칙. 기본 false.
+- genre_note   : out_of_genre=true 일 때만 한 줄(예: "판타지 요소: 용·도시 파괴"). 아니면 빈 문자열."""
 
 WRITER_STYLE_RULE = """\
 [Writer Style]

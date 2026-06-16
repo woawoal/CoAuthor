@@ -66,6 +66,9 @@ def key_summary(chat_id: str) -> str:
 # 작가 리액션(F-AS-05) 직전 반응 추적 키 — chat_context엔 없어 chats.py 전용 정의
 def key_last_reaction(chat_id: str) -> str:
     return f"session:{chat_id}:last_reaction"
+# 장르 가드 — 사용자가 '판타지로 도입'을 승인하면 이 키를 세팅(이후 턴은 장르 밖 감지 끔)
+def key_genre_open(chat_id: str) -> str:
+    return f"session:{chat_id}:genre_open"
 
 
 # ── 세계관·등장인물 DB 조회 ────────────────────────────────────
@@ -286,6 +289,7 @@ def build_messages(
     user_input: str,
     relevant_memories: list[str] | None = None,
     speaker: str = "",
+    genre_open: bool = False,
 ) -> list[dict]:
     author_rules = get_author_prompt(
         persona_id=persona_id,
@@ -371,6 +375,9 @@ def build_messages(
         context_parts.append(f"[현재 상태]\n{context['state']}")
     if context.get("phase"):
         context_parts.append(f"[현재 스토리 단계]\n{context['phase']}\n(story_phase는 이 단계 이상만 출력 가능)")
+    if genre_open:
+        # 사용자가 장르 확장을 허용함 → 장르 가드 끔(out_of_genre 항상 false)
+        context_parts.append("[장르 확장 허용됨] 사용자가 장르 밖 요소 도입을 승인함 — out_of_genre는 항상 false로 둔다.")
 
     # @등장인물: 조연 시점 서사 지시 (주인공/solo 발화 턴은 protagonist_rule에서 처리하므로 스킵)
     if speaker and not is_protagonist_speaker:
@@ -491,8 +498,11 @@ async def stream_response(
     check_consistency: bool = False,
     db: AsyncSession = Depends(get_db),
 ):
+    import time as _time
+    _t0 = _time.perf_counter()
     message_id = f"msg_{uuid.uuid4().hex[:8]}"
     context = await get_context(chat_id, db)
+    _t_ctx = _time.perf_counter()
     # send_message가 이미 현재 사용자 메시지를 history에 저장했으므로 제거
     # history는 lpush로 저장되어 최신순 정렬 → index 0이 가장 최근 메시지
     if context["history"] and context["history"][0].get("role") == "user":
@@ -512,11 +522,15 @@ async def stream_response(
                             len(relevant_memories), chat_id, [m[:30] for m in relevant_memories])
         except Exception as e:
             logger.warning("기억 검색 실패(보강 생략): %s", e)
+    _t_rag = _time.perf_counter()
+    logger.info("[TTFB] context=%.2fs · retrieval=%.2fs", _t_ctx - _t0, _t_rag - _t_ctx)
 
     # [L1] 출력 화자 검증용 — 등록 인물/주인공 이름을 한 번만 추출(generate 클로저에서 사용)
     _valid_ai_names        = _extract_ai_char_names(world_context)
     _prot_name             = _extract_protagonist_name(world_context)
     _is_protagonist_speaker = bool(speaker and _prot_name and speaker == _prot_name)
+    # 장르 가드: 사용자가 이미 장르 확장을 승인했으면 감지 끔
+    _genre_open            = bool(await redis_client.get(key_genre_open(chat_id)))
 
     async def generate():
         try:
@@ -528,6 +542,7 @@ async def stream_response(
                 user_input=content,
                 relevant_memories=relevant_memories,
                 speaker=speaker,
+                genre_open=_genre_open,
             )
 
             # ── 전송 프롬프트 로그 ──────────────────────────────────
@@ -548,7 +563,9 @@ async def stream_response(
                 for m in messages[1:]
             ]
             usage: list = []
+            _t_gen0 = _time.perf_counter()
             raw = await llm.generate(system_prompt, contents, usage_out=usage, json_mode=True)
+            logger.info("[TTFB] generation=%.2fs", _time.perf_counter() - _t_gen0)
             prompt_tokens     = usage[0]["prompt_tokens"]     if usage else 0
             completion_tokens = usage[0]["completion_tokens"] if usage else 0
 
@@ -566,6 +583,9 @@ async def stream_response(
             state_changes        = parsed["state_changes"]
             internal_note        = parsed["internal_note"]
             suggested_phase      = parsed.get("story_phase", "")
+            # 장르 가드: 이미 확장 승인된 세션이면 플래그 무시
+            out_of_genre         = bool(parsed.get("out_of_genre")) and not _genre_open
+            genre_note           = parsed.get("genre_note", "") if out_of_genre else ""
 
             # [폴백] 주인공 발화 턴인데 AI가 protagonist_dialogue 대신 speaker=주인공+dialogue에 넣은 경우 보정
             if _is_protagonist_speaker and not protagonist_dialogue and dialogue and not reply_speaker:
@@ -620,6 +640,31 @@ async def stream_response(
 
             turn = await append_history(chat_id, "ai", reply_text)
 
+            # ── 응답을 '먼저' 내보낸다 — DB 영구저장·요약은 reply 뒤로 미뤄 TTFB에서 제외 ──
+            # DB Dialogue id를 미리 생성해 reply messageId와 실제 저장 레코드를 일치시킨다.
+            ai_msg_id = uuid.uuid4()
+            message_id = str(ai_msg_id)
+            reply_payload = json.dumps(
+                {
+                    "messageId":            message_id,
+                    "narration":            narration,
+                    "speaker":              reply_speaker,
+                    "dialogue":             dialogue,
+                    "protagonist_dialogue": protagonist_dialogue,
+                    "state_changes":        state_changes,
+                    "turn":                 turn,
+                    "story_phase":          new_phase,
+                    "memories":             relevant_memories,
+                    "consistency":          consistency_result,
+                    "out_of_genre":         out_of_genre,
+                    "genre_note":           genre_note,
+                },
+                ensure_ascii=False,
+            )
+            logger.info("[TTFB] total_to_reply=%.2fs (저장·요약 제외)", _time.perf_counter() - _t0)
+            yield f"event: reply\ndata: {reply_payload}\n\n"
+
+            # ── 사용자에겐 이미 응답 전송 완료. 이하 영구저장/요약은 응답 지연에 무관 ──
             try:
                 session_uuid = uuid.UUID(chat_id)
                 async with AsyncSessionLocal() as save_session:
@@ -634,6 +679,7 @@ async def stream_response(
                         )
                         turn_count = count_result.scalar()
                         ai_dialogue = Dialogue(
+                            id=ai_msg_id,
                             session_id=session_uuid,
                             speaker_type=SpeakerType.CHARACTER,
                             speaker=reply_speaker or None,
@@ -653,8 +699,6 @@ async def stream_response(
                         )
                         save_session.add(api_log)
                         await save_session.commit()
-                        await save_session.refresh(ai_dialogue)
-                        message_id = str(ai_dialogue.id)
             except Exception as e:
                 logger.warning("대화/토큰 로그 저장 실패: %s", e)
 
@@ -669,24 +713,6 @@ async def stream_response(
                         await memory.refresh_session_summary(chat_id, mem_session, recent_turns)
                 except Exception as e:  # 요약 실패는 대화 흐름을 막지 않는다
                     logger.warning("요약 갱신 실패: %s", e)
-
-            # reply(텍스트) 먼저 즉시 전달 — TTS 변환을 기다리지 않는다
-            reply_payload = json.dumps(
-                {
-                    "messageId":            message_id,
-                    "narration":            narration,
-                    "speaker":              reply_speaker,
-                    "dialogue":             dialogue,
-                    "protagonist_dialogue": protagonist_dialogue,
-                    "state_changes":        state_changes,
-                    "turn":                 turn,
-                    "story_phase":          new_phase,
-                    "memories":             relevant_memories,
-                    "consistency":          consistency_result,
-                },
-                ensure_ascii=False,
-            )
-            yield f"event: reply\ndata: {reply_payload}\n\n"
 
             # F-AV-02: TTS — narration 첫 문장을 음성으로 변환해 별도 event:audio로 전달
             # 텍스트는 위에서 이미 나갔으므로 음성 변환(1~2s) 지연이 텍스트를 막지 않는다.
@@ -1121,6 +1147,20 @@ async def author_reaction(chat_id: str, body: ReactionRequest):
         await redis_client.set(key_last_reaction(chat_id), reaction)
     logger.info("작가 리액션 - chat_id=%s emotion=%s → %s", chat_id, emotion, reaction)
     return {"reaction": reaction, "emotion": emotion}
+
+class GenreOpenRequest(BaseModel):
+    open: bool = True
+
+
+@router.post("/{chat_id}/genre-open")
+async def set_genre_open(chat_id: str, body: GenreOpenRequest):
+    """장르 가드 — '판타지로 도입' 승인 시 이후 턴의 장르 밖 감지를 끈다(취소도 가능)."""
+    if body.open:
+        await redis_client.set(key_genre_open(chat_id), "1")
+    else:
+        await redis_client.delete(key_genre_open(chat_id))
+    return {"genre_open": body.open}
+
 
 class MemosBody(BaseModel):
     memos: list = []

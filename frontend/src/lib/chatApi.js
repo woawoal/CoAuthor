@@ -21,6 +21,17 @@ export async function getAuthorReaction(chatId, payload) {
   return res.json();
 }
 
+// 장르 가드 — '판타지로 도입' 승인(open=true)/취소(false). 승인 시 이후 턴 장르 밖 감지 끔.
+export async function setGenreOpen(chatId, open = true) {
+  try {
+    await fetch(`${API_BASE_URL}/chats/${chatId}/genre-open`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ open }),
+    });
+  } catch { /* 실패해도 흐름 안 막음 */ }
+}
+
 // 교정 '넘기기' → 그 단어를 세계관 보호 용어집에 영구 추가(다음 교정부터 제외)
 export async function addGlossaryTerm(chatId, term) {
   const res = await fetch(`${API_BASE_URL}/chats/${chatId}/glossary`, {
@@ -68,8 +79,8 @@ export function connectChatStream(
   const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream?${params}`);
 
   es.addEventListener("reply", (event) => {
-    // 백엔드는 narration·dialogue 외에 memories(기억 검색)·consistency(검수)도 함께 보낸다.
-    const { narration, speaker, dialogue, protagonist_dialogue, memories, consistency } = JSON.parse(event.data);
+    // 백엔드는 narration·dialogue 외에 memories(기억 검색)·consistency(검수)·장르가드도 함께 보낸다.
+    const { narration, speaker, dialogue, protagonist_dialogue, memories, consistency, out_of_genre, genre_note } = JSON.parse(event.data);
     onToken({
       narration:            narration || "",
       speaker:              speaker || "",
@@ -77,6 +88,8 @@ export function connectChatStream(
       protagonist_dialogue: protagonist_dialogue || "",
       memories:             memories || [],
       consistency:          consistency || { consistent: true, violations: [] },
+      out_of_genre:         !!out_of_genre,
+      genre_note:           genre_note || "",
     });
   });
 

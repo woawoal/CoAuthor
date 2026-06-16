@@ -66,10 +66,13 @@ logger.info("LLM 파이프라인: chain=%s | gemini키=%d | groq키=%d",
 
 
 # ── 후보 생성 ────────────────────────────────────────────────────
-def _candidates() -> list[tuple]:
-    """[(provider, model, key)] — 체인순 → 모델(primary,fallback) → 키."""
+def _candidates(chain: list[str] | None = None) -> list[tuple]:
+    """[(provider, model, key)] — 체인순 → 모델(primary,fallback) → 키.
+
+    chain을 주면 그 프로바이더만으로 후보를 만든다(평가용 provider 강제에 사용).
+    """
     out = []
-    for prov in _provider_chain():
+    for prov in (chain or _provider_chain()):
         if prov == "gemini":
             models = [m for m in (settings.GEMINI_MODEL, settings.GEMINI_FALLBACK_MODEL) if m]
             keys = _gemini_keys() or [settings.GEMINI_API_KEY]
@@ -87,14 +90,17 @@ def _candidates() -> list[tuple]:
     return out
 
 
-def _active_candidates() -> list[tuple]:
-    """쿨다운/불량키 제외. 전부 막혔으면 그냥 전체 반환(쿼터 회복 가능성)."""
+def _active_candidates(provider: str | None = None) -> list[tuple]:
+    """쿨다운/불량키 제외. 전부 막혔으면 그냥 전체 반환(쿼터 회복 가능성).
+
+    provider를 주면 그 프로바이더(예: "openai")만으로 후보를 만든다 — 평가에서
+    베이스라인/채점관을 특정 모델로 강제할 때 사용.
+    """
     now = time.monotonic()
-    active = [
-        c for c in _candidates()
-        if c[2] not in _bad_keys and _cooldown.get(c, 0) <= now
-    ]
-    return active or _candidates()
+    chain = [provider] if provider else None
+    cands = _candidates(chain)
+    active = [c for c in cands if c[2] not in _bad_keys and _cooldown.get(c, 0) <= now]
+    return active or cands
 
 
 # ── 에러 분류 ────────────────────────────────────────────────────
@@ -250,14 +256,17 @@ def _handle_failure(cand: tuple, exc: Exception, attempt: int) -> str:
 
 # ── 공개 API ─────────────────────────────────────────────────────
 async def generate(system_prompt: str, contents: list[dict], usage_out: list | None = None,
-                   json_mode: bool = False) -> str:
+                   json_mode: bool = False, provider: str | None = None) -> str:
     """단발 생성. 후보 순회 + 429 분기 + 백오프. 전부 실패 시 마지막 예외 raise.
 
     json_mode=True 면 프로바이더에 JSON 출력을 강제(Groq/OpenAI response_format,
     Gemini response_mime_type) — narration/dialogue 구조화 응답에 사용.
+
+    provider="openai"|"gemini"|"groq" 를 주면 그 프로바이더로만 호출한다(평가용:
+    베이스라인을 진짜 GPT로, 채점관을 독립 모델로 강제). None이면 기존 체인 사용.
     """
     last_exc = None
-    for cand in _active_candidates():
+    for cand in _active_candidates(provider):
         prov, model, key = cand
         attempt = 0
         while True:
