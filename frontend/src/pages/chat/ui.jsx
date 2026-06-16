@@ -192,21 +192,35 @@ function Bubble({ msg, persona, characterName, protagonistName, streaming, hasBo
     const speakerIsProtagonist = !msg.protagonist_dialogue && protagonistName && msg.speaker && msg.speaker === protagonistName;
     if (speakerIsProtagonist) {
       return (
-        <div
-          id={`bubble-${msg.id}`}
-          className={`bubble-row bubble-row--user${isSelected ? ' bubble-row--selected' : ''}`}
-          onContextMenu={onContextMenu}
-        >
-          <div className="bubble-content bubble-content--user">
-            {msg.narration && <p className="narration-text" style={{ textAlign: 'right' }}>{msg.narration}</p>}
-            {msg.dialogue && (
-              <div className="dialogue-block" style={{ alignItems: 'flex-end' }}>
-                <span className="badge badge--user">💭 {msg.speaker}</span>
-                <div className="bubble bubble--monologue"><em>{msg.dialogue}</em></div>
-              </div>
+        <>
+          <div
+            id={`bubble-${msg.id}`}
+            className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`}
+            onContextMenu={onContextMenu}
+          >
+            {isLoading ? (
+              <div className="bubble-content"><div className="typing-dots"><span /><span /><span /></div></div>
+            ) : (
+              <CharMessage
+                msg={{ ...msg, dialogue: null, speaker: '' }}
+                characterName={characterName}
+                hasBookmark={hasBookmark}
+                onType={onType}
+                onDone={!msg.dialogue ? onDone : undefined}
+              />
             )}
           </div>
-        </div>
+          {msg.dialogue && (
+            <div className="bubble-row bubble-row--user">
+              <div className="bubble-content bubble-content--user">
+                <div className="dialogue-block" style={{ alignItems: 'flex-end' }}>
+                  <span className="badge badge--user">{msg.speaker}</span>
+                  <div className="bubble bubble--user">&ldquo;{msg.dialogue}&rdquo;</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       );
     }
 
