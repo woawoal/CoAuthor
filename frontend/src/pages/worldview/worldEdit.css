@@ -1,0 +1,146 @@
+/* 세계관 수정 화면 — 작가 테마(data-author) 변수 사용 */
+.worldedit-container {
+  min-height: 100vh;
+  background: var(--bg-main);
+  color: var(--text-main);
+  display: flex;
+  justify-content: center;
+  padding: 32px 16px;
+  box-sizing: border-box;
+}
+
+.worldedit-wrapper {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.worldedit-loading {
+  margin-top: 80px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.worldedit-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.worldedit-back {
+  background: none;
+  border: none;
+  color: var(--text-main);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.worldedit-back:hover { color: var(--theme-color); }
+
+.worldedit-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.worldedit-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.worldedit-hint strong { color: var(--theme-color); }
+
+.worldedit-section {
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--text-main) 8%, transparent);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.worldedit-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.worldedit-section-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.worldedit-char-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.worldedit-char-note strong { color: var(--text-main); }
+
+.worldedit-hard-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #C77800;
+  background: rgba(255, 167, 38, 0.18);
+  padding: 1px 7px;
+  border-radius: 10px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.worldedit-new-badge {
+  color: var(--theme-color);
+  font-weight: 600;
+}
+
+.worldedit-warning {
+  background: rgba(255, 167, 38, 0.12);
+  border: 1px solid rgba(255, 167, 38, 0.4);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-main);
+}
+.worldedit-warning strong { color: #C77800; }
+
+.worldedit-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.worldedit-cancel,
+.worldedit-save {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 24px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.worldedit-cancel {
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--text-main) 20%, transparent);
+  color: var(--text-muted);
+}
+.worldedit-cancel:hover { color: var(--text-main); border-color: var(--theme-color); }
+
+.worldedit-save {
+  background: var(--theme-color);
+  border: 1px solid var(--theme-color);
+  color: #fff;
+}
+.worldedit-save:hover { opacity: 0.9; }
+.worldedit-save:disabled,
+.worldedit-cancel:disabled { opacity: 0.5; cursor: default; }

@@ -795,6 +795,12 @@ export default function Chat() {
             <button className="editor-save-btn" onClick={handleEnd} disabled={ending || converting}>
               {ending ? '저장 중...' : '저장'}
             </button>
+            <button
+              className="editor-back-btn"
+              onClick={() => navigate('/worldedit', { state: { worldId: world?.id, chatId, authorId } })}
+              disabled={!world?.id}
+              title="세계관 수정 — 다음 대화부터 반영"
+            >✎ 세계관</button>
             <button className="editor-back-btn" onClick={() => navigate('/storylist')}>목록</button>
           </div>
         </div>

@@ -507,9 +507,9 @@ async def stream_response(
     # history는 lpush로 저장되어 최신순 정렬 → index 0이 가장 최근 메시지
     if context["history"] and context["history"][0].get("role") == "user":
         context["history"] = context["history"][1:]
-    # 프론트가 world_context를 안 보내면 세션에서 세계관·등장인물을 직접 조회해 주입
-    if not world_context:
-        world_context = await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(프론트 전송값은 무시).
+    # 화자 추출 정규식(_extract_*)이 서버 포맷에만 매칭되므로 서버 권위가 정확.
+    world_context = await _build_world_context(chat_id, db)
 
     # RAG: 현재 입력과 관련된 '오래된' 과거 대화를 검색해 보강 (요약이 놓친 구체 사건)
     # use_rag=false 면 검색을 건너뛴다(시연/디버깅용 대조).
@@ -771,7 +771,8 @@ async def get_suggestions(
     if not context["history"]:
         return {"suggestions": ["안녕하세요.", "시작해볼까요?", "어떤 이야기를 쓸까요?"]}
 
-    world_context = body.world_context or await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(body.world_context 무시)
+    world_context = await _build_world_context(chat_id, db)
 
     recent = list(reversed(context["history"]))[-6:]
     history_text = "\n".join(
@@ -899,8 +900,8 @@ async def suggest_next(
 ):
     """막혔을 때 다음 전개(주인공 행동/대사) 후보 3개를 제안. 입력이 없을 때 '유도'용."""
     context = await get_context(chat_id, db)
-    if not world_context:
-        world_context = await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성
+    world_context = await _build_world_context(chat_id, db)
 
     parts = []
     if world_context:
@@ -952,7 +953,8 @@ async def stuck_help(
 ):
     """창작이 막혔을 때 힌트 3개 제공 (F-AS-02)."""
     context = await get_context(chat_id, db)
-    world_context = body.world_context or await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(body.world_context 무시)
+    world_context = await _build_world_context(chat_id, db)
 
     parts = []
     if world_context:
@@ -986,7 +988,8 @@ async def npc_react(
     db: AsyncSession = Depends(get_db),
 ):
     """조연 NPC들의 다중 반응 생성 (F-CH-09)."""
-    world_context = body.world_context or await _build_world_context(chat_id, db)
+    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(body.world_context 무시)
+    world_context = await _build_world_context(chat_id, db)
 
     recent_dialogue = body.recent_dialogue
     if not recent_dialogue:
