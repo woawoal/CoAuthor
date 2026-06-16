@@ -448,9 +448,8 @@ function Worldview() {
 
                                     <div className="flex-2">
                                         <label className="char-sub-label">AI 캐릭터 지시문</label>
-                                        <input
-                                            type="text"
-                                            className="form-input"
+                                        <textarea
+                                            className="form-textarea"
                                             placeholder={
                                                 worldExample?.characters?.[index]?.system_prompt
                                                     ? `예: ${worldExample.characters[index].system_prompt}`

@@ -150,6 +150,7 @@ async def send_author_message(
         system_prompt = build_feedback_prompt(
             persona_id=body.author_id,
             world_context=world_context,
+            story_summary=story_summary,
         )
         contents = [{"role": "user", "parts": [{"text": body.content}]}]
     else:

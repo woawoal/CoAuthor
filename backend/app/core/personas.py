@@ -772,7 +772,7 @@ def build_novel_system(persona_id: str = "", world_context: str = "") -> str:
 # 1-4. build_feedback_prompt() — 문장 피드백
 # ────────────────────────────────────────────────────────────────
 
-def build_feedback_prompt(persona_id: str, world_context: str = "") -> str:
+def build_feedback_prompt(persona_id: str, world_context: str = "", story_summary: str = "") -> str:
     """
     사용자 문장에 대한 작가 말투 피드백 프롬프트.
 
@@ -785,6 +785,7 @@ def build_feedback_prompt(persona_id: str, world_context: str = "") -> str:
         raise ValueError(f"알 수 없는 페르소나: {persona_id}")
 
     base = PERSONA_PROMPTS.get(persona_id, "")
+    summary_section = f"\n\n[현재 줄거리]\n{story_summary}" if story_summary else ""
 
     return f"""\
 {base}
@@ -806,7 +807,7 @@ def build_feedback_prompt(persona_id: str, world_context: str = "") -> str:
 - 전체 3~5문장 안에 끝낸다
 
 [세계관]
-{world_context or "별도 세계관 설정 없음"}
+{world_context or "별도 세계관 설정 없음"}{summary_section}
 """
 
 

@@ -574,7 +574,8 @@ async def stream_response(
 
             # [나레이션 일관성 강제] AI가 나레이션에 "혼자/아무도 없" 등을 쓰고도
             # 조연을 speaker로 내보내는 모순을 코드 레벨에서 차단
-            _SOLO_NARR = ("혼자", "홀로", "텅 빈", "텅빈", "아무도 없", "혼잣말", "독백", "적막")
+            # 비유 표현("없단듯이", "없는 것처럼") 은 솔로 신호로 보지 않음
+            _SOLO_NARR = ("혼자였다", "홀로였다", "텅 빈", "텅빈", "아무도 없었다", "혼잣말", "독백", "적막했다", "혼자 남겨")
             if narration and any(sig in narration for sig in _SOLO_NARR):
                 if reply_speaker and reply_speaker in _valid_ai_names:
                     logger.info(
