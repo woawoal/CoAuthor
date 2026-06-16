@@ -318,9 +318,9 @@ function Worldview() {
                 return (
                     <div className="form-group">
                         <label className="form-label">세계관 요약 설명</label>
-                        <input
-                            type="text"
-                            className="form-input"
+                        <textarea
+                            className="form-textarea"
+                            rows={4}
                             placeholder={
                                 worldExample?.description
                                     ? `예: ${worldExample.description}`
