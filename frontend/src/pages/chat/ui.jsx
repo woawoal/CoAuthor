@@ -124,7 +124,8 @@ function TypedText({ text, speed = 30, step = 1, onType, onDone }) {
 
 // 작가 AI 메시지 — 라이브 응답이면 나레이션→대사 순으로 타이핑, 복원된 기록은 즉시 표시
 function CharMessage({ msg, characterName, hasBookmark, onType, onDone }) {
-  const live = !!msg.narration && !msg.isRestored;   // 스트림 응답만 타이핑(복원 기록 X)
+  // 토큰 스트리밍 중(isStreaming)·스트리밍 완료분(isStreamDone)은 실제로 흘러왔으므로 타자기 비활성.
+  const live = !!msg.narration && !msg.isRestored && !msg.isStreaming && !msg.isStreamDone;
   // 복원 메시지는 narration이 ""(빈 문자열)이어도 text로 fallback하지 않음 (?? 사용)
   const rawNarration = msg.isRestored ? (msg.narration ?? msg.text ?? '') : (msg.narration || msg.text || '');
   const narration = formatText(rawNarration);
@@ -712,13 +713,16 @@ export default function Chat() {
     }, 50000);
 
     let lastReply = { narration: '', dialogue: '' };   // 리액션 문맥용 — 작가가 쓴 장면 누적
+    let streamed = false;                               // 토큰 스트리밍 발생 여부(최종 reply 재타이핑 방지)
     esRef.current = connectChatStream(
       chatId,
       { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '', check_consistency: consistencyOn },
       ({ narration, speaker, dialogue, protagonist_dialogue, out_of_genre, genre_note, consistency }) => {
         lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
-          prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
+          prev.map(m => m.id === streamMsgId
+            ? { ...m, narration, speaker, dialogue, protagonist_dialogue, isStreaming: false, isStreamDone: streamed }
+            : m)
         );
         // 장르 밖 감지 → 비차단 칩(이미 도입 승인했으면 무시)
         if (out_of_genre && !genreOpen) setGenreAlert({ note: genre_note });
@@ -735,6 +739,13 @@ export default function Chat() {
         }
         // 작가 답변(나레이션+대사)을 문맥으로 넘겨 리액션 생성
         fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
+      },
+      // 토큰 스트리밍: narration이 생성되는 대로 라이브 표시(체감 TTFB↓)
+      (narration) => {
+        streamed = true;
+        setMessages(prev =>
+          prev.map(m => m.id === streamMsgId ? { ...m, narration, isStreaming: true } : m)
+        );
       },
     );
   }

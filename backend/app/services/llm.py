@@ -205,12 +205,14 @@ def _gen_once(prov: str, model: str, key: str, system_prompt: str, contents: lis
 
 
 # ── 스트림 호출(동기 제너레이터) ─────────────────────────────────
-def _stream_once(prov: str, model: str, key: str, system_prompt: str, contents: list[dict], usage_box: list):
+def _stream_once(prov: str, model: str, key: str, system_prompt: str, contents: list[dict], usage_box: list,
+                 json_mode: bool = False):
     """텍스트 청크를 yield. 완료 후 usage_box에 사용량 기록. 429 등은 첫 next()에서 raise."""
     if prov in ("groq", "openai"):
-        s = _oai_client(prov, key).chat.completions.create(
-            model=model, messages=_to_openai_messages(system_prompt, contents), stream=True
-        )
+        _kw = {"model": model, "messages": _to_openai_messages(system_prompt, contents), "stream": True}
+        if json_mode:
+            _kw["response_format"] = {"type": "json_object"}
+        s = _oai_client(prov, key).chat.completions.create(**_kw)
         pt = ct = 0
         for chunk in s:
             if chunk.choices and chunk.choices[0].delta.content:
@@ -223,7 +225,7 @@ def _stream_once(prov: str, model: str, key: str, system_prompt: str, contents: 
         return
     # gemini
     resp = _gemini_model(model, key, system_prompt).generate_content(
-        contents, stream=True, generation_config=_gemini_gen_config(False))
+        contents, stream=True, generation_config=_gemini_gen_config(json_mode))
     for chunk in resp:
         if chunk.text:
             yield chunk.text
@@ -294,8 +296,12 @@ async def generate(system_prompt: str, contents: list[dict], usage_out: list | N
     raise last_exc or RuntimeError("LLM 생성 실패: 후보 없음")
 
 
-async def stream(system_prompt: str, contents: list[dict], usage_out: list | None = None) -> AsyncGenerator[str, None]:
-    """스트리밍 생성. 첫 청크 전 실패면 다음 후보로 승계(이미 보냈으면 재시도 불가)."""
+async def stream(system_prompt: str, contents: list[dict], usage_out: list | None = None,
+                 json_mode: bool = False) -> AsyncGenerator[str, None]:
+    """스트리밍 생성. 첫 청크 전 실패면 다음 후보로 승계(이미 보냈으면 재시도 불가).
+
+    json_mode=True 면 프로바이더에 JSON 출력을 강제(구조화 응답 스트리밍에 사용).
+    """
     last_exc = None
     for cand in _active_candidates():
         prov, model, key = cand
@@ -304,7 +310,7 @@ async def stream(system_prompt: str, contents: list[dict], usage_out: list | Non
             yielded = False
             box: list = []
             try:
-                for text in _stream_once(prov, model, key, system_prompt, contents, box):
+                for text in _stream_once(prov, model, key, system_prompt, contents, box, json_mode):
                     yielded = True
                     yield text
                 if usage_out is not None and box:

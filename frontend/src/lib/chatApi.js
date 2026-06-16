@@ -70,6 +70,7 @@ export function connectChatStream(
   { content, character_id, mode = "author", world_context = "", speaker = "", check_consistency = false },
   onToken,
   onDone,
+  onDelta,
 ) {
   const params = new URLSearchParams({ content, character_id, mode, world_context });
   // @등장인물: 이 턴을 해당 인물의 시점·서사로 전개하도록 백엔드에 화자 전달
@@ -77,6 +78,12 @@ export function connectChatStream(
   // 일관성 검수(F-QC-01)를 켜면 응답에 consistency.violations 가 채워져 아바타가 짚어줄 수 있다.
   if (check_consistency) params.set("check_consistency", "true");
   const es = new EventSource(`${API_BASE_URL}/chats/${chatId}/stream?${params}`);
+
+  // 토큰 스트리밍: narration이 생성되는 대로 부분 텍스트를 흘려보냄(체감 TTFB↓)
+  es.addEventListener("delta", (event) => {
+    const { narration } = JSON.parse(event.data);
+    if (narration) onDelta?.(narration);
+  });
 
   es.addEventListener("reply", (event) => {
     // 백엔드는 narration·dialogue 외에 memories(기억 검색)·consistency(검수)·장르가드도 함께 보낸다.

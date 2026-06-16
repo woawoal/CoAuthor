@@ -43,6 +43,27 @@ DB_SYNC_INTERVAL = 5
 
 PHASE_ORDER = ["도입부", "전개", "절정", "결말"]
 
+# 토큰 스트리밍 중 부분 JSON에서 narration 값만 추출(닫는 따옴표 전까지, 이스케이프 간이 처리).
+_NARR_KEY = re.compile(r'"narration"\s*:\s*"')
+
+def _partial_narration(buf: str) -> str:
+    m = _NARR_KEY.search(buf)
+    if not m:
+        return ""
+    rest = buf[m.end():]
+    out, i, n = [], 0, len(rest)
+    while i < n:
+        c = rest[i]
+        if c == "\\" and i + 1 < n:
+            out.append({"n": "\n", "t": "\t", '"': '"', "\\": "\\", "/": "/"}.get(rest[i + 1], rest[i + 1]))
+            i += 2
+            continue
+        if c == '"':
+            break
+        out.append(c)
+        i += 1
+    return "".join(out)
+
 def _advance_phase(current: str, suggested: str) -> str:
     """LLM이 제안한 phase가 현재보다 앞이면 전진, 뒤(역행)면 현재 유지."""
     try:
@@ -564,8 +585,19 @@ async def stream_response(
             ]
             usage: list = []
             _t_gen0 = _time.perf_counter()
-            raw = await llm.generate(system_prompt, contents, usage_out=usage, json_mode=True)
-            logger.info("[TTFB] generation=%.2fs", _time.perf_counter() - _t_gen0)
+            # 토큰 스트리밍: 부분 응답에서 narration을 추출해 delta로 즉시 흘림(체감 TTFB↓).
+            buf, _last_narr, _first = "", "", True
+            async for _piece in llm.stream(system_prompt, contents, usage_out=usage, json_mode=True):
+                buf += _piece
+                if _first:
+                    logger.info("[TTFB] first-token=%.2fs", _time.perf_counter() - _t_gen0)
+                    _first = False
+                _narr = _partial_narration(buf)
+                if _narr and _narr != _last_narr:
+                    _last_narr = _narr
+                    yield f"event: delta\ndata: {json.dumps({'narration': _narr}, ensure_ascii=False)}\n\n"
+            raw = buf
+            logger.info("[TTFB] full-generation=%.2fs", _time.perf_counter() - _t_gen0)
             prompt_tokens     = usage[0]["prompt_tokens"]     if usage else 0
             completion_tokens = usage[0]["completion_tokens"] if usage else 0
 
