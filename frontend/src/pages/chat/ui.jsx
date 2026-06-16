@@ -353,6 +353,9 @@ export default function Chat() {
   const [realtimeProof, setRealtimeProof] = useState(false);
   // 🔊 작가 리액션 음성(말로 반응) ON/OFF — 기본 ON, 사용자가 끄면 기억
   const [voiceReaction, setVoiceReaction] = useState(() => localStorage.getItem('voice_reaction') !== 'off');
+  // 🔍 설정 검수(F-QC-01) ON/OFF — 새 응답이 확립된 설정과 모순되는지 RAG 검수. 기본 ON.
+  const [consistencyOn, setConsistencyOn] = useState(() => localStorage.getItem('consistency_check') !== 'off');
+  const [consistencyAlert, setConsistencyAlert] = useState(null);   // [{established, conflict, severity}] | null
   // 장르 가드: 장르 밖 감지 알림(비차단 칩) + 세션 확장 승인 여부
   const [genreAlert, setGenreAlert] = useState(null);   // { note } | null
   const [genreOpen, setGenreOpen_] = useState(false);   // 이 세션에서 '판타지로 도입' 승인됨
@@ -476,6 +479,11 @@ export default function Chat() {
     localStorage.setItem('voice_reaction', voiceReaction ? 'on' : 'off');
     if (!voiceReaction) stopReaction();
   }, [voiceReaction]);
+
+  // 검수 ON/OFF 영속
+  useEffect(() => {
+    localStorage.setItem('consistency_check', consistencyOn ? 'on' : 'off');
+  }, [consistencyOn]);
 
   // ── 컨텍스트 메뉴 외부 클릭 닫기 ─────────────────────────
   useEffect(() => {
@@ -706,14 +714,18 @@ export default function Chat() {
     let lastReply = { narration: '', dialogue: '' };   // 리액션 문맥용 — 작가가 쓴 장면 누적
     esRef.current = connectChatStream(
       chatId,
-      { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '' },
-      ({ narration, speaker, dialogue, protagonist_dialogue, out_of_genre, genre_note }) => {
+      { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '', check_consistency: consistencyOn },
+      ({ narration, speaker, dialogue, protagonist_dialogue, out_of_genre, genre_note, consistency }) => {
         lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId ? { ...m, narration, speaker, dialogue, protagonist_dialogue } : m)
         );
         // 장르 밖 감지 → 비차단 칩(이미 도입 승인했으면 무시)
         if (out_of_genre && !genreOpen) setGenreAlert({ note: genre_note });
+        // 🔍 설정 검수 — 모순 발견 시 비차단 경고(작가가 짚어줌)
+        if (consistency && consistency.consistent === false && consistency.violations?.length) {
+          setConsistencyAlert(consistency.violations);
+        }
       },
       (realMsgId) => {
         clearTimeout(streamTimeoutId);
@@ -867,6 +879,25 @@ export default function Chat() {
           </div>
         )}
 
+        {consistencyAlert && (
+          <div className="consistency-alert">
+            <div className="consistency-alert__head">
+              <span className="consistency-alert__title">🔍 설정 검수 — 모순 발견</span>
+              <button className="consistency-alert__x" onClick={() => setConsistencyAlert(null)} title="닫기">✕</button>
+            </div>
+            {consistencyAlert.map((v, i) => (
+              <div key={i} className="consistency-alert__item">
+                <span className={`consistency-alert__sev consistency-alert__sev--${v.severity || 'mid'}`}>
+                  {v.severity === 'high' ? '심각' : v.severity === 'low' ? '경미' : '주의'}
+                </span>
+                <span className="consistency-alert__text">
+                  <b>설정:</b> {v.established} <b>↔ 충돌:</b> {v.conflict}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {suggestions.length > 0 && !streaming && (
           <div className="chat-suggestions">
             {suggestions.map((s, i) => {
@@ -914,6 +945,14 @@ export default function Chat() {
               aria-pressed={voiceReaction}
             >
               {voiceReaction ? '🔊' : '🔇'}
+            </button>
+            <button
+              className={`suggest-btn${consistencyOn ? ' suggest-btn--on' : ''}`}
+              onClick={() => setConsistencyOn(v => !v)}
+              title={consistencyOn ? '설정 검수 끄기 (모순 탐지)' : '설정 검수 켜기 (모순 탐지)'}
+              aria-pressed={consistencyOn}
+            >
+              🔍
             </button>
             {speaker && (
               <span className="speaker-chip" title="이 인물의 대사로 전송됩니다">
