@@ -216,6 +216,12 @@
     background: rgba(255, 255, 255, 0.06);
 }
 
+.form-textarea::placeholder,
+.form-input::placeholder {
+    color: rgba(255, 255, 255, 0.28);
+    font-size: 0.88rem;
+}
+
 .form-input[readonly] {
     opacity: 0.75;
     cursor: default;
