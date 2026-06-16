@@ -66,6 +66,9 @@ def key_summary(chat_id: str) -> str:
 # 작가 리액션(F-AS-05) 직전 반응 추적 키 — chat_context엔 없어 chats.py 전용 정의
 def key_last_reaction(chat_id: str) -> str:
     return f"session:{chat_id}:last_reaction"
+# 장르 가드 — 사용자가 '판타지로 도입'을 승인하면 이 키를 세팅(이후 턴은 장르 밖 감지 끔)
+def key_genre_open(chat_id: str) -> str:
+    return f"session:{chat_id}:genre_open"
 
 
 # ── 세계관·등장인물 DB 조회 ────────────────────────────────────
@@ -286,6 +289,7 @@ def build_messages(
     user_input: str,
     relevant_memories: list[str] | None = None,
     speaker: str = "",
+    genre_open: bool = False,
 ) -> list[dict]:
     author_rules = get_author_prompt(
         persona_id=persona_id,
@@ -371,6 +375,9 @@ def build_messages(
         context_parts.append(f"[현재 상태]\n{context['state']}")
     if context.get("phase"):
         context_parts.append(f"[현재 스토리 단계]\n{context['phase']}\n(story_phase는 이 단계 이상만 출력 가능)")
+    if genre_open:
+        # 사용자가 장르 확장을 허용함 → 장르 가드 끔(out_of_genre 항상 false)
+        context_parts.append("[장르 확장 허용됨] 사용자가 장르 밖 요소 도입을 승인함 — out_of_genre는 항상 false로 둔다.")
 
     # @등장인물: 조연 시점 서사 지시 (주인공/solo 발화 턴은 protagonist_rule에서 처리하므로 스킵)
     if speaker and not is_protagonist_speaker:
@@ -517,6 +524,8 @@ async def stream_response(
     _valid_ai_names        = _extract_ai_char_names(world_context)
     _prot_name             = _extract_protagonist_name(world_context)
     _is_protagonist_speaker = bool(speaker and _prot_name and speaker == _prot_name)
+    # 장르 가드: 사용자가 이미 장르 확장을 승인했으면 감지 끔
+    _genre_open            = bool(await redis_client.get(key_genre_open(chat_id)))
 
     async def generate():
         try:
@@ -528,6 +537,7 @@ async def stream_response(
                 user_input=content,
                 relevant_memories=relevant_memories,
                 speaker=speaker,
+                genre_open=_genre_open,
             )
 
             # ── 전송 프롬프트 로그 ──────────────────────────────────
@@ -566,6 +576,9 @@ async def stream_response(
             state_changes        = parsed["state_changes"]
             internal_note        = parsed["internal_note"]
             suggested_phase      = parsed.get("story_phase", "")
+            # 장르 가드: 이미 확장 승인된 세션이면 플래그 무시
+            out_of_genre         = bool(parsed.get("out_of_genre")) and not _genre_open
+            genre_note           = parsed.get("genre_note", "") if out_of_genre else ""
 
             # [폴백] 주인공 발화 턴인데 AI가 protagonist_dialogue 대신 speaker=주인공+dialogue에 넣은 경우 보정
             if _is_protagonist_speaker and not protagonist_dialogue and dialogue and not reply_speaker:
@@ -682,6 +695,8 @@ async def stream_response(
                     "story_phase":          new_phase,
                     "memories":             relevant_memories,
                     "consistency":          consistency_result,
+                    "out_of_genre":         out_of_genre,
+                    "genre_note":           genre_note,
                 },
                 ensure_ascii=False,
             )
@@ -1120,6 +1135,20 @@ async def author_reaction(chat_id: str, body: ReactionRequest):
         await redis_client.set(key_last_reaction(chat_id), reaction)
     logger.info("작가 리액션 - chat_id=%s emotion=%s → %s", chat_id, emotion, reaction)
     return {"reaction": reaction, "emotion": emotion}
+
+class GenreOpenRequest(BaseModel):
+    open: bool = True
+
+
+@router.post("/{chat_id}/genre-open")
+async def set_genre_open(chat_id: str, body: GenreOpenRequest):
+    """장르 가드 — '판타지로 도입' 승인 시 이후 턴의 장르 밖 감지를 끈다(취소도 가능)."""
+    if body.open:
+        await redis_client.set(key_genre_open(chat_id), "1")
+    else:
+        await redis_client.delete(key_genre_open(chat_id))
+    return {"genre_open": body.open}
+
 
 class MemosBody(BaseModel):
     memos: list = []
