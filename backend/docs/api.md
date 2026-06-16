@@ -81,21 +81,25 @@ GET /chats/{chat_id}/stream
     &character_id=<baekya|charoun|hanyeoreum|kimdohyeon>
     &mode=author
     &speaker=<등장인물 이름>    ← @등장인물 멘션(F-CH-18). 있으면 그 인물 시점·서사로 전개
-    &world_context=<선택>       ← 없으면 세션에서 세계관·캐릭터 자동 조회
+    &world_context=<무시됨>     ← 서버가 항상 DB에서 재구성(세계관 수정 즉시 반영). 전송해도 무시
     &check_consistency=<true|false>
 ```
 
-응답 `text/event-stream` — 3종 이벤트:
+응답 `text/event-stream` — 4종 이벤트:
 ```
+event: delta                      ← ★ narration 토큰 즉시 흘림(체감 TTFB↓)
+data: {"narration":"<부분 텍스트>"}
+
 event: reply
-data: {"messageId","narration","dialogue","memories":[…RAG 검색],"consistency":{…F-QC-01}}
+data: {"messageId","narration","dialogue","memories":[…RAG],"consistency":{consistent,violations:[{established,conflict,severity}]}}
 
 event: audio                      ← TTS 첫 문장(ElevenLabs). 키/IP 차단 시 미전송
 data: {"messageId","audio":"<base64 mp3>"}
 
 event: done
 ```
-> 프론트는 `reply`를 받아 **타자기 효과**로 점진 표시(나레이션→대사), `audio`는 자동 재생.
+> 프론트는 `delta`로 점진 표시, `reply`로 나레이션/대사 분리·타자기 렌더, `audio` 자동 재생.
+> `consistency`(check_consistency=true 시) → 모순이면 화면 **🔍 '설정↔충돌' alert**(라이브 토글). 비차단.
 
 ## 작가 AI 패널 — `/chats/{chat_id}/author`
 
@@ -114,9 +118,19 @@ event: done
 |---|---|
 | `GET /novel` | 소설 초안 조회 |
 | `POST /novel/generate` | 대화 로그 → **작가 문체 소설** 변환(F-NV-02, 문체 RAG) |
-| `POST /novel/convert` | 집필형(에디터) 변환 |
+| `POST /novel/convert` | 대화 로그 → 소설(LLM 없이 **결정적 이어붙이기**, 빠름·무비용) |
 | `PUT /novel/draft` | 초안 저장 |
 | `PATCH /novel` | 제목/본문 수정 |
+
+## 삽화 — `/sessions/{session_id}/illustrations`
+
+| 메서드 · 경로 | 설명 |
+|---|---|
+| `GET /illustrations/recommend` | 장면 추천 |
+| `POST /illustrations/generate` | 삽화 생성(Vertex Gemini Flash Image) |
+| `POST /illustrations/generate-openai` | 삽화 생성(OpenAI gpt-image-1, 키 없으면 502 graceful) |
+| `GET·POST /illustrations` | 저장 목록 / 저장 |
+| `DELETE /illustrations/{illus_id}` | 삭제 |
 
 ## 오탈자 교정 — (풀경로, `proofread.py`)
 

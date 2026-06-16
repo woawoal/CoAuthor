@@ -170,10 +170,15 @@ class MyModel(Base):
 
 ```
 main (배포)
-  └── dev (개발 통합)
-        ├── feature/jyj-{기능명}    ← 본인 작업 브랜치
-        └── feature/gay-{기능명}    ← 팀원 작업 브랜치
+  └── dev (개발 통합) ← PR 필수 · 전원 1승인 · merge-commit(squash 비활성)
+        ├── feature/jyj    ← 작성자별 브랜치
+        ├── feature/pge
+        ├── feature/ygh
+        └── feature/ygy
 ```
+
+- `feature/* → dev`: PR 올리고 **CI(Vercel·test) green + 1승인** 후 머지. 충돌은 양쪽 기능 보존.
+- `dev → main`: 배포 시점에 통합.
 
 커밋 메시지 형식:
 ```
