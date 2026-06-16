@@ -685,7 +685,7 @@ export default function Chat() {
     }
 
     const streamMsgId = `stream_${Date.now()}`;
-    setMessages(prev => [...prev, { id: streamMsgId, role: 'character', name: storyAuthor.displayName, text: '' }]);
+    setMessages(prev => [...prev, { id: streamMsgId, _key: streamMsgId, role: 'character', name: storyAuthor.displayName, text: '' }]);
     setStreaming(true);
 
     const worldContext = buildWorldContext(world, dbCharacters);
@@ -828,7 +828,7 @@ export default function Chat() {
           )}
           {messages.map(msg => (
             <Bubble
-              key={msg.id}
+              key={msg._key ?? msg.id}
               msg={msg}
               persona={storyAuthor}
               characterName={dbCharacters.find(c => c.role !== 'protagonist')?.name}
