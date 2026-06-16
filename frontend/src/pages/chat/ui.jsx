@@ -678,10 +678,13 @@ export default function Chat() {
 
     // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     if (realtimeProof) {
+      // 새 입력마다 이전 턴 교정을 먼저 비운다 — 안 비우면 옛 교정("주라는 걸" 등)이
+      // 남아 지금 안 친 문장이 떠 보이던 버그. 누적하지 않고 '이번 입력 교정'만 표시.
+      setCorrections([]);
       proofread(chatId, cleanUserText, currentAuthor.characterId)
         .then(r => {
           if (r.errors?.length) {
-            setCorrections(prev => [{ id: Date.now(), errors: r.errors, memo: r.memo }, ...prev].slice(0, 5));
+            setCorrections([{ id: Date.now(), errors: r.errors, memo: r.memo }]);
             setStreaming(cur => { if (!cur) authorPanelRef.current?.showProofView(); return cur; });
           }
         })
