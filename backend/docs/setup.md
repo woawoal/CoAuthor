@@ -79,7 +79,18 @@ REDIS_URL=redis://localhost:6379
 # REDIS_URL=rediss://default:...@xxxx.upstash.io:6379
 
 CACHE_TTL=3600
+
+# AI 엔진 — 키 방식(로컬) 또는 USE_VERTEX(운영, GCP ADC 키리스)
 GEMINI_API_KEY=발급받은_키_입력
+# USE_VERTEX=true                # 운영: Vertex AI(ADC). 로컬은 보통 GEMINI_API_KEY로 충분
+LLM_PROVIDER_CHAIN=gemini,groq,openai   # 폴백 순서
+GROQ_API_KEY=                    # 폴백·평가 채점관(독립 모델)
+OPENAI_API_KEY=                  # 폴백·진짜 GPT 비교용(크레딧 필요)
+
+# 멀티모달(선택)
+FAL_KEY=                         # 삽화(fal.ai)
+ELEVENLABS_API_KEY_1=            # TTS(작가 음성)
+
 SECRET_KEY=로컬개발용_랜덤문자열
 DEBUG=true
 ALLOWED_ORIGINS=["*"]
