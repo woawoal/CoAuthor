@@ -21,7 +21,6 @@ const AUTHOR_MAP = {
 const AUTHOR_TAGS_CHAT = [
   { label: '#세계관', prompt: null },
   { label: '#등장인물', prompt: null },
-  { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
   { label: '#취향저격ai', prompt: null },
   { label: '#도움말', prompt: null },
 ];
@@ -29,7 +28,6 @@ const AUTHOR_TAGS_CHAT = [
 const AUTHOR_TAGS_EDITOR = [
   { label: '#세계관', prompt: null },
   { label: '#등장인물', prompt: null },
-  { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
   { label: '#취향저격ai', prompt: null },
 ];
 
@@ -75,6 +73,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   onClearCorrections,
   hasSelection = false,
   onWorldEdit,
+  onShouldRecommend,
 }, ref) {
   const currentAuthor = AUTHOR_MAP[AUTHOR_IDS[currentAuthorIdx]];
 
@@ -98,6 +97,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   const [tasteRecommending, setTasteRecommending] = useState(false);
   const [memoInput, setMemoInput] = useState('');
   const [editingMemoId, setEditingMemoId] = useState(null);
+  const [bookmarkMode, setBookmarkMode] = useState(false);
   const [recContextMenu, setRecContextMenu] = useState({ visible: false, x: 0, y: 0, content: '' });
   const [lyricQuery, setLyricQuery] = useState('');
   const [lyricLoading, setLyricLoading] = useState(false);
@@ -116,6 +116,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
       setEditingMemoId(existing ? existing.id : null);
       setMemoInput(existing ? existing.text : '');
       onSelectedMsgIdChange?.(msgId);
+      setBookmarkMode(true);
       setPanelOpen(true);
       setPanelView('memo');
       setTimeout(() => memoInputRef.current?.focus(), 80);
@@ -193,21 +194,45 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   function prevAuthor() { onAuthorChange?.((currentAuthorIdx - 1 + AUTHOR_IDS.length) % AUTHOR_IDS.length); }
   function nextAuthor() { onAuthorChange?.((currentAuthorIdx + 1) % AUTHOR_IDS.length); }
 
+  const REC_KEYWORDS = /추천해줘|문장 추천|다음 문장|이어서 써줘|추천 해줘/;
+
   async function handleSendAuthorMessage(overrideText, { mode: msgMode = 'chat', hideUser = false } = {}) {
     const text = (overrideText ?? authorInput).trim();
     if (!text || authorLoading) return;
     if (!overrideText) setAuthorInput('');
     if (!hideUser) setAuthorMessages(prev => [...prev, { id: `au_${Date.now()}`, role: 'user', content: text }]);
     setAuthorLoading(true);
+
+    const isRecRequest = mode === 'chat' && msgMode === 'chat' && REC_KEYWORDS.test(text);
+
     try {
-      const data = await sendAuthorMessage(chatId, {
-        content: text,
-        author_id: currentAuthor.characterId,
-        mode: msgMode,
-      });
-      setAuthorMessages(prev => [...prev, {
-        id: data.messageId, role: 'ai', type: 'feedback', content: data.content,
-      }]);
+      if (isRecRequest) {
+        // 3번 병렬 호출 → 각각 독립 추천 버블
+        const results = await Promise.allSettled(
+          [0, 1, 2].map(() => sendAuthorMessage(chatId, {
+            content: text,
+            author_id: currentAuthor.characterId,
+            mode: msgMode,
+          }))
+        );
+        const recMsgs = results
+          .filter(r => r.status === 'fulfilled')
+          .map((r, i) => ({
+            id: `${r.value.messageId}_rec_${i}`, role: 'ai', type: 'feedback',
+            content: r.value.content, isRecommend: true,
+          }));
+        setAuthorMessages(prev => [...prev, ...recMsgs]);
+      } else {
+        const data = await sendAuthorMessage(chatId, {
+          content: text,
+          author_id: currentAuthor.characterId,
+          mode: msgMode,
+        });
+        setAuthorMessages(prev => [...prev, {
+          id: data.messageId, role: 'ai', type: 'feedback', content: data.content,
+          isRecommend: !!data.shouldRecommend,
+        }]);
+      }
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
@@ -302,6 +327,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
     }
     setMemoInput('');
     setEditingMemoId(null);
+    setBookmarkMode(false);
     onSelectedMsgIdChange?.(null);
   }
 
@@ -456,7 +482,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                       {c.personality && <span className="world-info-card__char-desc">{c.personality}</span>}
                       {c.prompt && (
                         <span className="world-info-card__char-prompt">
-                          <span className="world-info-card__char-prompt-label">AI 지시문</span>
+                          <span className="world-info-card__char-role">특성</span>
                           {c.prompt}
                         </span>
                       )}
@@ -547,7 +573,9 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                           </button>
                         </div>
                         <div
-                          className="author-msg author-msg--ai"
+                          className={`author-msg author-msg--ai${msg.isRecommend && mode === 'chat' ? ' author-msg--rec' : ''}`}
+                          onClick={msg.isRecommend && mode === 'chat' ? () => onApplyText?.(msg.content) : undefined}
+                          title={msg.isRecommend && mode === 'chat' ? '클릭하면 입력창에 삽입' : undefined}
                           onContextMenu={mode === 'chat' ? e => {
                             e.preventDefault();
                             setRecContextMenu({ visible: true, x: e.clientX, y: e.clientY, content: msg.content, copyOnly: true });
@@ -788,12 +816,12 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                 <button className="memo-view__back" onClick={() => setPanelView('author')}>← 돌아가기</button>
               </div>
 
-              {/* chat: 책갈피 입력 (말풍선 연결) */}
-              {mode === 'chat' && selectedMsgId && (
+              {/* chat: 책갈피 입력 (말풍선 우클릭 → openMemoFor로만 열림) */}
+              {mode === 'chat' && selectedMsgId && bookmarkMode && (
                 <div className="memo-context">
                   <div className="memo-context__header">
                     <span className="memo-context__label">🔖 책갈피</span>
-                    <button className="memo-context__clear" onClick={() => { onSelectedMsgIdChange?.(null); setEditingMemoId(null); setMemoInput(''); }}>×</button>
+                    <button className="memo-context__clear" onClick={() => { onSelectedMsgIdChange?.(null); setEditingMemoId(null); setMemoInput(''); setBookmarkMode(false); }}>×</button>
                   </div>
                   <textarea
                     ref={memoInputRef}
@@ -822,12 +850,22 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                 {memos.map(memo => (
                   <div
                     key={memo.id}
-                    className={`memo-item memo-item--${memo.type}${memo.msgId ? ' memo-item--bookmark' : ''}`}
-                    onClick={() => onMemoClick?.(memo)}
+                    className={`memo-item memo-item--${memo.type}${memo.msgId ? ' memo-item--bookmark' : ''}${editingMemoId === memo.id ? ' memo-item--editing' : ''}`}
+                    onClick={memo.msgId ? () => onMemoClick?.(memo) : undefined}
                   >
                     {memo.msgId && <p className="memo-item__ref">🔖 책갈피</p>}
                     <div className="memo-item__body">
                       <span>{memo.text}</span>
+                      <button
+                        className="memo-item__edit"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setEditingMemoId(memo.id);
+                          setMemoInput(memo.text);
+                          onSelectedMsgIdChange?.(null);
+                          setTimeout(() => memoInputRef.current?.focus(), 80);
+                        }}
+                      >✎</button>
                       <button
                         className="memo-item__delete"
                         onClick={e => { e.stopPropagation(); onMemosChange(memos.filter(m => m.id !== memo.id)); }}
@@ -841,8 +879,9 @@ const AuthorPanel = forwardRef(function AuthorPanel({
               {(mode === 'editor' || !selectedMsgId) && (
                 <div className="memo-add">
                   <textarea
+                    ref={memoInputRef}
                     className="memo-input"
-                    placeholder="메모 추가..."
+                    placeholder={editingMemoId ? '메모 수정...' : '메모 추가...'}
                     value={memoInput}
                     rows={2}
                     onChange={e => setMemoInput(e.target.value)}
@@ -850,7 +889,10 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddMemo(); }
                     }}
                   />
-                  <button className="memo-add-btn" onClick={handleAddMemo}>+</button>
+                  {editingMemoId && (
+                    <button className="memo-add-btn memo-add-btn--cancel" onClick={() => { setEditingMemoId(null); setMemoInput(''); }}>취소</button>
+                  )}
+                  <button className="memo-add-btn" onClick={handleAddMemo}>{editingMemoId ? '수정' : '+'}</button>
                 </div>
               )}
             </div>

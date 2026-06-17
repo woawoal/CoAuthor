@@ -1203,6 +1203,16 @@
   color: var(--text-main);
 }
 
+.author-msg--rec {
+  cursor: pointer;
+  border-left: 3px solid color-mix(in srgb, var(--theme-color) 70%, transparent);
+  transition: background 0.15s, filter 0.15s;
+}
+.author-msg--rec:hover {
+  background: color-mix(in srgb, var(--theme-color) 30%, transparent);
+  filter: brightness(1.05);
+}
+
 .author-msg-group {
   display: flex;
   flex-direction: column;
@@ -1478,6 +1488,24 @@
   word-break: break-word;
 }
 
+.memo-item__edit {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+.memo-item__edit:hover {
+  opacity: 1;
+  color: var(--theme-color);
+}
+
 .memo-item__delete {
   background: none;
   border: none;
@@ -1494,6 +1522,11 @@
 .memo-item__delete:hover {
   opacity: 1;
   color: #e05555;
+}
+
+.memo-item--editing {
+  outline: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
+  border-radius: 6px;
 }
 
 .memo-item--bookmark {
@@ -1557,6 +1590,19 @@
   line-height: 1;
   flex-shrink: 0;
   align-self: flex-end;
+}
+
+.memo-add-btn--cancel {
+  background: none;
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.memo-add-btn--cancel:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
 }
 
 /* ── 컨텍스트 메뉴 ── */

@@ -317,6 +317,7 @@ export default function Chat() {
   const [input, setInput] = useState(opening || '');
   const [streaming, setStreaming] = useState(false);
   const [suggestions, setSuggestions] = useState([]);   // 💡 입력 추천(말투 기반 voice 포함)
+  const [suggestOn, setSuggestOn] = useState(false);    // 💡 버튼 토글 상태
   const [speaker, setSpeaker] = useState(null);       // @등장인물: 이번 대사를 말하는 인물(없으면 주인공)
   const [mentionOpen, setMentionOpen] = useState(false);   // @ 멘션 드롭다운 표시 여부
   const [mentionQuery, setMentionQuery] = useState('');    // @ 뒤 입력값(필터)
@@ -937,7 +938,7 @@ export default function Chat() {
                 <button
                   key={i}
                   className="suggestion-chip"
-                  onClick={() => { setInput(text); setSuggestions([]); }}
+                  onClick={() => { setInput(text); setSuggestions([]); setSuggestOn(false); }}
                 >
                   {label && <span className="suggestion-chip__label">{label}</span>}
                   {text}
@@ -965,7 +966,21 @@ export default function Chat() {
             </div>
           )}
           <div className="chat-input-bar">
-            <button className="suggest-btn" onClick={fetchSuggestions} disabled={streaming} title="입력 추천(말투 기반)">
+            <button
+              className={`suggest-btn${suggestOn ? ' suggest-btn--on' : ''}`}
+              onClick={() => {
+                if (suggestOn) {
+                  setSuggestOn(false);
+                  setSuggestions([]);
+                } else {
+                  setSuggestOn(true);
+                  fetchSuggestions();
+                }
+              }}
+              disabled={streaming}
+              title={suggestOn ? '입력 추천 끄기' : '입력 추천(말투 기반)'}
+              aria-pressed={suggestOn}
+            >
               💡
             </button>
             <button
