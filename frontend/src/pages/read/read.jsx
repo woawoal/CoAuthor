@@ -189,10 +189,23 @@ export default function ReadNovel() {
   useEffect(() => {
     async function load() {
       try {
-        const [novelData, sessionData] = await Promise.all([
-          getNovel(storyId),
-          getSession(storyId),
-        ]);
+        let novelData;
+        try {
+          novelData = await getNovel(storyId);
+        } catch (err) {
+          if (err.status === 404) {
+            toast('소설을 생성하고 있어요...', 'info');
+            try {
+              await generateNovel(storyId);
+              novelData = await getNovel(storyId);
+            } catch (genErr) {
+              throw new Error(genErr.message || '소설을 생성할 수 없어요.');
+            }
+          } else {
+            throw err;
+          }
+        }
+        const sessionData = await getSession(storyId);
         setNovel(novelData);
         setSession(sessionData);
         const worldData = await getWorld(sessionData.world_id);

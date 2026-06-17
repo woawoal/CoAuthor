@@ -34,6 +34,8 @@ export default function Editor() {
   const [content, setContent] = useState('');
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'unsaved'
   const [ending, setEnding] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveComplete, setSaveComplete] = useState(false);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
 
@@ -169,7 +171,6 @@ export default function Editor() {
 
   async function handleComplete() {
     if (!chatId) { return; }
-    if (!window.confirm('소설을 완결내시겠습니까?\n완결 후에는 이어쓰기가 불가합니다.')) return;
     setEnding(true);
     try {
       await saveDraft();
@@ -179,6 +180,20 @@ export default function Editor() {
       toast(`완결 처리 실패: ${err.message}`, 'error');
       setEnding(false);
     }
+  }
+
+  async function handleSaveConfirm() {
+    if (saveComplete && !content.trim()) {
+      toast('원고 내용이 없어 완결할 수 없어요.', 'error');
+      return;
+    }
+    setShowSaveModal(false);
+    if (saveComplete) {
+      await handleComplete();
+    } else {
+      navigate('/storylist');
+    }
+    setSaveComplete(false);
   }
 
   async function handleRestart() {
@@ -214,18 +229,9 @@ export default function Editor() {
               />
               <span className="mode-switcher__label">집필형</span>
             </div>
-            <div className="save-btn-group">
-              <button className="editor-save-btn" onClick={saveDraft} disabled={saveStatus === 'saving' || ending}>저장</button>
-              <button className="editor-save-btn editor-save-btn--complete" onClick={handleComplete} disabled={ending}>
-                {ending ? '완결 중...' : '완결'}
-              </button>
-            </div>
-            <button
-              className="editor-back-btn"
-              onClick={() => navigate('/worldedit', { state: { worldId: world?.id, chatId, authorId, from: 'editor' } })}
-              disabled={!world?.id}
-              title="세계관 수정 — 다음 대화부터 반영"
-            >✎ 세계관</button>
+            <button className="editor-save-btn" onClick={() => setShowSaveModal(true)} disabled={saveStatus === 'saving' || ending}>
+              {ending ? '완결 중...' : '저장'}
+            </button>
             <button className="editor-back-btn restart-btn" onClick={handleRestart}>새로하기</button>
             <button className="editor-back-btn" onClick={() => navigate('/storylist')}>목록</button>
           </div>
@@ -275,7 +281,29 @@ export default function Editor() {
         onSkipCorrection={key => setCorrections(prev => prev.filter(x => x.key !== key))}
         onClearCorrections={() => { setCorrections([]); setProofMemo(''); }}
         hasSelection={hasSelection}
+        onWorldEdit={world?.id ? () => navigate('/worldedit', { state: { worldId: world.id, chatId, authorId, from: 'editor' } }) : null}
       />
+
+      {/* 저장 확인 팝업 */}
+      {showSaveModal && (
+        <div className="save-modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="save-modal" onClick={e => e.stopPropagation()}>
+            <p className="save-modal__title">저장하시겠습니까?</p>
+            <label className="save-modal__check">
+              <input
+                type="checkbox"
+                checked={saveComplete}
+                onChange={e => setSaveComplete(e.target.checked)}
+              />
+              완결하기
+            </label>
+            <div className="save-modal__btns">
+              <button className="save-modal__btn save-modal__btn--cancel" onClick={() => { setShowSaveModal(false); setSaveComplete(false); }}>취소</button>
+              <button className="save-modal__btn save-modal__btn--save" onClick={handleSaveConfirm}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

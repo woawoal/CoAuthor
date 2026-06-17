@@ -2,6 +2,45 @@
 
 ---
 
+## 2026-06-17
+
+### 오늘 한 일
+
+**새로하기 버그 수정**
+- 새로하기 후 이전 메시지가 화면에 남는 문제: `useEffect([chatId])`에서 `setMessages([])` 즉시 실행으로 해결
+- 새로하기 후 원고(importedNarration)가 남는 문제: `useState` lazy initializer는 같은 라우트 재진입 시 재실행 안 됨 → `setImportedNarration` setter를 노출하고 chatId-change effect에서 `null`로 초기화
+- `localStorage.removeItem(`manuscript_${chatId}`)` 추가 — 새로하기 시 원고 캐시도 제거
+- editor에도 동일한 새로하기 기능 추가 (`restartSession` 호출 → 새 chatId로 `/chat` 이동)
+
+**UI 구조 개편 (chat + editor 공통)**
+- storylist 카드에서 세계관 수정 버튼 제거
+- 오른쪽 패널 `#세계관` 팝업 카드 하단에 '✎ 세계관 수정' 버튼 추가 (`onWorldEdit` prop으로 주입)
+- 저장 버튼 클릭 시 확인 모달 팝업으로 전환:
+  - "저장하시겠습니까?" 제목 + [체크박스] 완결하기 (default: 미체크)
+  - 완결하기 체크 → 완결 처리 후 소설 읽기 페이지 이동
+  - 미체크 → storylist 이동 (임시 저장만)
+- 헤더에서 완결 버튼 제거 (모달 체크박스로 통합)
+- AuthorPanel `#가사적용ai` 탭 제거 (`AUTHOR_TAGS_CHAT`, `AUTHOR_TAGS_EDITOR` 양쪽)
+
+**worldEdit 호칭(address_rules) 기능 연결**
+- worldview.jsx의 호칭 규칙 UI를 worldEdit.jsx에도 동일하게 적용
+- DB 로드 시 `address_rules: c.address_rules ?? []` 매핑
+- 기존 캐릭터 수정 / 신규 캐릭터 생성 모두 `address_rules` 포함하여 API 호출
+
+**저장 모달 CSS 수정**
+- `var(--surface)` 미정의 변수 사용 → 투명하게 보이는 문제를 `var(--card-main)` (테마별 정의된 솔리드 색상)으로 교체
+- 제목 / 체크박스 / 버튼 모두 `justify-content: center`로 중앙 정렬 통일
+
+**dev 브랜치 백업 및 머지**
+- `backup/dev-20260617` 브랜치 생성 후 리모트 push (작업 전 dev 스냅샷 보존)
+- `origin/dev` → `feature/pge` 머지, 5개 파일 충돌 수동 해결
+
+### 이슈 / 막힌 점
+- `useState` lazy initializer는 같은 라우트 재진입 시 재실행 안 됨 → setter를 state tuple에서 꺼내 effect에서 직접 `null` 세팅해야 함
+- `var(--surface)` 미정의 → 투명한 모달 배경 문제 → `var(--card-main)` 교체
+
+---
+
 ## 2026-06-15
 
 ### 오늘 한 일
@@ -136,6 +175,42 @@
 - `origin/dev #63` (Feature/ygy — ContextManager, voice profile, world tags 등) 머지
 - `chats.py` 충돌: dev가 Redis 헬퍼를 inline 재정의했으나 우리 브랜치에서 `chat_context.py`로 분리했으므로 inline 정의 제거, `HTTPException` import만 추가 반영
 - `feature/pge` → origin 푸시 완료
+
+**마이페이지 전면 개편**
+- 대시보드 탭 신설: 오늘의 작가 편지 / 이어쓰기 / 최근 AI 피드백 / 이번 주 집필 현황 / 함께한 작가
+- 총 작품 수·완결 수·집필 일수·작품당 평균 글자 수 숫자 통계 배치
+- `determineSituation()` 로직: first_work → milestone_10k → completed → absence → slump → regular 우선순위
+- 백엔드 `GET /mypage/dashboard` 신설 — `days_since_active`, `resume_work`(protagonist_name), `recent_feedback`, `weekly_chars`, `author_shares` 반환
+- 작가별 함께한 작품 수 / 전체 작품 비중 퍼센트 바로 표시 (별 5개 → 퍼센트 교체)
+- 최근 작업 탭: 미완결 작품 '이어쓰기 →' 버튼, 내 작품 탭: 완결 작품만 표시
+
+**문장 보관함 저장 버튼**
+- chat / editor AI 메시지 버블 우상단에 💾 버튼 추가
+- 클릭 시 `saveSentence()` → 1.5초간 ✓ 피드백
+- `userId`는 `authClient.getSession()` 으로 로드
+
+**집필형 ↔ 참여형 연동 개선**
+- 이어쓰기 진입 시 `localStorage.session_mode_{chatId}` 기록 → 마지막 모드(chat/editor)로 분기
+- 집필형 → 참여형 전환 시 `manuscriptContent`를 `localStorage.manuscript_{chatId}`에 저장, 참여형 재진입 시 복원
+
+**오른쪽 패널 personas.py 연동**
+- `build_feedback_prompt(persona_id, world_context)` 신규 — `feedback_lens` 기반 단발성 피드백
+- `build_rewrite_prompt(persona_id, original, feedback, world_context)` 신규 — `original + feedback` 구조, 전체 스타일 규칙 적용
+- `POST /{chat_id}/author/rewrite` 엔드포인트 신설
+- `chatApi.js` `generateAuthorRewrite()` 추가
+- 프롬프트 흐름: 피드백 받기 → `build_feedback_prompt`, 추천 문장 → `build_rewrite_prompt`, 직접 채팅 → `build_author_messages()`
+
+**신규 파일**
+
+| 파일 | 설명 |
+|------|------|
+| `frontend/src/lib/authorLetters.js` | 작가 편지 데이터 + `getDailyLetter` / `determineSituation` |
+| `frontend/src/lib/mypageApi.js` | `getDashboard`, `getStats`, `saveSentence` 등 마이페이지 API |
+| `frontend/src/pages/mypage/mypage.jsx` | 마이페이지 전체 UI |
+| `frontend/src/pages/mypage/mypage.css` | 마이페이지 스타일 |
+| `backend/app/api/v1/endpoints/mypage.py` | 마이페이지 전용 엔드포인트 |
+| `backend/app/models/saved_sentence.py` | 문장 보관함 ORM 모델 |
+| `backend/migrations/versions/f1a2b3c4d5e6_add_mypage_tables.py` | saved_sentences 테이블 마이그레이션 |
 
 ### 이슈 / 막힌 점
 - `작가 정보를 불러오지 못했습니다` 오류 → 원인: `http://localhost:8000`(FastAPI 직접)으로 접속, `http://localhost:5173`(Vite 프록시)으로 접속해야 함

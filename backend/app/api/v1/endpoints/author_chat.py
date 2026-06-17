@@ -193,6 +193,7 @@ async def send_author_message(
     reply_raw = (raw or "").strip()
     reply, should_recommend = _parse_suggest_marker(reply_raw)
 
+
     await append_author_history(chat_id, body.author_id, "user", body.content)
     await append_author_history(chat_id, body.author_id, "ai", reply)
 

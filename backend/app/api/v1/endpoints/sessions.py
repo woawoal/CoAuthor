@@ -7,6 +7,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.api_log import ApiLog
+from app.models.novel import Novel
 from app.models.session import Session, SessionStatus
 from app.schemas.session import SessionCreate, SessionResponse, SessionListItem
 
@@ -28,6 +29,16 @@ async def list_sessions(
         .order_by(Session.started_at.desc())
     )
     sessions = result.scalars().all()
+
+    session_ids = [s.id for s in sessions]
+    novel_result = await db.execute(
+        select(Novel.session_id).where(
+            Novel.session_id.in_(session_ids),
+            Novel.content != "",
+        )
+    )
+    has_novel_set = {row[0] for row in novel_result.fetchall()}
+
     return [
         SessionListItem(
             id=s.id,
@@ -38,6 +49,7 @@ async def list_sessions(
             status=s.status,
             started_at=s.started_at,
             ended_at=s.ended_at,
+            has_novel=s.id in has_novel_set,
         )
         for s in sessions
     ]

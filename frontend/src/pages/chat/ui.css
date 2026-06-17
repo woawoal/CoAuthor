@@ -1203,6 +1203,16 @@
   color: var(--text-main);
 }
 
+.author-msg--rec {
+  cursor: pointer;
+  border-left: 3px solid color-mix(in srgb, var(--theme-color) 70%, transparent);
+  transition: background 0.15s, filter 0.15s;
+}
+.author-msg--rec:hover {
+  background: color-mix(in srgb, var(--theme-color) 30%, transparent);
+  filter: brightness(1.05);
+}
+
 .author-msg-group {
   display: flex;
   flex-direction: column;
@@ -1478,6 +1488,24 @@
   word-break: break-word;
 }
 
+.memo-item__edit {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+  flex-shrink: 0;
+  opacity: 0.5;
+  margin-top: 1px;
+}
+
+.memo-item__edit:hover {
+  opacity: 1;
+  color: var(--theme-color);
+}
+
 .memo-item__delete {
   background: none;
   border: none;
@@ -1494,6 +1522,11 @@
 .memo-item__delete:hover {
   opacity: 1;
   color: #e05555;
+}
+
+.memo-item--editing {
+  outline: 1px solid color-mix(in srgb, var(--theme-color) 50%, transparent);
+  border-radius: 6px;
 }
 
 .memo-item--bookmark {
@@ -1557,6 +1590,19 @@
   line-height: 1;
   flex-shrink: 0;
   align-self: flex-end;
+}
+
+.memo-add-btn--cancel {
+  background: none;
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.memo-add-btn--cancel:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
 }
 
 /* ── 컨텍스트 메뉴 ── */
@@ -2189,4 +2235,56 @@
   margin-left: 2px; font-size: 11px; color: var(--text-muted);
   background: color-mix(in srgb, var(--text-main) 8%, transparent);
   padding: 1px 6px; border-radius: 999px;
+}
+
+/* ── 저장 확인 팝업 ──────────────────────────────────────────── */
+.save-modal-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.save-modal {
+  background: var(--card-main);
+  border: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
+  border-radius: 14px;
+  padding: 28px 32px 22px;
+  min-width: 240px;
+  display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+}
+.save-modal__title {
+  font-size: 1rem; font-weight: 600;
+  color: var(--text-main); margin: 0; text-align: center;
+}
+.save-modal__check {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 0.9rem; color: var(--text-main); cursor: pointer;
+}
+.save-modal__btns {
+  display: flex; gap: 8px; justify-content: center;
+}
+.save-modal__btn {
+  padding: 7px 20px; border-radius: 8px;
+  font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none;
+}
+.save-modal__btn--cancel {
+  background: color-mix(in srgb, var(--text-main) 10%, transparent);
+  color: var(--text-main);
+}
+.save-modal__btn--save {
+  background: var(--theme-color); color: #fff;
+}
+
+/* ── 세계관 카드 수정 버튼 ───────────────────────────────────── */
+.world-info-card__edit-row {
+  display: flex; justify-content: flex-end; margin-bottom: 8px;
+}
+.world-info-card__edit-btn {
+  font-size: 0.78rem; padding: 3px 10px; border-radius: 6px;
+  background: color-mix(in srgb, var(--theme-color) 15%, transparent);
+  color: var(--theme-color); border: 1px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
+  cursor: pointer; font-weight: 500;
+}
+.world-info-card__edit-btn:hover {
+  background: color-mix(in srgb, var(--theme-color) 25%, transparent);
 }

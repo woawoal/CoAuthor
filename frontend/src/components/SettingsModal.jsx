@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getGlobalVideoVolume, setGlobalVideoVolume } from '../lib/videoVolume';
 
-// 환경설정 — BGM / 로딩 영상 소리 / 작가 리액션 음성 조절.
-// BGM·로딩영상은 기존 컴포넌트가 듣는 이벤트로 라이브 반영, 리액션은 voice_reaction 키.
 const S = {
   overlay: {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
@@ -28,51 +26,54 @@ const S = {
     background: on ? 'var(--theme-color, #6b5bd2)' : 'rgba(0,0,0,0.12)',
     color: on ? '#fff' : 'var(--text-sub, #888)',
   }),
-  close: {
-    width: '100%', marginTop: 18, border: 'none', borderRadius: 12, padding: '11px',
+  btns: {
+    display: 'flex', gap: 10, marginTop: 18,
+  },
+  cancel: {
+    flex: 1, border: '1px solid rgba(0,0,0,0.18)', borderRadius: 12, padding: '11px',
+    background: 'none', color: 'var(--text-main, #222)', cursor: 'pointer',
+    fontWeight: 700, fontSize: 15, boxSizing: 'border-box',
+  },
+  save: {
+    flex: 1, border: 'none', borderRadius: 12, padding: '11px',
     background: 'var(--theme-color, #6b5bd2)', color: '#fff', cursor: 'pointer',
     fontWeight: 700, fontSize: 15, boxSizing: 'border-box',
   },
 };
 
-export default function SettingsModal({ open, onClose }) {
-  const [bgmOn, setBgmOn] = useState(true);
-  const [bgmVol, setBgmVol] = useState(0.2);
-  const [videoVol, setVideoVol] = useState(0.3);
-  const [reactionOn, setReactionOn] = useState(true);
+const readSaved = () => ({
+  bgmOn: localStorage.getItem('bgm_playing') !== 'false',
+  bgmVol: Number(localStorage.getItem('bgm_volume') ?? 0.2),
+  videoVol: getGlobalVideoVolume(),
+  reactionOn: localStorage.getItem('voice_reaction') !== 'off',
+});
 
-  // 열릴 때 현재 저장값 로드
+export default function SettingsModal({ open, onClose }) {
+  const [draft, setDraft] = useState(readSaved);
+
+  // 열릴 때 현재 저장값으로 draft 초기화
   useEffect(() => {
-    if (!open) return;
-    setBgmOn(localStorage.getItem('bgm_playing') !== 'false');
-    setBgmVol(Number(localStorage.getItem('bgm_volume') ?? 0.2));
-    setVideoVol(getGlobalVideoVolume());
-    setReactionOn(localStorage.getItem('voice_reaction') !== 'off');
+    if (open) setDraft(readSaved());
   }, [open]);
 
   if (!open) return null;
 
-  const changeBgmOn = (v) => {
-    setBgmOn(v);
-    localStorage.setItem('bgm_playing', String(v));
+  const set = (key) => (val) => setDraft((prev) => ({ ...prev, [key]: val }));
+
+  const handleSave = () => {
+    localStorage.setItem('bgm_playing', String(draft.bgmOn));
+    localStorage.setItem('bgm_volume', String(draft.bgmVol));
+    localStorage.setItem('voice_reaction', draft.reactionOn ? 'on' : 'off');
+    setGlobalVideoVolume(draft.videoVol);
     window.dispatchEvent(new Event('bgm-playing-changed'));
-  };
-  const changeBgmVol = (v) => {
-    setBgmVol(v);
-    localStorage.setItem('bgm_volume', String(v));
     window.dispatchEvent(new Event('bgm-volume-changed'));
-  };
-  const changeVideoVol = (v) => {
-    setVideoVol(v);
-    setGlobalVideoVolume(v);   // 내부에서 video-volume-changed 이벤트 발생
-  };
-  const changeReaction = (v) => {
-    setReactionOn(v);
-    localStorage.setItem('voice_reaction', v ? 'on' : 'off');
+    onClose();
   };
 
+  const handleCancel = () => onClose();
+
   return (
-    <div style={S.overlay} onClick={onClose}>
+    <div style={S.overlay} onClick={handleCancel}>
       <div style={S.card} onClick={(e) => e.stopPropagation()}>
         <h3 style={S.title}>환경설정</h3>
 
@@ -80,12 +81,14 @@ export default function SettingsModal({ open, onClose }) {
         <div style={S.block}>
           <div style={S.head}>
             <span style={S.label}>배경음악 (BGM)</span>
-            <button style={S.toggle(bgmOn)} onClick={() => changeBgmOn(!bgmOn)}>{bgmOn ? 'ON' : 'OFF'}</button>
+            <button style={S.toggle(draft.bgmOn)} onClick={() => set('bgmOn')(!draft.bgmOn)}>
+              {draft.bgmOn ? 'ON' : 'OFF'}
+            </button>
           </div>
           <input
             style={S.range} type="range" min="0" max="1" step="0.01"
-            value={bgmVol} disabled={!bgmOn}
-            onChange={(e) => changeBgmVol(Number(e.target.value))}
+            value={draft.bgmVol} disabled={!draft.bgmOn}
+            onChange={(e) => set('bgmVol')(Number(e.target.value))}
           />
         </div>
 
@@ -93,14 +96,17 @@ export default function SettingsModal({ open, onClose }) {
         <div style={S.block}>
           <div style={S.head}>
             <span style={S.label}>로딩 영상 소리</span>
-            <button style={S.toggle(videoVol > 0)} onClick={() => changeVideoVol(videoVol > 0 ? 0 : 0.3)}>
-              {videoVol > 0 ? 'ON' : '음소거'}
+            <button
+              style={S.toggle(draft.videoVol > 0)}
+              onClick={() => set('videoVol')(draft.videoVol > 0 ? 0 : 0.3)}
+            >
+              {draft.videoVol > 0 ? 'ON' : '음소거'}
             </button>
           </div>
           <input
             style={S.range} type="range" min="0" max="1" step="0.01"
-            value={videoVol}
-            onChange={(e) => changeVideoVol(Number(e.target.value))}
+            value={draft.videoVol}
+            onChange={(e) => set('videoVol')(Number(e.target.value))}
           />
         </div>
 
@@ -108,11 +114,16 @@ export default function SettingsModal({ open, onClose }) {
         <div style={S.block}>
           <div style={S.head}>
             <span style={S.label}>작가 리액션 음성</span>
-            <button style={S.toggle(reactionOn)} onClick={() => changeReaction(!reactionOn)}>{reactionOn ? 'ON' : 'OFF'}</button>
+            <button style={S.toggle(draft.reactionOn)} onClick={() => set('reactionOn')(!draft.reactionOn)}>
+              {draft.reactionOn ? 'ON' : 'OFF'}
+            </button>
           </div>
         </div>
 
-        <button style={S.close} onClick={onClose}>닫기</button>
+        <div style={S.btns}>
+          <button style={S.cancel} onClick={handleCancel}>취소</button>
+          <button style={S.save} onClick={handleSave}>저장</button>
+        </div>
       </div>
     </div>
   );
