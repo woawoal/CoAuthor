@@ -253,6 +253,7 @@ async def get_wiki(
 
     return {
         "world": {
+            "id": str(world.id),
             "title": world.title,
             "genre": world.genre,
             "setting": world.setting,
@@ -268,9 +269,62 @@ async def get_wiki(
             }
             for c in characters
         ],
+        "relations": (world.relations or []) if world else [],
         "story_summary": session.story_summary or "",
         "novel_title": novel.title if novel else None,
     }
+
+
+@router.put("/works/{session_id}/relations")
+async def save_relations(
+    session_id: str,
+    payload: list[dict],
+    user_id: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """설정집 등장인물 관계도 — 사용자가 직접 입력한 관계를 저장.
+
+    payload: [{from, to, label}] (from/to = character.id 문자열).
+    소유권 검증 후 world.relations 에 저장. 유효한 인물 id 쌍만 통과시킨다.
+    """
+    user = await _get_user(user_id, db)
+    try:
+        sid = uuid.UUID(session_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="유효하지 않은 session_id")
+
+    session = (await db.execute(
+        select(Session).where(Session.id == sid, Session.user_id == user.id)
+    )).scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="작품을 찾을 수 없습니다.")
+
+    world = (await db.execute(
+        select(World).where(World.id == session.world_id)
+    )).scalar_one_or_none()
+    if not world:
+        raise HTTPException(status_code=404, detail="세계관을 찾을 수 없습니다.")
+
+    char_ids = {
+        str(c.id) for c in (await db.execute(
+            select(Character).where(Character.world_id == world.id)
+        )).scalars().all()
+    }
+
+    cleaned = []
+    for r in (payload or []):
+        f, t, label = str(r.get("from", "")), str(r.get("to", "")), str(r.get("label", "")).strip()
+        if f in char_ids and t in char_ids and f != t:
+            item = {"from": f, "to": t, "label": label[:40]}
+            for k in ("dx", "dy"):   # 사용자가 끌어 옮긴 라벨 위치 offset 보존
+                v = r.get(k)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    item[k] = round(float(v), 1)
+            cleaned.append(item)
+
+    world.relations = cleaned
+    await db.commit()
+    return {"relations": cleaned}
 
 
 # ── 5. 최근 작업 ────────────────────────────────────────────────
