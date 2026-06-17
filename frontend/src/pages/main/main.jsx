@@ -44,8 +44,7 @@ function Main() {
     const [isLoading, setIsLoading] = useState(true);
     const [showVoicePopup, setShowVoicePopup] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
-    const [isDraggingPanel, setIsDraggingPanel] = useState(false);
-    const panelRef = useRef(null);
+    const [showPanel, setShowPanel] = useState(false);
 
     useEffect(() => {
         const checkLogin = async () => {
@@ -122,38 +121,6 @@ function Main() {
         fetchAuthorsData();
     }, []);
 
-    const handleMouseMove = (e) => {
-        const nextWidth = Math.min(
-            1440,
-            Math.max(0, window.innerWidth - e.clientX)
-        );
-
-        if (panelRef.current) {
-            panelRef.current.style.flexBasis = `${nextWidth}px`;
-        }
-    };
-
-    const handleMouseUp = () => {
-        setIsDraggingPanel(false);
-    };
-
-    const handlePanelDragStart = (e) => {
-        e.preventDefault();
-        setIsDraggingPanel(true);
-    };
-
-    useEffect(() => {
-        if (!isDraggingPanel) return;
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
-    }, [isDraggingPanel]);
-
     // 작가 카드 마우스 호버 시 실행되는 함수
     const handleAuthorHover = (authorId) => {
         const themeKey = `author${authorId}`;
@@ -192,6 +159,19 @@ function Main() {
                 <header className="header">
                     <img src="/assets/logo.png" alt="NodeVelture Logo" className="header-image" />
                     <h1 className="logo">NodeVelture</h1>
+                    <button
+                        className="main-panel-toggle-btn"
+                        onClick={() => setShowPanel(p => !p)}
+                        title={showPanel ? '메뉴 닫기' : '메뉴 열기'}
+                    >
+                        {showPanel ? '✕' : (
+                            <svg width="20" height="16" viewBox="0 0 20 16" fill="currentColor">
+                                <rect y="0" width="20" height="2" rx="1"/>
+                                <rect y="7" width="20" height="2" rx="1"/>
+                                <rect y="14" width="20" height="2" rx="1"/>
+                            </svg>
+                        )}
+                    </button>
                 </header>
 
                 {/* 메인 타이틀 영역 */}
@@ -232,18 +212,9 @@ function Main() {
 
             </div>
 
-            <div
-                className="panel-resize-handle"
-                onMouseDown={handlePanelDragStart}
-            >
-                <span className="panel-resize-icon">⋮</span>
-            </div>
-
-            <div
-                ref={panelRef}
-                className="author-panel-slide"
-            >
-                <div className="author-panel">
+<div className={`main-author-panel-slide${showPanel ? ' main-author-panel-slide--open' : ''}`}>
+                <div className="main-author-panel">
+                    <button className="main-panel-close-btn" onClick={() => setShowPanel(false)}>✕</button>
                     {profile && (
                         <div className="main-profile-card">
                             <div className="main-profile-avatar">{profile.username?.[0]?.toUpperCase() ?? '?'}</div>

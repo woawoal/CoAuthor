@@ -1,6 +1,7 @@
 /* src/pages/main/main.css */
 .app-container {
-    display: flex;
+    display: block;
+    width: 100%;
 }
 
 .header-auth {
@@ -174,45 +175,78 @@
     letter-spacing: 0.5px;
 }
 
-.author-panel-wrapper {
+.main-author-panel-wrapper {
     margin-left: auto;
     display: flex;
     justify-content: flex-end;
 }
 
 /* ── 토글 버튼 ── */
-.panel-resize-handle {
+.main-panel-toggle-btn {
+    position: absolute;
+    right: 16px;
+    padding: 6px 20px;
+    height: 32px;
+    border-radius: 20px;
+    border: 1.5px solid transparent;
+    background: transparent;
+    color: var(--theme-color);
+    font-size: 17px;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 100vh;
-    font-size: 24px;
-    color: var(--text-muted);
-    cursor: col-resize;
-    background: transparent;
+    transition: border-color 0.2s, background 0.2s;
 }
 
-.panel-resize-handle:hover {
-    background: color-mix(in srgb, var(--theme-color) 25%, transparent);
+.main-panel-toggle-btn:hover {
+    border-color: color-mix(in srgb, var(--theme-color) 55%, transparent);
+    background: color-mix(in srgb, var(--theme-color) 12%, transparent);
 }
 
-.author-panel-slide {
-    flex: 0 0 300px;
-    min-height: 100vh;
+.main-author-panel-slide {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 400px;
+    height: 100vh;
     overflow: hidden;
-    background: var(--card-main);
-    border-left: 1px solid rgba(255, 255, 255, 0.12);
-    transition: none;
+    background: color-mix(in srgb, var(--theme-color) 10%, var(--card-main));
+    border-left: 1.5px solid color-mix(in srgb, var(--theme-color) 30%, transparent);
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    z-index: 100;
 }
 
-/* 라이트 테마(한여름·김도현): 오른쪽 사이드바를 배경색과 맞춤(흰 카드 → 배경) */
-:root[data-author="author3"] .author-panel-slide,
-:root[data-author="author4"] .author-panel-slide {
-    background: var(--bg-main);
+.main-author-panel-slide--open {
+    transform: translateX(0);
+}
+
+.main-panel-close-btn {
+    align-self: flex-end;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.main-panel-close-btn:hover {
+    color: var(--theme-color);
+    background: color-mix(in srgb, var(--theme-color) 12%, transparent);
+}
+
+/* 라이트 테마(한여름·김도현) */
+:root[data-author="author3"] .main-author-panel-slide,
+:root[data-author="author4"] .main-author-panel-slide {
+    background: color-mix(in srgb, var(--theme-color) 6%, var(--card-main));
     border-left: 1px solid color-mix(in srgb, var(--theme-color) 22%, transparent);
 }
 
-.author-panel {
+.main-author-panel {
     width: 100%;
     height: 100%;
     padding: 16px;
