@@ -401,7 +401,11 @@ export default function Chat() {
     setLoadingHistory(true);
     getSession(chatId)
       .then(session => {
-        if (session?.author_id) setAuthorId(session.author_id);  // 진짜 작가 id로 테마 확정
+        if (session?.author_id) {
+          setAuthorId(session.author_id);
+          const idx = AUTHOR_IDS.indexOf(Number(session.author_id));
+          if (idx !== -1) setCurrentAuthorIdx(idx);
+        }
         return Promise.all([
           getWorld(session.world_id),
           getCharacters(session.world_id),
@@ -769,7 +773,7 @@ export default function Chat() {
 
   async function handleEnd() {
     if (!chatId || chatId === 'room_001') { toast('유효한 세션이 없습니다.', 'error'); return; }
-    if (!window.confirm('채팅을 종료하고 대화 로그를 저장할까요?')) return;
+    if (!window.confirm('소설을 완결내시겠습니까?\n완결 후에는 이어쓰기가 불가합니다.')) return;
 
     const MIN_END_DURATION = 10000;
     const startedAt = Date.now();
@@ -832,9 +836,14 @@ export default function Chat() {
               />
               <span className="mode-switcher__label">{converting ? '변환 중' : '참여형'}</span>
             </div>
-            <button className="editor-save-btn" onClick={handleEnd} disabled={ending || converting}>
-              {ending ? '저장 중...' : '저장'}
-            </button>
+            <div className="save-btn-group">
+              <button className="editor-save-btn" onClick={() => navigate('/storylist')} disabled={ending || converting}>
+                저장
+              </button>
+              <button className="editor-save-btn editor-save-btn--complete" onClick={handleEnd} disabled={ending || converting}>
+                {ending ? '완결 중...' : '완결'}
+              </button>
+            </div>
             <button
               className="editor-back-btn"
               onClick={() => navigate('/worldedit', { state: { worldId: world?.id, chatId, authorId, from: 'chat' } })}

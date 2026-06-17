@@ -1,10 +1,11 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread, addGlossaryTerm } from '../../lib/chatApi';
+import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread, addGlossaryTerm, completeSession } from '../../lib/chatApi';
 import { API_BASE_URL } from '../../lib/apiBase';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
+import { toast } from '../../lib/toast';
 import AuthorPanel from '../../components/AuthorPanel';
 import './ui.css';
 
@@ -32,6 +33,7 @@ export default function Editor() {
   // ── 에디터 상태 ───────────────────────────────────────────
   const [content, setContent] = useState('');
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'saving' | 'unsaved'
+  const [ending, setEnding] = useState(false);
   const [world, setWorld] = useState(null);
   const [dbCharacters, setDbCharacters] = useState([]);
 
@@ -165,6 +167,20 @@ export default function Editor() {
     navigate('/chat', { state: { chatId, authorId, manuscriptContent: content } });
   }
 
+  async function handleComplete() {
+    if (!chatId) { return; }
+    if (!window.confirm('소설을 완결내시겠습니까?\n완결 후에는 이어쓰기가 불가합니다.')) return;
+    setEnding(true);
+    try {
+      await saveDraft();
+      await completeSession(chatId);
+      navigate(`/read/${chatId}`, { state: { authorId } });
+    } catch (err) {
+      toast(`완결 처리 실패: ${err.message}`, 'error');
+      setEnding(false);
+    }
+  }
+
   const saveLabel = saveStatus === 'saving' ? '저장 중...' : saveStatus === 'unsaved' ? '저장 안됨' : '저장됨';
 
   // ── 렌더 ─────────────────────────────────────────────────
@@ -187,7 +203,12 @@ export default function Editor() {
               />
               <span className="mode-switcher__label">집필형</span>
             </div>
-            <button className="editor-save-btn" onClick={saveDraft} disabled={saveStatus === 'saving'}>저장</button>
+            <div className="save-btn-group">
+              <button className="editor-save-btn" onClick={saveDraft} disabled={saveStatus === 'saving' || ending}>저장</button>
+              <button className="editor-save-btn editor-save-btn--complete" onClick={handleComplete} disabled={ending}>
+                {ending ? '완결 중...' : '완결'}
+              </button>
+            </div>
             <button
               className="editor-back-btn"
               onClick={() => navigate('/worldedit', { state: { worldId: world?.id, chatId, authorId, from: 'editor' } })}
