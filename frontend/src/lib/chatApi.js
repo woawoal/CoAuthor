@@ -139,7 +139,12 @@ export async function generateNovel(sessionId) {
   const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/novel/generate`, {
     method: 'POST',
   });
-  if (!res.ok) throw new Error('소설 저장 실패');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.detail || '소설 생성 실패');
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -153,7 +158,11 @@ export async function convertToNovel(sessionId) {
 
 export async function getNovel(sessionId) {
   const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/novel`);
-  if (!res.ok) throw new Error('소설 조회 실패');
+  if (!res.ok) {
+    const err = new Error('소설 조회 실패');
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 

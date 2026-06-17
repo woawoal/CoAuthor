@@ -157,11 +157,13 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
         addr_lines = []
         for c in chars:
             rules = getattr(c, 'address_rules', None) or []
+            logger.info("[ADDRESS] %s address_rules=%s", c.name, rules)
             for rule in rules:
                 target_name = rule.get("target_name", "")
                 address = rule.get("address", "")
                 if target_name and address:
                     addr_lines.append(f"  {c.name} → {target_name}: \"{address}\"")
+        logger.info("[ADDRESS] addr_lines=%s", addr_lines)
         if addr_lines:
             parts.append(ADDRESS_RULE_HEADER + "\n".join(addr_lines))
     if persona_id == "charoun" and world:
