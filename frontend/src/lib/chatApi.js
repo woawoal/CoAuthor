@@ -119,6 +119,14 @@ export function connectChatStream(
   return es;
 }
 
+export async function restartSession(sessionId) {
+  const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/restart`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('새로하기 실패');
+  return res.json();
+}
+
 export async function completeSession(sessionId) {
   const res = await fetch(`${API_BASE_URL}/sessions/${sessionId}/complete`, {
     method: 'PATCH',
@@ -208,6 +216,16 @@ export async function saveMemos(chatId, memos) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ memos }),
   });
+}
+
+export async function lyricApply(chatId, query, mode = 'transform') {
+  const res = await fetch(`${API_BASE_URL}/chats/${chatId}/author/lyric-apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, mode }),
+  });
+  if (!res.ok) throw new Error('가사 적용 실패');
+  return res.json();
 }
 
 export async function getTasteRecommend(chatId, userId, authorId = 'baekya') {

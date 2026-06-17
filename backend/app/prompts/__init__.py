@@ -8,6 +8,8 @@ from app.prompts.story import (  # noqa: F401
     CRITICAL_OUTPUT_RULE,
     INPUT_RULES,
     OUTPUT_RULES,
+    PROGRESS_RULE,
+    REACTION_PRIORITY_RULE,
     WRITER_STYLE_RULE,
     CONSISTENCY_SYSTEM,
 )
@@ -60,7 +62,6 @@ def parse_ai_response(raw: str) -> dict:
             "dialogue":              data.get("dialogue") or "",
             "protagonist_dialogue":  data.get("protagonist_dialogue") or "",
             "state_changes":         data.get("state_changes") or _default_state,
-            "story_phase":           data.get("story_phase") or "",
             "internal_note":         data.get("internal_note") or "",
             "out_of_genre":          bool(data.get("out_of_genre")),
             "genre_note":            data.get("genre_note") or "",
@@ -72,7 +73,7 @@ def parse_ai_response(raw: str) -> dict:
     def _grab(field: str) -> str:
         m = re.search(
             rf'"{field}"\s*:\s*"?(.*?)"?\s*'
-            rf'(?=,\s*\n?\s*"(?:narration|dialogue|state_changes|story_phase|internal_note)"|\n?\s*\}})',
+            rf'(?=,\s*\n?\s*"(?:narration|dialogue|state_changes|internal_note)"|\n?\s*\}})',
             cleaned, re.DOTALL,
         )
         return m.group(1).strip().strip('"').rstrip(",").strip() if m else ""
@@ -84,7 +85,6 @@ def parse_ai_response(raw: str) -> dict:
             "speaker":       speaker,
             "dialogue":      dialogue,
             "state_changes": _default_state,
-            "story_phase":   "",
             "internal_note": "",
         }
     # 최후: 원문 전체를 narration으로

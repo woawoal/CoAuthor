@@ -282,6 +282,12 @@
     padding: 4px;
 }
 
+.char-sub-hint {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-sub, #888);
+}
+
 /* 버튼 */
 .btn-add,
 .btn-remove {
@@ -562,3 +568,57 @@
 .example-character-prompt {
     margin-left: 9px;
 }
+/* 호칭 규칙 */
+.address-rule-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.address-rule-select {
+    flex: 2;
+    min-width: 0;
+}
+
+.address-rule-arrow {
+    color: var(--text-sub, #888);
+    flex-shrink: 0;
+}
+
+.address-rule-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.btn-rule-remove {
+    background: none;
+    border: none;
+    color: var(--text-sub, #888);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    flex-shrink: 0;
+}
+
+.btn-rule-remove:hover {
+    color: #e57373;
+}
+
+.btn-add-rule {
+    background: none;
+    border: 1px dashed rgba(255,255,255,0.2);
+    border-radius: 6px;
+    color: var(--text-sub, #888);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px 10px;
+    margin-top: 4px;
+    transition: border-color 0.2s, color 0.2s;
+}
+
+.btn-add-rule:hover {
+    border-color: rgba(255,255,255,0.4);
+    color: var(--text-main, #fff);
+}
+
