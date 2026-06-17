@@ -183,6 +183,10 @@ export default function Editor() {
   }
 
   async function handleSaveConfirm() {
+    if (saveComplete && !content.trim()) {
+      toast('원고 내용이 없어 완결할 수 없어요.', 'error');
+      return;
+    }
     setShowSaveModal(false);
     if (saveComplete) {
       await handleComplete();

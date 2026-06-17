@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getSessions, deleteSession } from '../../lib/worldviewApi';
-import { completeSession } from '../../lib/chatApi';
+import { getSessions, deleteSession, getDialogues } from '../../lib/worldviewApi';
+import { completeSession, generateNovel } from '../../lib/chatApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { toast } from '../../lib/toast';
 import './storylist.css';
@@ -94,9 +94,20 @@ export default function StoryList() {
   const handleComplete = async (session) => {
     if (!window.confirm(`"${session.world_title}" 소설을 완결내시겠습니까?\n완결 후에는 이어쓰기가 불가합니다.`)) return;
     try {
+      const dialogues = await getDialogues(session.id);
+      if (!dialogues || dialogues.length === 0) {
+        toast('대화 내용이 없어 완결할 수 없어요.', 'error');
+        return;
+      }
       await completeSession(session.id);
-      setSessions(prev => prev.map(s => s.id === session.id ? { ...s, status: 'completed' } : s));
-      toast('완결되었습니다! 🎉');
+      try {
+        await generateNovel(session.id);
+        setSessions(prev => prev.map(s => s.id === session.id ? { ...s, status: 'completed', has_novel: true } : s));
+        toast('완결되었습니다! 읽기를 눌러 감상해보세요 🎉');
+      } catch {
+        setSessions(prev => prev.map(s => s.id === session.id ? { ...s, status: 'completed' } : s));
+        toast('완결됐지만 소설 생성에 실패했어요.', 'error');
+      }
     } catch (err) {
       toast(`완결 처리 실패: ${err.message}`, 'error');
     }
@@ -159,14 +170,14 @@ export default function StoryList() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {s.status === 'completed' && (
+                <button className="storylist-card__btn" onClick={() => handleResume(s)}>
+                  {s.status === 'completed' ? '수정하기' : '이어쓰기 →'}
+                </button>
+                {s.status === 'completed' && s.has_novel && (
                   <button className="storylist-card__btn storylist-card__btn--read" onClick={() => handleRead(s)}>
                     읽기
                   </button>
                 )}
-                <button className="storylist-card__btn" onClick={() => handleResume(s)}>
-                  {s.status === 'completed' ? '수정하기' : '이어쓰기 →'}
-                </button>
                 {s.status !== 'completed' && (
                   <button className="storylist-card__btn storylist-card__btn--complete" onClick={() => handleComplete(s)}>
                     완결

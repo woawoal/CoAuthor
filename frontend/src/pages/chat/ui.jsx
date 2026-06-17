@@ -780,6 +780,10 @@ export default function Chat() {
   }
 
   async function handleSaveConfirm() {
+    if (saveComplete && messages.filter(m => m.role !== 'system').length === 0) {
+      toast('대화 내용이 없어 완결할 수 없어요.', 'error');
+      return;
+    }
     setShowSaveModal(false);
     if (saveComplete) {
       await handleEnd();

@@ -33,3 +33,4 @@ class SessionListItem(BaseModel):
     status: SessionStatus
     started_at: datetime
     ended_at: datetime | None
+    has_novel: bool = False
