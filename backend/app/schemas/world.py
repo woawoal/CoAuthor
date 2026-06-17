@@ -9,6 +9,7 @@ class WorldCreate(BaseModel):
     genre: str = ""
     setting: str = ""
     rules: str | None = None
+    hidden_facts: list[str] | None = None
 
 
 class WorldUpdate(BaseModel):
@@ -17,6 +18,7 @@ class WorldUpdate(BaseModel):
     genre: str | None = None
     setting: str | None = None
     rules: str | None = None
+    hidden_facts: list[str] | None = None
 
 
 class WorldResponse(BaseModel):
@@ -27,6 +29,7 @@ class WorldResponse(BaseModel):
     genre: str
     setting: str
     rules: str | None
+    hidden_facts: list[str] | None = None
     tags: list[str] | None = None
     created_at: datetime
     updated_at: datetime

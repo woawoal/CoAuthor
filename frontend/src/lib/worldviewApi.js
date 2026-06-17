@@ -42,6 +42,7 @@ export async function createWorldview({ world, characters, authorId }) {
           role: char.role,
           personality: char.personality,
           prompt: char.system_prompt,
+          address_rules: (char.address_rules || []).filter(r => r.target_name && r.address),
           is_ai_controlled: true,
         }),
       });
@@ -141,6 +142,21 @@ export async function updateWorld(worldId, patch) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || '세계관 수정 실패');
+  }
+  return res.json();
+}
+
+/**
+ * 추리 설정 — 숨겨진 사실 LLM 자동 생성 (차로운 전용)
+ * @param {string} worldId
+ */
+export async function generateHiddenFacts(worldId) {
+  const res = await fetch(`${API_BASE_URL}/worlds/${worldId}/hidden-facts/generate`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || '숨겨진 사실 생성 실패');
   }
   return res.json();
 }

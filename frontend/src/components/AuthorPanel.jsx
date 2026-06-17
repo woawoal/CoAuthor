@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import {
-  sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos,
-  getTasteRecommend, addGlossaryTerm,
+  sendAuthorMessage, getMemos, saveMemos,
+  getTasteRecommend, addGlossaryTerm, lyricApply,
 } from '../lib/chatApi';
 import { saveSentence } from '../lib/mypageApi';
 import { getTaste, analyzeTaste } from '../lib/tasteApi';
@@ -22,8 +22,8 @@ const AUTHOR_TAGS_CHAT = [
   { label: '#세계관', prompt: null },
   { label: '#등장인물', prompt: null },
   { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
-  { label: '#추천', prompt: null },
   { label: '#취향저격ai', prompt: null },
+  { label: '#가사적용ai', prompt: null },
   { label: '#도움말', prompt: null },
 ];
 
@@ -31,8 +31,8 @@ const AUTHOR_TAGS_EDITOR = [
   { label: '#세계관', prompt: null },
   { label: '#등장인물', prompt: null },
   { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
-  { label: '#추천', prompt: null },
   { label: '#취향저격ai', prompt: null },
+  { label: '#가사적용ai', prompt: null },
 ];
 
 const TASTE_LABELS = {
@@ -40,18 +40,6 @@ const TASTE_LABELS = {
   sf: 'SF', mystery: '미스터리', horror: '호러', politics: '정치', slice_of_life: '일상',
 };
 
-function parseNumberedChoices(text) {
-  const re = /\*\*\d+\.\s+[^*\n]+\*\*/g;
-  const headers = [...text.matchAll(re)];
-  if (headers.length < 2) return null;
-  return headers.map((h, i) => {
-    const start = h.index + h[0].length;
-    const end = headers[i + 1]?.index ?? text.length;
-    const body = text.slice(start, end).replace(/^[:\s]+/, '').trim();
-    const title = h[0].replace(/\*\*/g, '').replace(/^\d+\.\s*/, '').replace(/:$/, '').trim();
-    return { title, body };
-  });
-}
 
 const AuthorPanel = forwardRef(function AuthorPanel({
   chatId,
@@ -72,6 +60,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   // Text insertion into main content area
   onApplyText,
   // Feedback button
+  getFeedbackText,
   isFeedbackDisabled = false,
   // Chat-specific
   reaction = '',
@@ -111,6 +100,9 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   const [memoInput, setMemoInput] = useState('');
   const [editingMemoId, setEditingMemoId] = useState(null);
   const [recContextMenu, setRecContextMenu] = useState({ visible: false, x: 0, y: 0, content: '' });
+  const [lyricQuery, setLyricQuery] = useState('');
+  const [lyricLoading, setLyricLoading] = useState(false);
+  const [lyricResult, setLyricResult] = useState(null); // { extracted, scene }
 
   const authorBottomRef = useRef(null);
   const memoInputRef = useRef(null);
@@ -202,28 +194,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   function prevAuthor() { onAuthorChange?.((currentAuthorIdx - 1 + AUTHOR_IDS.length) % AUTHOR_IDS.length); }
   function nextAuthor() { onAuthorChange?.((currentAuthorIdx + 1) % AUTHOR_IDS.length); }
 
-  // ── 추천 요청 ─────────────────────────────────────────────
-  async function fetchRecommendation(aiMsgId, authorCharacterId, userText, aiFeedback) {
-    const recId = `rec_${aiMsgId}`;
-    setAuthorMessages(prev => [...prev, { id: recId, role: 'ai', type: 'recommend', content: '', loading: true }]);
-    try {
-      const data = await generateAuthorRewrite(chatId, {
-        original: userText,
-        feedback: aiFeedback,
-        author_id: authorCharacterId,
-      });
-      setAuthorMessages(prev => prev.map(m => m.id === recId ? { ...m, content: data.content, loading: false } : m));
-    } catch {
-      setAuthorMessages(prev => prev.filter(m => m.id !== recId));
-    }
-  }
-
-  function handleChoiceSelect(msg, choice) {
-    setAuthorMessages(prev => prev.map(m => m.id === msg.id ? { ...m, selectedChoice: choice.title } : m));
-    fetchRecommendation(msg.id, currentAuthor.characterId, msg.userText, choice.body);
-  }
-
-  async function handleSendAuthorMessage(overrideText, { skipRecommend = false, mode: msgMode = 'chat', hideUser = false } = {}) {
+  async function handleSendAuthorMessage(overrideText, { mode: msgMode = 'chat', hideUser = false } = {}) {
     const text = (overrideText ?? authorInput).trim();
     if (!text || authorLoading) return;
     if (!overrideText) setAuthorInput('');
@@ -235,14 +206,9 @@ const AuthorPanel = forwardRef(function AuthorPanel({
         author_id: currentAuthor.characterId,
         mode: msgMode,
       });
-      const choices = parseNumberedChoices(data.content);
       setAuthorMessages(prev => [...prev, {
         id: data.messageId, role: 'ai', type: 'feedback', content: data.content,
-        ...(choices ? { choices, userText: text } : {}),
       }]);
-      if (!skipRecommend && !choices && data.shouldRecommend !== false) {
-        fetchRecommendation(data.messageId, currentAuthor.characterId, text, data.content);
-      }
     } catch (err) {
       console.error('작가 AI 오류:', err);
     } finally {
@@ -298,7 +264,10 @@ const AuthorPanel = forwardRef(function AuthorPanel({
     if (authorLoading) return;
     if (tag.label === '#세계관') { setShowWorldInfo(prev => !prev); setShowCharInfo(false); setShowHelpInfo(false); return; }
     if (tag.label === '#등장인물') { setShowCharInfo(prev => !prev); setShowWorldInfo(false); setShowHelpInfo(false); return; }
-    if (tag.label === '#추천') return;
+    if (tag.label === '#가사적용ai') {
+      setShowWorldInfo(false); setShowCharInfo(false); setShowHelpInfo(false);
+      setPanelView('lyric'); return;
+    }
     if (tag.label === '#취향저격ai') {
       setShowWorldInfo(false); setShowCharInfo(false); setShowHelpInfo(false);
       setPanelView('author'); handleTasteRecommend(); return;
@@ -406,10 +375,11 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                       (tag.label === '#도움말' && showHelpInfo)
                         ? ' author-tag--active' : ''
                     }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${
-                      tag.label === '#추천' ? ' author-tag--disabled' : ''
+                      tag.label === '#가사적용ai' ? ' author-tag--accent' : ''
+                    }${tag.label === '#가사적용ai' && panelView === 'lyric' ? ' author-tag--active' : ''
                     }`}
                     onClick={() => handleTagClick(tag)}
-                    disabled={authorLoading || tag.label === '#추천' || (tag.label === '#취향저격ai' && tasteRecommending)}
+                    disabled={authorLoading || (tag.label === '#취향저격ai' && tasteRecommending)}
                   >{tag.label === '#취향저격ai' && tasteRecommending ? '추천 중...' : tag.label}</button>
                 ))}
                 <button
@@ -480,6 +450,12 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                       <span className="world-info-card__char-name">{c.name}</span>
                       <span className="world-info-card__char-role">{c.role === 'protagonist' ? '주인공' : '조연'}</span>
                       {c.personality && <span className="world-info-card__char-desc">{c.personality}</span>}
+                      {c.prompt && (
+                        <span className="world-info-card__char-prompt">
+                          <span className="world-info-card__char-prompt-label">AI 지시문</span>
+                          {c.prompt}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -553,27 +529,6 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                         )}
                       </div>
                     );
-                    if (msg.type === 'recommend') return (
-                      <div key={msg.id} className="author-msg-group">
-                        <span className="author-msg__name author-msg__name--rec">💡 제 추천은 이래요</span>
-                        {msg.loading ? (
-                          <div className="author-msg author-msg--recommend">
-                            <div className="typing-dots"><span /><span /><span /></div>
-                          </div>
-                        ) : (
-                          <div
-                            className="author-msg author-msg--recommend"
-                            onContextMenu={e => {
-                              e.preventDefault();
-                              setRecContextMenu({ visible: true, x: e.clientX, y: e.clientY, content: msg.content });
-                            }}
-                            title={mode === 'chat' ? '우클릭 → 적용 / 복사' : '우클릭 → 적용하기'}
-                          >
-                            {msg.content}
-                          </div>
-                        )}
-                      </div>
-                    );
                     // feedback message
                     return (
                       <div key={msg.id} className="author-msg-group">
@@ -596,18 +551,6 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                         >
                           {msg.content}
                         </div>
-                        {msg.choices && msg.selectedChoice == null && (
-                          <div className="author-choices">
-                            {msg.choices.map((c, i) => (
-                              <button key={i} className="author-choice-btn" onClick={() => handleChoiceSelect(msg, c)}>
-                                {c.title}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {msg.selectedChoice != null && (
-                          <div className="author-choice-selected">✓ {msg.selectedChoice}</div>
-                        )}
                       </div>
                     );
                   })}
@@ -684,6 +627,78 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                 </div>
               </div>
             </>
+          ) : panelView === 'lyric' ? (
+            <div className="lyric-panel">
+              <div className="memo-view__header">
+                <span>🎵 가사적용 AI</span>
+                <button className="memo-view__back" onClick={() => { setPanelView('author'); setLyricResult(null); }}>← 돌아가기</button>
+              </div>
+
+              <div className="lyric-panel__desc">
+                노래 제목이나 분위기를 입력하면<br />
+                감정을 현재 이야기에 녹여드립니다.
+              </div>
+
+              <textarea
+                className="lyric-panel__input"
+                placeholder={"예) NewJeans - Hype Boy\n예) 기다림, 새벽, 고독한 느낌"}
+                value={lyricQuery}
+                rows={3}
+                onChange={e => setLyricQuery(e.target.value)}
+                disabled={lyricLoading}
+              />
+
+              <div className="lyric-panel__actions">
+                <button
+                  className="lyric-panel__btn lyric-panel__btn--transform"
+                  disabled={lyricLoading || !lyricQuery.trim()}
+                  onClick={async () => {
+                    setLyricLoading(true);
+                    setLyricResult(null);
+                    try {
+                      const data = await lyricApply(chatId, lyricQuery.trim(), 'transform');
+                      setLyricResult(data);
+                    } catch { /* silent */ }
+                    finally { setLyricLoading(false); }
+                  }}
+                >✏️ 현재 장면 변환</button>
+                <button
+                  className="lyric-panel__btn lyric-panel__btn--recommend"
+                  disabled={lyricLoading || !lyricQuery.trim()}
+                  onClick={async () => {
+                    setLyricLoading(true);
+                    setLyricResult(null);
+                    try {
+                      const data = await lyricApply(chatId, lyricQuery.trim(), 'recommend');
+                      setLyricResult(data);
+                    } catch { /* silent */ }
+                    finally { setLyricLoading(false); }
+                  }}
+                >💡 어울리는 장면 추천</button>
+              </div>
+
+              {lyricLoading && (
+                <div className="lyric-panel__loading">
+                  <div className="typing-dots"><span /><span /><span /></div>
+                  <span>감정 분석 중...</span>
+                </div>
+              )}
+
+              {lyricResult && !lyricLoading && (
+                <div className="lyric-panel__result">
+                  <div className="lyric-panel__tags">
+                    {lyricResult.extracted?.emotion && <span className="lyric-tag">💭 {lyricResult.extracted.emotion}</span>}
+                    {lyricResult.extracted?.mood && <span className="lyric-tag">🌙 {lyricResult.extracted.mood}</span>}
+                    {lyricResult.extracted?.theme && <span className="lyric-tag">📖 {lyricResult.extracted.theme}</span>}
+                  </div>
+                  <div className="lyric-panel__scene">{lyricResult.scene}</div>
+                  <button
+                    className="lyric-panel__use-btn"
+                    onClick={() => onApplyText?.(lyricResult.scene)}
+                  >이 장면 사용하기 →</button>
+                </div>
+              )}
+            </div>
           ) : panelView === 'proof' ? (
             <div className="memo-view">
               <div className="memo-view__header">

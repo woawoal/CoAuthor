@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import '../../index.css';
 import './worldview.css';
 import { WriteIcon, ExitIcon, ChevronRight, ShuffleIcon } from '../../components/icons';
-import { createWorldview } from '../../lib/worldviewApi';
+import { createWorldview, generateHiddenFacts } from '../../lib/worldviewApi';
 import { getAuthor, getQuestions } from '../../lib/authorsApi';
 import { getRandomWorldExamples } from '../../lib/worldExampleApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
@@ -39,7 +39,8 @@ function Worldview() {
         name: '',
         role: index === 0 ? 'protagonist' : 'supporting',
         personality: '',
-        system_prompt: ''
+        system_prompt: '',
+        address_rules: [],
     });
 
     const [characters, setCharacters] = useState([createNewCharacter(0)]);
@@ -47,6 +48,7 @@ function Worldview() {
     const [isLoading, setIsLoading] = useState(true);
     const [showIntro, setShowIntro] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [savingStep, setSavingStep] = useState('');
     const currentDialogue = questions.find((question) => question.step === currentStep);
     const [look, setLook] = useState({ x: 0, y: 0 });
     const stateRef = React.useRef(null);
@@ -188,6 +190,7 @@ function Worldview() {
             .map(({ id, ...charData }) => charData);
 
         setSaving(true);
+        setSavingStep('세계관 저장 중...');
 
         try {
             const { worldId, sessionId } = await createWorldview({
@@ -195,11 +198,22 @@ function Worldview() {
                 characters: validCharacters,
                 authorId,
             });
+
+            if (authorId === 2) {
+                setSavingStep('추리 설정 생성 중...');
+                try {
+                    await generateHiddenFacts(worldId);
+                } catch {
+                    // 생성 실패해도 진행
+                }
+            }
+
             navigate('/chat', { state: { worldId, chatId: sessionId, authorId } });
         } catch (err) {
             toast(`저장 실패: ${err.message}`, "error");
         } finally {
             setSaving(false);
+            setSavingStep('');
         }
     };
 
@@ -461,6 +475,59 @@ function Worldview() {
                                             }
                                         />
                                     </div>
+
+                                    {/* 호칭 규칙 */}
+                                    <div className="flex-2">
+                                        <label className="char-sub-label">호칭 규칙 <span className="char-sub-hint">({char.name || '이 캐릭터'}이 상대를 부르는 호칭)</span></label>
+                                        {(char.address_rules || []).map((rule, rIdx) => (
+                                            <div key={rIdx} className="address-rule-row">
+                                                <select
+                                                    className="form-select address-rule-select"
+                                                    value={rule.target_name}
+                                                    onChange={(e) => {
+                                                        const updated = [...(char.address_rules || [])];
+                                                        updated[rIdx] = { ...rule, target_name: e.target.value };
+                                                        handleCharacterChange(char.id, 'address_rules', updated);
+                                                    }}
+                                                >
+                                                    <option value="">상대 캐릭터</option>
+                                                    {characters
+                                                        .filter(c => c.id !== char.id && c.name.trim())
+                                                        .map(c => (
+                                                            <option key={c.id} value={c.name}>{c.name}</option>
+                                                        ))}
+                                                </select>
+                                                <span className="address-rule-arrow">를</span>
+                                                <input
+                                                    type="text"
+                                                    className="form-input address-rule-input"
+                                                    placeholder="이렇게 부름"
+                                                    value={rule.address}
+                                                    onChange={(e) => {
+                                                        const updated = [...(char.address_rules || [])];
+                                                        updated[rIdx] = { ...rule, address: e.target.value };
+                                                        handleCharacterChange(char.id, 'address_rules', updated);
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    className="btn-rule-remove"
+                                                    onClick={() => {
+                                                        const updated = (char.address_rules || []).filter((_, i) => i !== rIdx);
+                                                        handleCharacterChange(char.id, 'address_rules', updated);
+                                                    }}
+                                                >✕</button>
+                                            </div>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            className="btn-add-rule"
+                                            onClick={() => {
+                                                const updated = [...(char.address_rules || []), { target_name: '', address: '' }];
+                                                handleCharacterChange(char.id, 'address_rules', updated);
+                                            }}
+                                        >+ 호칭 추가</button>
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -578,7 +645,7 @@ function Worldview() {
                                         onClick={handleSave}
                                         disabled={saving}
                                     >
-                                        <WriteIcon /> {saving ? '저장 중...' : '세계관 생성'}
+                                        <WriteIcon /> {saving ? (savingStep || '저장 중...') : '세계관 생성'}
                                     </button>
                                 ) : (
                                     <button

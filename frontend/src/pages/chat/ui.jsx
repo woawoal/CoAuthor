@@ -2,7 +2,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
-  sendMessage, connectChatStream, completeSession, generateNovel, convertToNovel,
+  sendMessage, connectChatStream, completeSession, restartSession, generateNovel, convertToNovel,
   getSuggestions, getVoiceSuggestions, getAuthorReaction, proofread,
   getErrorWarmup, deleteMessage, setGenreOpen,
 } from '../../lib/chatApi';
@@ -72,28 +72,6 @@ const DEMO_REACTIONS = {
   },
 };
 
-function buildWorldContext(world, characters) {
-  if (!world) return '';
-  const lines = [];
-  if (world.title) lines.push(`제목: ${world.title}`);
-  if (world.genre) lines.push(`장르: ${world.genre}`);
-  if (world.description) lines.push(`배경: ${world.description}`);
-  if (world.setting) lines.push(`공간: ${world.setting}`);
-  if (world.rules) lines.push(`규칙: ${world.rules}`);
-  if (characters.length > 0) {
-    lines.push('등장인물:');
-    characters.forEach(c => {
-      const roleKo = c.role === 'protagonist' ? '주인공' : '조연';
-      lines.push(`- ${c.name} (${roleKo})${c.personality ? ': ' + c.personality : ''}`);
-    });
-    const directives = characters.filter(c => c.prompt && c.prompt.trim());
-    if (directives.length > 0) {
-      lines.push('[캐릭터 행동 지시문 — 반드시 따를 것]');
-      directives.forEach(c => lines.push(`- ${c.name}: ${c.prompt.trim()}`));
-    }
-  }
-  return lines.join('\n');
-}
 
 function formatText(text) {
   return text
@@ -129,7 +107,8 @@ function CharMessage({ msg, characterName, hasBookmark, onType, onDone }) {
   // 복원 메시지는 narration이 ""(빈 문자열)이어도 text로 fallback하지 않음 (?? 사용)
   const rawNarration = msg.isRestored ? (msg.narration ?? msg.text ?? '') : (msg.narration || msg.text || '');
   const narration = formatText(rawNarration);
-  const hasDialogue = !!msg.dialogue;
+  const dialogue = (msg.dialogue || '').replace(/\n{2,}/g, '\n').trim();
+  const hasDialogue = !!dialogue;
   const charName = msg.speaker || characterName || msg.name;
   const [narrDone, setNarrDone] = useState(!live || !narration);
 
@@ -148,7 +127,7 @@ function CharMessage({ msg, characterName, hasBookmark, onType, onDone }) {
           <span className="badge">{charName}</span>
           <div className="bubble bubble--char">
             {hasBookmark && <span className="bubble-bookmark">🔖</span>}
-            &ldquo;{live ? <TypedText text={msg.dialogue} onType={onType} onDone={onDone} /> : msg.dialogue}&rdquo;
+            &ldquo;{live ? <TypedText text={dialogue} onType={onType} onDone={onDone} /> : dialogue}&rdquo;
           </div>
         </div>
       )}
@@ -349,7 +328,7 @@ export default function Chat() {
   const [ending, setEnding] = useState(false);
   const [converting, setConverting] = useState(false);
 
-  const [importedNarration] = useState(() => {
+  const [importedNarration, setImportedNarration] = useState(() => {
     if (manuscriptContent) return manuscriptContent;
     if (chatId && chatId !== 'room_001') return localStorage.getItem(`manuscript_${chatId}`) ?? null;
     return null;
@@ -399,6 +378,8 @@ export default function Chat() {
   useEffect(() => {
     if (!chatId || chatId === 'room_001') { setLoadingHistory(false); return; }
     setLoadingHistory(true);
+    setMessages([]);
+    setImportedNarration(null);
     getSession(chatId)
       .then(session => {
         if (session?.author_id) {
@@ -560,8 +541,7 @@ export default function Chat() {
       } catch { /* 폴백 */ }
     }
 
-    const worldContext = buildWorldContext(world, dbCharacters);
-    const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: worldContext });
+    const data = await getSuggestions(chatId, { character_id: storyAuthor.characterId, world_context: '' });
     setSuggestions(data.suggestions ?? []);
   }
 
@@ -718,8 +698,6 @@ export default function Chat() {
     setMessages(prev => [...prev, { id: streamMsgId, _key: streamMsgId, role: 'character', name: storyAuthor.displayName, text: '' }]);
     setStreaming(true);
 
-    const worldContext = buildWorldContext(world, dbCharacters);
-
     // 50초 내 응답 없으면 로딩 해제
     const streamTimeoutId = setTimeout(() => {
       if (esRef.current) { esRef.current.close(); esRef.current = null; }
@@ -737,7 +715,7 @@ export default function Chat() {
     let streamed = false;                               // 토큰 스트리밍 발생 여부(최종 reply 재타이핑 방지)
     esRef.current = connectChatStream(
       chatId,
-      { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: worldContext, speaker: activeSpeaker?.name ?? '', check_consistency: consistencyOn },
+      { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: '', speaker: activeSpeaker?.name ?? '', check_consistency: consistencyOn },
       ({ narration, speaker, dialogue, protagonist_dialogue, out_of_genre, genre_note, consistency }) => {
         lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
@@ -803,6 +781,19 @@ export default function Chat() {
     }, remainingDelay);
   }
 
+  async function handleRestart() {
+    if (!window.confirm('현재 대화를 저장하고 같은 세계관으로 새로 시작할까요?')) return;
+    if (esRef.current) { esRef.current.close(); esRef.current = null; }
+    setStreaming(false);
+    try {
+      const newSession = await restartSession(chatId);
+      localStorage.removeItem(`manuscript_${chatId}`);
+      navigate('/chat', { state: { worldId: newSession.world_id, chatId: newSession.id, authorId } });
+    } catch (err) {
+      toast(`새로하기 실패: ${err.message}`, 'error');
+    }
+  }
+
   async function handleSwitchToEditor() {
     setConverting(true);
     try {
@@ -850,6 +841,7 @@ export default function Chat() {
               disabled={!world?.id}
               title="세계관 수정 — 다음 대화부터 반영"
             >✎ 세계관</button>
+            <button className="editor-back-btn restart-btn" onClick={handleRestart} disabled={ending || converting}>새로하기</button>
             <button className="editor-back-btn" onClick={() => navigate('/storylist')}>목록</button>
           </div>
         </div>

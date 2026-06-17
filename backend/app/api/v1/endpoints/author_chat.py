@@ -28,6 +28,7 @@ from app.services.chat_context import (
 from app.services import llm, memory, personalize
 from app.prompts.author import build_author_messages
 from app.core.personas import build_feedback_prompt, build_rewrite_prompt
+from app.prompts.lyric import LYRIC_EXTRACT_SYSTEM, build_lyric_scene_system
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -111,16 +112,14 @@ class AuthorRewriteRequest(BaseModel):
 
 def _parse_suggest_marker(raw: str) -> tuple[str, bool]:
     """응답에서 [SUGGEST:YES/NO] 마커를 파싱하고 제거된 텍스트와 플래그를 반환."""
-    lines = raw.rstrip().splitlines()
-    suggest = True  # 마커 없으면 기본 YES
-    if lines:
-        last = lines[-1].strip()
-        if last == "[SUGGEST:NO]":
-            suggest = False
-            lines = lines[:-1]
-        elif last == "[SUGGEST:YES]":
-            lines = lines[:-1]
-    return "\n".join(lines).strip(), suggest
+    import re
+    suggest = True
+    # 텍스트 어디에 붙어있든 제거 (인라인 포함)
+    no_match = re.search(r'\[SUGGEST:NO\]', raw)
+    if no_match:
+        suggest = False
+    cleaned = re.sub(r'\s*\[SUGGEST:(?:YES|NO)\]', '', raw).strip()
+    return cleaned, suggest
 
 
 class AuthorMessageResponse(BaseModel):
@@ -354,6 +353,71 @@ async def taste_recommend(
 
     logger.info("취향저격 추천 - chat_id=%s 추천수=%d", chat_id, len(result.recommendations))
     return result
+
+
+class LyricApplyRequest(BaseModel):
+    query: str                  # 노래 제목 or 가사 분위기 힌트
+    mode: str = "transform"     # "transform" | "recommend"
+
+
+class LyricApplyResponse(BaseModel):
+    extracted: dict
+    scene: str
+
+
+@router.post("/{chat_id}/author/lyric-apply")
+async def lyric_apply(
+    chat_id: str,
+    body: LyricApplyRequest,
+    db: AsyncSession = Depends(get_db),
+) -> LyricApplyResponse:
+    """가사적용 AI — 노래 감정을 소설 장면으로 변환/추천."""
+    if not body.query.strip():
+        raise HTTPException(status_code=400, detail="query가 비어 있습니다.")
+
+    world_context, story_summary = await _get_story_context(chat_id, db)
+
+    # Redis summary 우선
+    redis_summary = await redis_client.get(key_summary(chat_id))
+    if redis_summary:
+        story_summary = redis_summary
+
+    # 최근 스토리 대화 (변환 모드에서 "현재 장면" 파악용)
+    recent_turns = await _get_recent_story_turns(chat_id, db, limit=6)
+
+    # ── Step 1: 노래 감정 추출 (가사 원문 미사용) ──────────────
+    try:
+        raw_extract = await llm.generate(
+            LYRIC_EXTRACT_SYSTEM,
+            [{"role": "user", "content": body.query}],
+            json_mode=True,
+        )
+        extracted: dict = json.loads(raw_extract) if isinstance(raw_extract, str) else raw_extract
+    except Exception as e:
+        logger.error("가사 감정 추출 실패: %s", e)
+        raise HTTPException(status_code=500, detail="감정 분석에 실패했습니다.")
+
+    # ── Step 2: 장면 생성 (추출된 메타데이터만 사용, 가사 미전달) ──
+    scene_system = build_lyric_scene_system(body.mode, world_context, story_summary, recent_turns)
+    emotion_summary = (
+        f"감정: {extracted.get('emotion', '')}\n"
+        f"주제: {extracted.get('theme', '')}\n"
+        f"분위기: {extracted.get('mood', '')}\n"
+        f"강도: {extracted.get('intensity', 0.7)}\n"
+        f"서사: {extracted.get('narrative', '')}"
+    )
+    try:
+        scene = await llm.generate(
+            scene_system,
+            [{"role": "user", "content": f"[감정 데이터]\n{emotion_summary}"}],
+            json_mode=False,
+        )
+    except Exception as e:
+        logger.error("장면 생성 실패: %s", e)
+        raise HTTPException(status_code=500, detail="장면 생성에 실패했습니다.")
+
+    logger.info("가사적용 - chat_id=%s mode=%s", chat_id, body.mode)
+    return LyricApplyResponse(extracted=extracted, scene=scene.strip())
 
 
 @router.get("/{chat_id}/author/history")

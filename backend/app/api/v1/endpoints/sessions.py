@@ -74,6 +74,32 @@ async def delete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_d
     logger.info("세션 삭제: %s", session_id)
 
 
+@router.post("/{session_id}/restart", response_model=SessionResponse, status_code=201)
+async def restart_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """현재 세션을 완료 처리하고, 같은 세계관·주인공으로 새 세션을 생성해 반환."""
+    result = await db.execute(select(Session).where(Session.id == session_id))
+    old = result.scalar_one_or_none()
+    if not old:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+
+    if old.status != SessionStatus.COMPLETED:
+        old.status = SessionStatus.COMPLETED
+        old.ended_at = datetime.utcnow()
+        logger.info("세션 완료(restart): %s", session_id)
+
+    new_session = Session(
+        world_id=old.world_id,
+        user_id=old.user_id,
+        protagonist_id=old.protagonist_id,
+        author_id=old.author_id,
+    )
+    db.add(new_session)
+    await db.flush()
+    await db.refresh(new_session)
+    logger.info("새 세션 생성(restart): %s → %s", session_id, new_session.id)
+    return new_session
+
+
 @router.patch("/{session_id}/complete", response_model=SessionResponse)
 async def complete_session(session_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Session).where(Session.id == session_id))
