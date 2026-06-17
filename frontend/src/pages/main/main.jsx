@@ -1,5 +1,5 @@
 /* src/pages/main/main.jsx */
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../../index.css';
 import './main.css';
@@ -8,6 +8,7 @@ import { getAuthors } from '../../lib/authorsApi';
 import { getProfile } from '../../lib/mypageApi';
 import { authClient, syncCurrentUser } from '../../lib/auth';
 import { toast } from '../../lib/toast';
+import SettingsModal from '../../components/SettingsModal';
 
 const FALLBACK_AUTHORS = [
     { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: "공포는 보여주는 게 아니라 안 보여주는 것이다", image: "/assets/author1/author1.png", video: "/assets/author1/author1.mp4" },
@@ -44,7 +45,8 @@ function Main() {
     const [isLoading, setIsLoading] = useState(true);
     const [showVoicePopup, setShowVoicePopup] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
-    const [showPanel, setShowPanel] = useState(false);
+    const [showPanel, setShowPanel] = useState(false);      // ygy: 사이드바 토글
+    const [settingsOpen, setSettingsOpen] = useState(false); // dev(#109): 환경설정 모달
 
     useEffect(() => {
         const checkLogin = async () => {
@@ -252,6 +254,9 @@ function Main() {
                     >
                         내 소설 목록
                     </button>
+                    <button className="btn" onClick={() => setSettingsOpen(true)}>
+                        환경설정
+                    </button>
                     {isAdmin && (
                         <button
                             className="btn"
@@ -271,6 +276,8 @@ function Main() {
                     )}
                 </div>
             </div>
+
+            <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
         </div>
     );
 }
