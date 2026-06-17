@@ -2,6 +2,170 @@
 
 ---
 
+## 2026-06-17
+
+### 작업 내용
+
+#### 1. 메인 페이지 사이드바 — 드래그 방식 → 토글 버튼 방식 전환
+
+**배경**: 메인 페이지 우측 개인 섹션(내 서재·내 소설 목록 등)이 드래그로 너비를 늘렸다 줄였다 하는 방식이었는데, 버튼 클릭으로 열고 닫는 방식으로 변경 요청.
+
+**구현**
+- 드래그 관련 state·핸들러 전부 제거 (`isDraggingPanel`, `panelRef`, `handleMouseMove`, `handleMouseUp`, `handlePanelDragStart`)
+- `showPanel` state 추가, 헤더 안에 토글 버튼 배치 → 클릭 시 `author-panel-slide`가 `transform: translateX()`로 슬라이드 인/아웃
+- 패널 안에 닫기 버튼(✕) 추가
+- 토글 버튼: 처음엔 원형 → 가로로 늘림 → 평소엔 테두리 없이 SVG 3줄(☰) 아이콘만 보이다 호버 시 pill 테두리 + 배경색이 나타나는 형태로 마무리
+
+---
+
+#### 2. 버그: 메인 페이지 CSS 클래스 충돌로 채팅 페이지 피드백 패널이 먹통됨
+
+**문제**: 메인 페이지 토글 버튼 작업 후 "소설작성 페이지에서 피드백 창이 안 열린다"는 보고.
+
+**원인**: `main.css`에 새로 추가한 `.panel-toggle-btn`, `.author-panel-slide`, `.author-panel` 클래스명이 `components/AuthorPanel.jsx`(채팅·에디터 우측 작가 패널)가 쓰는 클래스명과 동일. CSS는 전역이라 두 페이지를 모두 방문하면 메인 페이지의 `.author-panel-slide { transform: translateX(100%); }` 규칙이 `AuthorPanel`에도 적용되어 패널이 항상 화면 밖으로 밀려남.
+
+**수정**: 메인 페이지 전용 클래스를 전부 `main-` 접두사로 분리 (`main-panel-toggle-btn`, `main-author-panel-slide`, `main-author-panel`, `main-panel-close-btn` 등).
+
+---
+
+#### 3. 버그: 다크 테마에서 메인 페이지 패널 배경이 반투명
+
+**문제**: 백야·차로운(다크 테마) 선택 시 메인 페이지 토글 패널을 열면 배경이 비쳐서 뒤 카드가 겹쳐 보임.
+
+**원인**: 패널 배경이 `color-mix(in srgb, var(--theme-color) 8%, var(--bg-main))`였는데 다크 테마의 `--bg-main`이 사실상 투명에 가까운 값.
+
+**수정**: 불투명 색상인 `--card-main`을 베이스로 변경 (`color-mix(in srgb, var(--theme-color) 10%, var(--card-main))`), 라이트 테마 오버라이드도 동일하게 통일.
+
+---
+
+#### 4. 버그: 이어쓰기 시 항상 백야 작가로 표시됨
+
+**문제**: 한여름 등 다른 작가와 작업하던 소설을 "내 소설 목록"에서 이어쓰기해도 우측 작가 패널이 항상 백야(author1)로 뜸.
+
+**원인**: `chat/ui.jsx`에서 세션 로드 후 `if (session?.author_id) setAuthorId(session.author_id)`로 테마용 `authorId`는 갱신하지만, 우측 패널이 어떤 작가를 보여줄지 결정하는 `currentAuthorIdx`는 컴포넌트 마운트 시점에 한 번만 `useState`로 초기화되고 이후 갱신되지 않음. 세션의 실제 `author_id`가 늦게 도착해도 반영이 안 됨.
+
+**수정**: 세션 로드 useEffect에서 `session.author_id`를 받으면 `AUTHOR_IDS.indexOf(...)`로 인덱스를 다시 계산해 `setCurrentAuthorIdx`도 함께 호출하도록 수정 (`frontend/src/pages/chat/ui.jsx`).
+
+---
+
+#### 5. 기능: 소설 완결 버튼 추가 (내 소설 목록 / 채팅창 / 집필형 에디터)
+
+**배경**: 완결 처리를 어디서든 할 수 있도록 — 목록에서 바로 완결 가능, 글 쓰는 화면에서도 저장과 별개로 완결 가능.
+
+**구현**
+- **내 소설 목록**(`storylist.jsx`): 진행 중인 세션에 `완결` 버튼 추가(삭제 버튼은 유지). 확인창 → `completeSession()` 호출 → 상태를 `completed`로 갱신. 완결된 소설은 `이어쓰기 →` 대신 `수정하기`로 바뀌고 클릭 시 `/editor`(집필형)로 이동
+- **채팅창**(`chat/ui.jsx`): 기존 단일 `저장` 버튼을 `저장`(완결 없이 목록으로 이동) / `완결`(확인창 → `completeSession` + `generateNovel` → 읽기 페이지로 이동) 두 개로 분리
+- **집필형 에디터**(`editor/ui.jsx`): 기존엔 자동저장 + `저장` 버튼만 있었음. `완결` 버튼 추가 — 확인창 → 초안 저장(`saveDraft`) → `completeSession` → 읽기 페이지로 이동. `editor/ui.css`가 `@import '../chat/ui.css'`로 스타일을 공유하므로 별도 CSS 작업 불필요
+
+**수정 파일**
+- `frontend/src/pages/storylist/storylist.jsx`, `storylist.css`
+- `frontend/src/pages/chat/ui.jsx`, `ui.css`
+- `frontend/src/pages/editor/ui.jsx`
+- `frontend/src/pages/main/main.jsx`, `main.css`
+
+---
+
+### 남은 작업
+
+- [x] 메인 페이지 사이드바 토글 버튼 전환
+- [x] 메인-채팅 CSS 클래스 충돌 버그 수정
+- [x] 다크 테마 패널 배경 투명도 버그 수정
+- [x] 이어쓰기 작가 테마 미반영 버그 수정
+- [x] 소설 완결 기능 (목록/채팅/에디터 3곳)
+- [ ] 완결된 세션을 에디터(`/editor`)에서 다시 저장할 때 상태가 `completed`로 유지되는지 백엔드 검증
+- [ ] Cloud Run 재배포 후 삽화 생성(Vertex Gemini 2.5 Flash Image) 실사용 테스트
+
+---
+
+## 2026-06-15
+
+### 작업 내용
+
+#### 1. illustration.py — fal.ai → Vertex Gemini 2.5 Flash Image 전환 (stash 충돌 해결)
+
+**배경**: `git stash pop` 과정에서 `illustration.py` 충돌 발생. upstream(dev, jyj 작업)이 fal.ai FLUX를 Vertex AI Gemini 2.5 Flash Image로 이미 교체해둔 상태였고, 가연님 stash는 이전 fal.ai 버전 기반 변경.
+
+**해결**: upstream(Vertex 버전) 채택. fal.ai는 유료에다 데이터센터 IP가 차단당하는 문제가 있었는데, Vertex는 ADC 인증이라 Cloud Run에서 별도 키 없이 동작하고 기존 GCP 크레딧으로 결제 가능.
+
+```python
+_IMAGE_MODEL = "gemini-2.5-flash-image"
+
+def _generate_image_sync(prompt: str, ratio: str) -> str:
+    from vertexai.generative_models import GenerativeModel
+    llm._ensure_vertex()   # llm.py와 동일한 vertexai.init(ADC) 재사용
+    ...
+    model = GenerativeModel(_IMAGE_MODEL)
+    resp = model.generate_content(full_prompt, generation_config={"response_modalities": ["TEXT", "IMAGE"]})
+    # 응답 이미지 바이트 → base64 data URL (별도 스토리지 불필요)
+```
+
+미사용 `from app.core.config import settings` import 제거.
+
+**수정 파일**: `backend/app/services/illustration.py`
+
+---
+
+#### 2. voice-suggest 백엔드 변경사항 되돌림
+
+**배경**: voice-suggest 관련 백엔드 동작에 문제가 있어 원인 분석 중 팀장님이 해당 부분을 처음부터 다시 작업하기로 함 → 가연님 쪽 임시 변경분을 전부 되돌리고 팀장님 작업분을 기다리기로 함.
+
+---
+
+### 남은 작업
+
+- [x] illustration.py Vertex 전환 (stash 충돌 해결)
+- [x] voice-suggest 변경분 되돌림 (팀장님 재작업 대기)
+- [ ] 삽화 생성 기능 Cloud Run 재배포 후 동작 확인
+
+---
+
+## 2026-06-14
+
+### 작업 내용
+
+#### 1. 채팅 입력 도움말(`#도움말`) 태그 추가
+
+**배경**: 작가 패널의 `#세계관`·`#에피소드` 같은 태그 옆에, 대사/독백/행동 서술 문법을 안내하는 `#도움말` 태그를 추가해 사용자가 입력 규칙을 바로 확인할 수 있게 함.
+
+**내용**: 클릭 시 카드로 4가지 입력 규칙 안내
+- 대사 → 큰따옴표 `"왜 그러는 거야?"`
+- 독백·속마음 → 작은따옴표 `'이 사람, 뭔가 숨기고 있어.'`
+- 행동·서술 → 따옴표 없이 그대로
+- `@등장인물` → 해당 인물 시점으로 전환
+
+**수정 파일**: `frontend/src/pages/chat/ui.jsx`, `ui.css`
+
+---
+
+#### 2. 삽화 생성 기능 — 백엔드 신규 구현 + 읽기 페이지 UI 연동
+
+**배경**: 완결된 소설의 특정 장면을 그림으로 만들어주는 삽화 기능. 이번엔 백엔드 엔드포인트부터 신규 구현하고 읽기 페이지에 UI를 연동.
+
+**백엔드 (`illustration.py`, 최초 버전은 fal.ai FLUX 사용)**
+- 2가지 모드: 직접 입력(사용자 장면 설명 → LLM 정제·필터 → 이미지 생성) / AI 추천(소설 내용 → LLM이 장면 후보 4종 제시 → 사용자가 선택)
+- 장면 추천: `dramatic`(핵심) / `emotional`(감정) / `foreshadowing`(복선) / `fanservice`(팬서비스) 4유형
+- 입력 필터링: 선정적·폭력적 표현 검수 후 `appropriate` / `refine_needed` / `inappropriate` 판정
+- 스타일(웹툰풍·수채화풍·흑백·실사·파스텔) × 분위기(따뜻함·어두움·몽환적·긴장감·로맨틱) × 비율(1:1·9:16·16:9) 조합 지원
+- `backend/app/api/v1/endpoints/illustrations.py` 신규 엔드포인트 + `router.py` 등록
+
+**프론트 (읽기 페이지 `read.jsx`에 모달로 연동)**
+- 모드 선택 → (직접입력 or AI추천 장면 선택) → 스타일/분위기/비율 선택 → 생성 → 결과 표시까지 단계별 모달 플로우
+- `frontend/src/lib/illustrationApi.js` 신규 — API 연동 함수
+
+**수정 파일**
+- `backend/app/api/v1/endpoints/illustrations.py`(신규), `backend/app/services/illustration.py`(신규), `backend/app/api/v1/router.py`, `backend/app/core/config.py`
+- `frontend/src/lib/illustrationApi.js`(신규), `frontend/src/pages/read/read.jsx`, `read.css`
+
+---
+
+### 남은 작업
+
+- [x] `#도움말` 태그 추가
+- [x] 삽화 생성 기능 백엔드 + 읽기 페이지 UI 연동 (fal.ai FLUX 최초 버전)
+- [ ] fal.ai 데이터센터 IP 차단 이슈 → Vertex 전환 필요 (다음날 처리)
+
+---
+
 ## 2026-06-13
 
 ### 작업 내용
