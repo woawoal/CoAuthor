@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSessions, deleteSession } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
@@ -39,14 +39,35 @@ export default function StoryList() {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showLoading, setShowLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);   // 성공적으로 불러왔는지 — 에러/미인증과 '작품 없음'을 구분
+  const [error, setError] = useState(false);
+  const retriedRef = useRef(false);
   useAuthorTheme(resolveAuthorId(null));
 
-  useEffect(() => {
-    getSessions()
-      .then(setSessions)
-      .catch(console.error)
-      .finally(() => setLoading(false));
+  // 인증 미준비(null userId→422)·DB 콜드스타트(에러/지연)를 '작품 없음'으로 오인하지 않도록:
+  // 실패하면 1회 자동 재시도(로딩 유지), 그래도 실패면 에러 안내(다시 시도) — 빈 상태는 '성공+0건'일 때만.
+  const load = useCallback(async (isRetry = false) => {
+    if (!isRetry) { setLoading(true); setError(false); }
+    try {
+      const data = await getSessions();
+      setSessions(data);
+      setLoaded(true);
+      setLoading(false);
+    } catch (e) {
+      console.error(e);
+      if (!retriedRef.current) {
+        retriedRef.current = true;
+        setTimeout(() => load(true), 1500);   // 로딩 유지한 채 1.5s 후 1회 재시도
+      } else {
+        setError(true);
+        setLoading(false);
+      }
+    }
   }, []);
+
+  const retry = () => { retriedRef.current = false; setError(false); load(); };
+
+  useEffect(() => { load(); }, [load]);
 
   const handleResume = (session) => {
     const mode = localStorage.getItem(`session_mode_${session.id}`) ?? 'chat';
@@ -94,7 +115,14 @@ export default function StoryList() {
           </div>
         </header>
 
-        {!loading && sessions.length === 0 && (
+        {!loading && error && (
+          <p className="storylist-empty">
+            목록을 불러오지 못했어요.<br />
+            <button className="back-btn" style={{ marginTop: 12 }} onClick={retry}>다시 시도</button>
+          </p>
+        )}
+
+        {!loading && loaded && sessions.length === 0 && (
           <p className="storylist-empty">아직 작성한 소설이 없어요.<br />작가를 선택해 첫 세계관을 만들어보세요.</p>
         )}
 

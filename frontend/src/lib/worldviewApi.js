@@ -96,6 +96,8 @@ export async function getSession(sessionId) {
  */
 export async function getSessions() {
   const userId = await getCurrentUserId();
+  // 인증이 아직 안 잡혔으면 user_id=null 로 조회돼 422 → '작품 없음' 오인. 명확히 에러로 던져 재시도시킨다.
+  if (!userId) throw new Error('로그인 정보를 불러오는 중입니다.');
 
   const res = await fetch(`${API_BASE_URL}/sessions/?user_id=${userId}`);
   if (!res.ok) throw new Error('세션 목록 조회 실패');
