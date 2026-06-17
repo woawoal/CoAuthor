@@ -58,3 +58,6 @@ dist-ssr/
 
 # Eval 스크립트 산출물 (로컬 실행 결과, 추적 안 함)
 backend/evidence_report_*.json
+
+# tts 서버
+frontend/.vercel

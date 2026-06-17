@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+﻿// frontend/src/pages/chat/ui.jsx
+import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import {
@@ -7,7 +8,7 @@ import {
   getErrorWarmup, deleteMessage, setGenreOpen,
 } from '../../lib/chatApi';
 import { getVoiceProfile } from '../../lib/voiceApi';
-import { speakReaction, stopReaction } from '../../lib/ttsApi';
+import { speakReaction, stopReaction, extractFirstSentence } from '../../lib/ttsApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
@@ -553,7 +554,7 @@ export default function Chat() {
   function showReaction(text) {
     setReaction(text);
     if (reactionTimerRef.current) clearTimeout(reactionTimerRef.current);
-    reactionTimerRef.current = setTimeout(() => setReaction(''), 15000);
+    reactionTimerRef.current = setTimeout(() => setReaction(''), 10000);
   }
 
   function playPendingReaction() {
@@ -561,6 +562,15 @@ export default function Chat() {
 
     setReactionEmotion(pendingReactionEmotionRef.current);
     pendingReactionEmotionRef.current = null;
+  }
+
+  function playReactionVideo(emotion) {
+    if (!emotion) return;
+
+    setReactionEmotion(null);
+    setTimeout(() => {
+      setReactionEmotion(emotion);
+    }, 0);
   }
 
   // 장르 가드 — '판타지로 도입' 승인(이후 턴 감지 끔) / '그대로 유지'(칩만 닫음)
@@ -643,15 +653,14 @@ export default function Chat() {
     // 데모 슬래시 명령(/start·/tension·/joy 등)이면 결정론적 리액션을 바로 표시(API 생략).
     const fireReaction = (authorReply) => {
       if (demoReaction) {
-        pendingReactionEmotionRef.current = demoReaction.emotion;
+        playReactionVideo(demoReaction.emotion);
         const reactionText = demoReaction.reactions[currentAuthor.characterId] ?? '';
         showReaction(reactionText);
-        if (voiceReaction && reactionText) speakReaction(reactionText, currentAuthor.characterId);
         return;
       }
       // 첫 채팅이면 무조건 /start 데모 리액션 — 결정론적 오프닝(API 생략)
       if (isFirstChat) {
-        pendingReactionEmotionRef.current = 'start';
+        playReactionVideo('start');
         const startText = DEMO_REACTIONS['/start'].reactions[currentAuthor.characterId] ?? '';
         showReaction(startText);
         if (voiceReaction && startText) speakReaction(startText, currentAuthor.characterId);
@@ -665,17 +674,24 @@ export default function Chat() {
         .then(r => {
           if (r.reaction) {
             console.log(`[REACTION] emotion=${r.emotion}, reaction=${r.reaction}`);
-            showReaction(r.reaction);
-            // 🔊 작가 목소리로 리액션 낭독
-            if (voiceReaction) speakReaction(r.reaction, currentAuthor.characterId);
+
 
             if (r.emotion === 'joy' || r.emotion === 'tension') {
-              pendingReactionEmotionRef.current = r.emotion;
+              playReactionVideo(r.emotion);
+              const key = r.emotion === 'joy' ? '/joy' : '/tension';
+              const demoText = DEMO_REACTIONS[key].reactions[currentAuthor.characterId] ?? '';
+              showReaction(demoText);
+            } else if (voiceReaction) {
+              // 🔊 작가 목소리로 리액션 낭독
+              speakReaction(r.reaction, currentAuthor.characterId);
+              showReaction(r.reaction);
             }
           }
         })
         .catch(err => console.error('[REACTION ERROR]', err));
     };
+
+    fireReaction('');
 
     // 맞춤법 교정 — 실시간 교정 ON일 때만 작가가 '여백 메모'로 짚어줌 (느려도/실패해도 본 흐름 안 막음)
     if (realtimeProof) {
@@ -710,8 +726,6 @@ export default function Chat() {
           ? { ...m, text: '⏱️ 응답 시간이 초과되었습니다. 다시 시도해주세요.' }
           : m
       ));
-      // 수동 close는 onDone을 안 부르므로, 스트림이 멈춰도 리액션은 뜨게 여기서 보강
-      fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
     }, 50000);
 
     let lastReply = { narration: '', dialogue: '' };   // 리액션 문맥용 — 작가가 쓴 장면 누적
@@ -720,6 +734,13 @@ export default function Chat() {
       chatId,
       { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: '', speaker: activeSpeaker?.name ?? '', check_consistency: consistencyOn },
       ({ narration, speaker, dialogue, protagonist_dialogue, out_of_genre, genre_note, consistency }) => {
+
+        if (narration) {
+          const ttsText = extractFirstSentence(narration, 50);
+          console.log('[FIRST TTS]', ttsText);
+          speakReaction(ttsText, currentAuthor.characterId);
+        }
+
         lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId
@@ -739,8 +760,6 @@ export default function Chat() {
         if (realMsgId) {
           setMessages(prev => prev.map(m => m.id === streamMsgId ? { ...m, id: realMsgId } : m));
         }
-        // 작가 답변(나레이션+대사)을 문맥으로 넘겨 리액션 생성
-        fireReaction([lastReply.narration, lastReply.dialogue].filter(Boolean).join(' ').trim());
       },
       // 토큰 스트리밍: narration이 생성되는 대로 라이브 표시(체감 TTFB↓)
       (narration) => {
@@ -814,7 +833,6 @@ export default function Chat() {
     } catch { /* 변환 실패해도 에디터로 이동 */ }
     navigate('/editor', { state: { chatId, authorId } });
   }
-
 
   // ── 렌더 ─────────────────────────────────────────────────
   return (

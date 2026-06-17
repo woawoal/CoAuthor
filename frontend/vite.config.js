@@ -37,6 +37,10 @@ export default defineConfig(({ mode }) => {
           target: apiTarget,
           changeOrigin: true,
         },
+        '/api/tts': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        },
       },
     },
   }
