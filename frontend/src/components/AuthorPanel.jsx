@@ -23,7 +23,6 @@ const AUTHOR_TAGS_CHAT = [
   { label: '#등장인물', prompt: null },
   { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
   { label: '#취향저격ai', prompt: null },
-  { label: '#가사적용ai', prompt: null },
   { label: '#도움말', prompt: null },
 ];
 
@@ -32,7 +31,6 @@ const AUTHOR_TAGS_EDITOR = [
   { label: '#등장인물', prompt: null },
   { label: '#에피소드', prompt: '지금까지 이야기에서 주요 에피소드를 정리해줘.' },
   { label: '#취향저격ai', prompt: null },
-  { label: '#가사적용ai', prompt: null },
 ];
 
 const TASTE_LABELS = {
@@ -76,6 +74,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   onSkipCorrection,
   onClearCorrections,
   hasSelection = false,
+  onWorldEdit,
 }, ref) {
   const currentAuthor = AUTHOR_MAP[AUTHOR_IDS[currentAuthorIdx]];
 
@@ -434,6 +433,11 @@ const AuthorPanel = forwardRef(function AuthorPanel({
               {/* 세계관 카드 */}
               {showWorldInfo && world && (
                 <div className="world-info-card">
+                  {onWorldEdit && (
+                    <div className="world-info-card__edit-row">
+                      <button className="world-info-card__edit-btn" onClick={onWorldEdit}>✎ 세계관 수정</button>
+                    </div>
+                  )}
                   {world.title && <div className="world-info-card__row"><span className="world-info-card__label">제목</span>{world.title}</div>}
                   {world.genre && <div className="world-info-card__row"><span className="world-info-card__label">장르</span>{world.genre}</div>}
                   {world.description && <div className="world-info-card__row"><span className="world-info-card__label">배경</span>{world.description}</div>}

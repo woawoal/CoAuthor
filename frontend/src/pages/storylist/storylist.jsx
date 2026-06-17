@@ -164,9 +164,6 @@ export default function StoryList() {
                     읽기
                   </button>
                 )}
-                <button className="storylist-card__btn storylist-card__btn--read" onClick={() => handleEditWorld(s)}>
-                  ✎ 세계관
-                </button>
                 <button className="storylist-card__btn" onClick={() => handleResume(s)}>
                   {s.status === 'completed' ? '수정하기' : '이어쓰기 →'}
                 </button>

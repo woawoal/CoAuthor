@@ -327,6 +327,8 @@ export default function Chat() {
   const [warmup, setWarmup] = useState([]);   // 능동 경고: 자주 틀리는 것 미리 보기(2회 이상)
   const [ending, setEnding] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveComplete, setSaveComplete] = useState(false);
 
   const [importedNarration, setImportedNarration] = useState(() => {
     if (manuscriptContent) return manuscriptContent;
@@ -750,8 +752,7 @@ export default function Chat() {
   }
 
   async function handleEnd() {
-    if (!chatId || chatId === 'room_001') { toast('유효한 세션이 없습니다.', 'error'); return; }
-    if (!window.confirm('소설을 완결내시겠습니까?\n완결 후에는 이어쓰기가 불가합니다.')) return;
+    if (!chatId || chatId === 'room_001') { toast('유효한 세션이 없습니다.', 'error'); setEnding(false); return; }
 
     const MIN_END_DURATION = 10000;
     const startedAt = Date.now();
@@ -775,10 +776,17 @@ export default function Chat() {
 
     const elapsed = Date.now() - startedAt;
     const remainingDelay = Math.max(0, MIN_END_DURATION - elapsed);
+    setTimeout(() => { navigate('/storylist'); }, remainingDelay);
+  }
 
-    setTimeout(() => {
+  async function handleSaveConfirm() {
+    setShowSaveModal(false);
+    if (saveComplete) {
+      await handleEnd();
+    } else {
       navigate('/storylist');
-    }, remainingDelay);
+    }
+    setSaveComplete(false);
   }
 
   async function handleRestart() {
@@ -827,20 +835,9 @@ export default function Chat() {
               />
               <span className="mode-switcher__label">{converting ? '변환 중' : '참여형'}</span>
             </div>
-            <div className="save-btn-group">
-              <button className="editor-save-btn" onClick={() => navigate('/storylist')} disabled={ending || converting}>
-                저장
-              </button>
-              <button className="editor-save-btn editor-save-btn--complete" onClick={handleEnd} disabled={ending || converting}>
-                {ending ? '완결 중...' : '완결'}
-              </button>
-            </div>
-            <button
-              className="editor-back-btn"
-              onClick={() => navigate('/worldedit', { state: { worldId: world?.id, chatId, authorId, from: 'chat' } })}
-              disabled={!world?.id}
-              title="세계관 수정 — 다음 대화부터 반영"
-            >✎ 세계관</button>
+            <button className="editor-save-btn" onClick={() => setShowSaveModal(true)} disabled={ending || converting}>
+              {ending ? '완결 중...' : '저장'}
+            </button>
             <button className="editor-back-btn restart-btn" onClick={handleRestart} disabled={ending || converting}>새로하기</button>
             <button className="editor-back-btn" onClick={() => navigate('/storylist')}>목록</button>
           </div>
@@ -1038,7 +1035,29 @@ export default function Chat() {
         onMemoClick={handleMemoClick}
         corrections={corrections}
         onSkipCorrection={id => setCorrections(prev => prev.filter(c => c.id !== id))}
+        onWorldEdit={world?.id ? () => navigate('/worldedit', { state: { worldId: world.id, chatId, authorId, from: 'chat' } }) : null}
       />
+
+      {/* 저장 확인 팝업 */}
+      {showSaveModal && (
+        <div className="save-modal-overlay" onClick={() => setShowSaveModal(false)}>
+          <div className="save-modal" onClick={e => e.stopPropagation()}>
+            <p className="save-modal__title">저장하시겠습니까?</p>
+            <label className="save-modal__check">
+              <input
+                type="checkbox"
+                checked={saveComplete}
+                onChange={e => setSaveComplete(e.target.checked)}
+              />
+              완결하기
+            </label>
+            <div className="save-modal__btns">
+              <button className="save-modal__btn save-modal__btn--cancel" onClick={() => { setShowSaveModal(false); setSaveComplete(false); }}>취소</button>
+              <button className="save-modal__btn save-modal__btn--save" onClick={handleSaveConfirm}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 스토리 말풍선 컨텍스트 메뉴 */}
       {contextMenu.visible && (

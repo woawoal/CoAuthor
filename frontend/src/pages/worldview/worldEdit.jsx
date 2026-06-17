@@ -73,6 +73,7 @@ export default function WorldEdit() {
             role: c.role,
             personality: c.personality ?? '',
             prompt: c.prompt ?? '',
+            address_rules: c.address_rules ?? [],
             isNew: false,
           })),
         );
@@ -100,7 +101,7 @@ export default function WorldEdit() {
   const addCharacter = () =>
     setCharacters((prev) => [
       ...prev,
-      { key: `new_${_newCharSeq++}`, name: '', role: 'supporting', personality: '', prompt: '', isNew: true },
+      { key: `new_${_newCharSeq++}`, name: '', role: 'supporting', personality: '', prompt: '', address_rules: [], isNew: true },
     ]);
 
   const removeCharacter = (key) =>
@@ -134,6 +135,7 @@ export default function WorldEdit() {
           .map((c) => updateCharacter(worldId, c.id, {
             personality: c.personality,
             prompt: c.prompt,
+            address_rules: c.address_rules ?? [],
           })),
       );
 
@@ -144,6 +146,7 @@ export default function WorldEdit() {
           role: c.role,
           personality: c.personality,
           prompt: c.prompt,
+          address_rules: c.address_rules ?? [],
         })),
       );
 
@@ -273,6 +276,57 @@ export default function WorldEdit() {
                 <div className="form-group">
                   <label className="form-label">행동지시문(선택)</label>
                   <textarea className="form-textarea height-xs" value={c.prompt} onChange={(e) => changeChar(c.key, 'prompt', e.target.value)} placeholder="AI가 이 인물을 연기할 때 반드시 따를 지시" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">호칭 규칙 <span className="char-sub-hint">({c.name || '이 캐릭터'}이 상대를 부르는 호칭)</span></label>
+                  {(c.address_rules || []).map((rule, rIdx) => (
+                    <div key={rIdx} className="address-rule-row">
+                      <select
+                        className="form-select address-rule-select"
+                        value={rule.target_name}
+                        onChange={(e) => {
+                          const updated = [...(c.address_rules || [])];
+                          updated[rIdx] = { ...rule, target_name: e.target.value };
+                          changeChar(c.key, 'address_rules', updated);
+                        }}
+                      >
+                        <option value="">상대 캐릭터</option>
+                        {characters
+                          .filter(other => other.key !== c.key && other.name.trim())
+                          .map(other => (
+                            <option key={other.key} value={other.name}>{other.name}</option>
+                          ))}
+                      </select>
+                      <span className="address-rule-arrow">를</span>
+                      <input
+                        type="text"
+                        className="form-input address-rule-input"
+                        placeholder="이렇게 부름"
+                        value={rule.address}
+                        onChange={(e) => {
+                          const updated = [...(c.address_rules || [])];
+                          updated[rIdx] = { ...rule, address: e.target.value };
+                          changeChar(c.key, 'address_rules', updated);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-rule-remove"
+                        onClick={() => {
+                          const updated = (c.address_rules || []).filter((_, i) => i !== rIdx);
+                          changeChar(c.key, 'address_rules', updated);
+                        }}
+                      >✕</button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn-add-rule"
+                    onClick={() => {
+                      const updated = [...(c.address_rules || []), { target_name: '', address: '' }];
+                      changeChar(c.key, 'address_rules', updated);
+                    }}
+                  >+ 호칭 추가</button>
                 </div>
               </div>
             ))}
