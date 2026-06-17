@@ -1,10 +1,10 @@
 """삽화 이미지 생성 서비스.
 
 2가지 모드:
-  1. 직접 입력: 사용자 장면 설명 → LLM 정제·필터 → DALL-E 3
-  2. AI 추천:  소설 내용 → LLM 장면 후보 4종 → 사용자 선택 → DALL-E 3
+  1. 직접 입력: 사용자 장면 설명 → LLM 정제·필터 → Vertex AI Imagen 3
+  2. AI 추천:  소설 내용 → LLM 장면 후보 4종 → 사용자 선택 → Vertex AI Imagen 3
 
-DALL-E 3 호출은 동기 OpenAI 클라이언트를 asyncio.to_thread로 감싼다.
+Imagen 3 호출은 동기 SDK를 asyncio.to_thread로 감싼다.
 LLM 호출 실패 시 대화 흐름을 막지 않도록 예외를 흡수한다.
 """
 import asyncio
@@ -12,7 +12,6 @@ import base64
 import json
 import logging
 
-from app.core.config import settings
 from app.services import llm
 
 logger = logging.getLogger(__name__)
@@ -65,7 +64,7 @@ JSON 형식으로만 응답하세요:
 
 _FILTER_REFINE_SYSTEM = """\
 당신은 한국 웹소설 앱의 삽화 프롬프트 검수 전문가입니다.
-사용자가 입력한 장면 설명을 검토한 뒤 DALL-E 3용 영어 프롬프트로 정제하세요.
+사용자가 입력한 장면 설명을 검토한 뒤 Imagen 3용 영어 프롬프트로 정제하세요.
 
 검토 기준:
 1. 웹소설 삽화로 적합한가?
@@ -76,7 +75,7 @@ _FILTER_REFINE_SYSTEM = """\
 JSON 형식으로만 응답하세요:
 {
   "status": "appropriate" | "refine_needed" | "inappropriate",
-  "refined_prompt": "DALL-E 3용 영어 프롬프트 (appropriate·refine_needed)",
+  "refined_prompt": "Imagen 3용 영어 프롬프트 (appropriate·refine_needed)",
   "suggestion": "한국어 수정 제안 (refine_needed인 경우, 없으면 null)",
   "block_reason": "거절 이유 (inappropriate인 경우, 없으면 null)"
 }
