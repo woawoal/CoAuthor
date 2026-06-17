@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 
 from app.core.config import settings
-from app.core.personas import get_author_prompt, AUTHOR_ID_MAP, reaction_tone
+from app.core.personas import get_author_prompt, AUTHOR_ID_MAP, reaction_tone, reaction_examples
 from app.core.reactions import EMOTIONS, pick_reaction  # F-AS-05 작가 리액션 (머지 때 빠졌던 import 복구)
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
@@ -166,6 +166,24 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
         logger.info("[ADDRESS] addr_lines=%s", addr_lines)
         if addr_lines:
             parts.append(ADDRESS_RULE_HEADER + "\n".join(addr_lines))
+
+        # 인물 관계도(설정집에서 사용자가 지정) → 초기 설정 '참고용'. 진행 중 바뀐 관계는 줄거리·현재 흐름이 우선.
+        rels = (getattr(world, 'relations', None) or []) if world else []
+        if rels:
+            id_to_name = {str(c.id): c.name for c in chars}
+            rel_lines = []
+            for r in rels:
+                f = id_to_name.get(str(r.get("from", "")))
+                t = id_to_name.get(str(r.get("to", "")))
+                label = (r.get("label") or "").strip()
+                if f and t and label:
+                    rel_lines.append(f"- {f} → {t}: {label}")
+            if rel_lines:
+                parts.append(
+                    "[인물 관계(초기 설정·참고용) — 'A → B: 관계'는 이야기 시작 시점 기준 A가 B를 그렇게 여긴다는 뜻이다. "
+                    "출발점 정서로만 참고하라. **이야기가 진행되며 관계·감정이 달라졌다면 [지금까지의 줄거리]와 현재 장면 흐름을 우선**한다. "
+                    "억지로 유지하거나 장면마다 끌어들이지 말 것]\n" + "\n".join(rel_lines)
+                )
     if persona_id == "charoun" and world:
         facts = getattr(world, 'hidden_facts', None) or []
         if facts:
@@ -812,7 +830,9 @@ async def stream_response(
             # F-QC-01: 일관성 검수(옵션) — 새 응답이 확립된 설정·기억과 모순되는지
             consistency_result = {"consistent": True, "violations": []}
             if check_consistency:
-                facts = world_context
+                # 인물 관계도는 '초기 설정'일 뿐 진행 중 바뀔 수 있으므로 검수 대상(확립된 설정)에서 제외
+                # → 관계 변화를 모순으로 오탐하지 않게. (생성 프롬프트엔 참고용으로 남김)
+                facts = re.sub(r'\[인물 관계\(초기 설정·참고용\).*?(?=\n\[|\Z)', '', world_context, flags=re.S).strip()
                 if relevant_memories:
                     facts += "\n[관련 기억]\n" + "\n".join(f"- {m}" for m in relevant_memories)
                 consistency_result = await consistency.check(facts, reply_text)
@@ -1268,9 +1288,11 @@ async def classify_emotion(text: str) -> str:
 def _reaction_gen_system(persona_id: str) -> str:
     return (
         f"{reaction_tone(persona_id)}\n\n"
+        f"{reaction_examples(persona_id)}\n\n"
         "지금 인터랙티브 소설을 함께 쓰는 중이다. 아래에 [주인공이 방금 한 말/행동]과 "
         "[네가 방금 이어 쓴 장면]이 주어진다. 이 흐름을 보고 작가인 네가 옆에서 혼잣말처럼 "
         "툭 던지는 짧은 반응 한 마디를 네 말투로 만들어라(소리 내어 말하는 추임새).\n"
+        "위 예시처럼 그 작가 특유의 호흡·시선으로, 장면에 맞는 새 문장을 만들 것.\n"
         "규칙:\n"
         "- 25자 이내, 한 문장. 따옴표·이모지·지문 없이 말만.\n"
         "- 장면을 다시 서술하지 말 것. 새 사건을 만들지 말 것. 반응만.\n"

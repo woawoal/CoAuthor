@@ -286,6 +286,23 @@ def reaction_tone(persona_id: str) -> str:
     p = _WORLD_PERSONA.get(persona_id) or _WORLD_PERSONA["baekya"]
     return p["tone"]
 
+
+# 리액션(F-AS-05) 전용 말투 예시 — 25자 내 '혼잣말 추임새' 톤을 작가별로 보여준다.
+# (세계관 피드백용 few_shot은 길고 결이 달라 리액션엔 부적합 → 별도 정의)
+_REACTION_EXAMPLES: dict[str, list[str]] = {
+    "baekya": ["또 시작이군.", "그건 안 보이는 게 낫지.", "이제 못 돌아가."],
+    "charoun": ["흐름이 보이는군.", "그 선택엔 근거가 있겠지.", "여기 어딘가 구멍이 있어."],
+    "hanyeoreum": ["그 거리, 좁아졌네.", "말끝이 흔들렸어.", "이 온도 놓치기 아깝다."],
+    "kimdohyeon": ["이런 순간이 좋지.", "천천히 가도 돼.", "오, 마음 정했구나."],
+}
+
+
+def reaction_examples(persona_id: str) -> str:
+    """리액션 생성 프롬프트에 끼울 작가별 예시 블록(말투만 참고용)."""
+    lines = _REACTION_EXAMPLES.get(persona_id) or _REACTION_EXAMPLES["baekya"]
+    body = "\n".join(f"- {s}" for s in lines)
+    return f"[이 작가의 리액션 예시 — 말투·호흡만 참고, 그대로 베끼지 말 것]\n{body}"
+
 # ── PERSONA_PROMPTS (chats.py / llm_router.py 호환용) ──────────
 
 PERSONA_PROMPTS: dict[str, str] = {
