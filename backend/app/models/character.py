@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from sqlalchemy import String, Text, ForeignKey, Boolean, func
-from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Enum as SAEnum, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from typing import Any
 from app.database import Base
 
 
@@ -24,6 +25,7 @@ class Character(Base):
     role: Mapped[CharacterRole] = mapped_column(SAEnum(CharacterRole), nullable=False)
     personality: Mapped[str] = mapped_column(Text, default="")
     prompt: Mapped[str] = mapped_column(Text, default="")
+    address_rules: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True, default=None)
     is_ai_controlled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
 

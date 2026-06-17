@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread, addGlossaryTerm, completeSession } from '../../lib/chatApi';
+import { sendAuthorMessage, generateAuthorRewrite, getMemos, saveMemos, getTasteRecommend, proofread, addGlossaryTerm, completeSession, restartSession } from '../../lib/chatApi';
 import { API_BASE_URL } from '../../lib/apiBase';
 import { getSession, getWorld, getCharacters } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
@@ -181,6 +181,17 @@ export default function Editor() {
     }
   }
 
+  async function handleRestart() {
+    if (!window.confirm('현재 대화를 저장하고 같은 세계관으로 새로 시작할까요?')) return;
+    try {
+      const newSession = await restartSession(chatId);
+      localStorage.removeItem(`manuscript_${chatId}`);
+      navigate('/chat', { state: { worldId: newSession.world_id, chatId: newSession.id, authorId } });
+    } catch (err) {
+      alert(`새로하기 실패: ${err.message}`);
+    }
+  }
+
   const saveLabel = saveStatus === 'saving' ? '저장 중...' : saveStatus === 'unsaved' ? '저장 안됨' : '저장됨';
 
   // ── 렌더 ─────────────────────────────────────────────────
@@ -215,6 +226,7 @@ export default function Editor() {
               disabled={!world?.id}
               title="세계관 수정 — 다음 대화부터 반영"
             >✎ 세계관</button>
+            <button className="editor-back-btn restart-btn" onClick={handleRestart}>새로하기</button>
             <button className="editor-back-btn" onClick={() => navigate('/storylist')}>목록</button>
           </div>
         </div>

@@ -28,8 +28,13 @@ from app.services.tts import synthesize, extract_first_sentence
 import base64
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
-    WRITER_STYLE_RULE, ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
+    WRITER_STYLE_RULE, PROGRESS_RULE, REACTION_PRIORITY_RULE,
+    ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
     build_multi_npc_prompt,
+)
+from app.prompts.world import (
+    PROTAGONIST_BLOCK, AI_CHARS_BLOCK, MULTI_SPEAKER_NOTE,
+    ADDRESS_RULE_HEADER, MYSTERY_RULE_HEADER, MYSTERY_RULE_FOOTER,
 )
 
 router = APIRouter()
@@ -102,7 +107,7 @@ def key_genre_open(chat_id: str) -> str:
 
 
 # ── 세계관·등장인물 DB 조회 ────────────────────────────────────
-async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
+async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str = "") -> str:
     try:
         sid = uuid.UUID(chat_id)
     except (ValueError, TypeError):
@@ -123,37 +128,47 @@ async def _build_world_context(chat_id: str, db: AsyncSession) -> str:
         ai_chars = [c for c in chars if c.is_ai_controlled and c.id != session.protagonist_id]
 
         if protagonist:
-            parts.append(
-                f"[사용자 조종 인물 — AI가 절대 대신 서술하지 않음]\n"
-                f"- {protagonist.name} ({getattr(protagonist.role, 'value', protagonist.role)}): {protagonist.personality}\n"
-                f"※ 이 인물의 행동·대사·내면은 사용자 입력이 전부입니다. AI는 이 인물의 관점으로 생각하거나 반응을 대신 쓰지 않습니다."
-            )
+            parts.append(PROTAGONIST_BLOCK.format(
+                name=protagonist.name,
+                role=getattr(protagonist.role, 'value', protagonist.role),
+                personality=protagonist.personality,
+            ))
         if ai_chars:
             lines = "\n".join(
                 f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in ai_chars
             )
             names = ", ".join(c.name for c in ai_chars)
-            multi_rule = (
-                f"\n※ 인물이 여럿일 때: 지금 장면·맥락에 **personality(직업·관계·역할)가 가장 적합한 한 명**이 speaker가 된다. "
-                f"직업(예: 알바·직원)이 있는 인물이 해당 업무를 처리하고, 손님·친구 역할 인물은 그 업무를 대신하지 않는다."
-                if len(ai_chars) > 1 else ""
-            )
-            parts.append(
-                f"[AI 서술 인물 — 이 인물들의 반응·대사를 생성]\n{lines}\n"
-                f"※ 이 인물들이 **지금 장면에 함께 있을 때만** speaker에 그 이름({names} 중 하나)을 쓴다. "
-                f"인물이 떠났거나·자리에 없거나·주인공이 혼자인 장면이면 speaker·dialogue를 빈 문자열로 두고 나레이션만 출력."
-                f"{multi_rule}"
-            )
+            multi_rule = MULTI_SPEAKER_NOTE if len(ai_chars) > 1 else ""
+            parts.append(AI_CHARS_BLOCK.format(lines=lines, names=names) + multi_rule)
         elif not protagonist and chars:
             lines = "\n".join(
                 f"- {c.name} ({getattr(c.role, 'value', c.role)}): {c.personality}" for c in chars
             )
             parts.append(f"[등장인물]\n{lines}")
-        directive_lines = [
-            f"- {c.name}: {c.prompt.strip()}" for c in chars if getattr(c, 'prompt', None) and c.prompt.strip()
-        ]
+        directive_lines = []
+        for c in chars:
+            if getattr(c, 'prompt', None) and c.prompt.strip():
+                indented = c.prompt.strip().replace('\n', '\n    ')
+                directive_lines.append(f"  {c.name}:\n    {indented}")
         if directive_lines:
             parts.append("[캐릭터 행동 지시문 — 반드시 따를 것]\n" + "\n".join(directive_lines))
+
+        # address_rules → 호칭 규칙 프롬프트 삽입
+        addr_lines = []
+        for c in chars:
+            rules = getattr(c, 'address_rules', None) or []
+            for rule in rules:
+                target_name = rule.get("target_name", "")
+                address = rule.get("address", "")
+                if target_name and address:
+                    addr_lines.append(f"  {c.name} → {target_name}: \"{address}\"")
+        if addr_lines:
+            parts.append(ADDRESS_RULE_HEADER + "\n".join(addr_lines))
+    if persona_id == "charoun" and world:
+        facts = getattr(world, 'hidden_facts', None) or []
+        if facts:
+            fact_lines = "\n".join(f"- {f}" for f in facts)
+            parts.append(MYSTERY_RULE_HEADER + fact_lines + MYSTERY_RULE_FOOTER)
     if session.story_summary:
         parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
     return "\n".join(parts)
@@ -164,8 +179,6 @@ def key_turn(chat_id: str) -> str:
 def key_memos(chat_id: str) -> str:
     return f"session:{chat_id}:memos"
 
-def key_phase(chat_id: str) -> str:
-    return f"session:{chat_id}:phase"
 
 async def _read_memos(chat_id: str) -> list:
     """memos 키를 저장 방식에 관계없이 안전하게 list로 읽는다.
@@ -234,14 +247,12 @@ async def get_context(chat_id: str, db: AsyncSession) -> dict:
 
     history = [json.loads(item) for item in history_raw]
     memos = await _read_memos(chat_id)
-    phase = await redis_client.get(key_phase(chat_id)) or "도입부"
     return {
         "history":    history,
         "state":      state,
         "characters": characters,
         "summary":    summary,
         "memos":      memos,
-        "phase":      phase,
     }
 
 async def init_context_if_empty(chat_id: str, state: str, characters: str, summary: str):
@@ -316,13 +327,89 @@ def _extract_ai_char_names(world_context: str) -> list[str]:
     return []
 
 
-def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str) -> str:
+def _parse_char_directive_rule(directive_text: str) -> str:
+    """'- 캐릭터: X는 Y라고 부른다' 형식을 캐릭터별 호칭 허용 목록으로 변환.
+    하드코딩 없이 지정된 것만 허용·나머지 전부 금지 방식으로 생성."""
+    char_rules: dict[str, list[tuple[str, str]]] = {}
+    current_char: str | None = None
+
+    for raw_line in directive_text.split('\n'):
+        line = raw_line.strip().rstrip('.')
+        if not line:
+            continue
+        m_char = re.match(r'^-\s+(.+?):\s*(.*)', line)
+        if m_char:
+            current_char = m_char.group(1).strip()
+            char_rules.setdefault(current_char, [])
+            rest = m_char.group(2).strip().rstrip('.')
+            if rest:
+                parsed = _parse_addr(rest)
+                if parsed:
+                    char_rules[current_char].append(parsed)
+        elif current_char and line:
+            parsed = _parse_addr(line)
+            if parsed:
+                char_rules[current_char].append(parsed)
+
+    if not any(char_rules.values()):
+        return ""
+
+    lines = [
+        "[캐릭터 호칭 규칙 — 절대 준수]",
+        "각 캐릭터는 dialogue에서 아래 지정된 호칭만 사용한다. 지정 호칭 외의 어떤 관계·일반 호칭도 금지다.\n",
+    ]
+    for char, rules in char_rules.items():
+        if not rules:
+            continue
+        lines.append(f"▶ {char}가 다른 인물을 부를 때:")
+        for target, term in rules:
+            if target in ('나', '자신'):
+                lines.append(f"  - 주인공(사용자 캐릭터) → 반드시 '{term}' (다른 호칭 전부 금지)")
+            else:
+                lines.append(f"  - '{target}' → 반드시 '{term}' ('{target}' 포함 다른 모든 호칭 금지)")
+    return "\n".join(lines)
+
+
+def _parse_addr(rule: str) -> tuple[str, str] | None:
+    """'X를 Y라고 부른다' 패턴에서 (target, term) 추출."""
+    rule = rule.rstrip('.')
+    m = re.match(r'(.+?)(?:를|을|은|는)\s*(.+?)(?:이라고|라고)\s*부른다', rule)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+    return None
+
+
+def apply_address_rules(dialogue: str, speaker_name: str, chars: list) -> str:
+    """speaker의 address_rules를 기준으로 dialogue 내 잘못된 호칭을 치환.
+
+    한글 경계 인식: 앞뒤로 한글 음절이 이어지는 경우 치환하지 않음.
+    예) target="나", address="야" → "나와"는 치환 안 함, "나, 이리 와"는 치환.
+    """
+    speaker = next((c for c in chars if c.name == speaker_name), None)
+    if not speaker:
+        return dialogue
+    rules = getattr(speaker, 'address_rules', None) or []
+    if not rules:
+        return dialogue
+    for rule in rules:
+        target_name = rule.get("target_name", "")
+        address = rule.get("address", "")
+        if not target_name or not address or target_name == address:
+            continue
+        pattern = r'(?<![가-힣])' + re.escape(target_name)
+        dialogue = re.sub(pattern, address, dialogue)
+    return dialogue
+
+
+def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str, world_context: str = "") -> str:
     """[L1] 출력 화자를 등록된 AI 인물로 강제 보정(모델이 흔들려도 화면 화자는 항상 유효).
 
     - 빈 값 / 주인공 이름 → ''(나레이션). 주인공 대사는 AI 출력이 아니다.
     - 목록의 정식 이름으로 정규화(공백 무시 매칭 — '박 영감'→'박영감').
+    - 호칭('엄마','아빠' 등) → world_context personality 키워드로 인물 추정.
     - 등록 안 된 이름(환각·즉석 새 인물) → AI 인물이 유일하면 그 인물, 아니면 ''.
     """
+    import re as _re
     s = (raw or "").strip()
     if not s:
         return ""
@@ -332,6 +419,14 @@ def _resolve_speaker(raw: str, ai_names: list[str], protagonist_name: str) -> st
     for name in ai_names:
         if norm(s) == norm(name):
             return name
+    # 등록 이름 불일치 — world_context personality에서 키워드 매칭 시도
+    # (예: speaker="엄마" → personality에 "엄마" 포함된 인물 반환)
+    if world_context and s:
+        for name in ai_names:
+            pat = _re.compile(rf'-\s*{_re.escape(name)}\s*\([^)]+\)\s*:\s*(.+)', _re.MULTILINE)
+            m = pat.search(world_context)
+            if m and s in m.group(1):
+                return name
     return ai_names[0] if len(ai_names) == 1 else ""
 
 
@@ -350,6 +445,14 @@ def build_messages(
         world_context=world_context,
         mode=mode,
     )
+
+    # 캐릭터 호칭·행동 지시문을 world_context에서 추출해 명시적 규칙으로 변환 후 주입
+    _char_directive_rule = ""
+    _dm = re.search(r'\[캐릭터 행동 지시문[^\]]*\]\n(.*?)(?=\n\[|\Z)', world_context, re.DOTALL)
+    logger.info("[DIRECTIVE] regex match=%s | world_context 길이=%d", bool(_dm), len(world_context))
+    if _dm:
+        _char_directive_rule = _parse_char_directive_rule(_dm.group(1))
+        logger.info("[DIRECTIVE] 생성된 규칙:\n%s", _char_directive_rule or "(비어있음)")
 
     # 주인공(사용자 캐릭터)을 world_context에서 추출해 최상단 규칙으로 주입
     protagonist_name        = _extract_protagonist_name(world_context)
@@ -402,7 +505,8 @@ def build_messages(
         ) if len(ai_char_names) > 1 else ""
         speaker_rule = (
             f"[화자 고정 규칙 — 엄수]\n"
-            f"speaker 필드는 반드시 다음 등장인물 중 정확히 하나이거나 빈 문자열(나레이션만)이어야 한다: {_names}.\n"
+            f"speaker 필드는 반드시 다음 등장인물 이름 중 정확히 하나이거나 빈 문자열(나레이션만)이어야 한다: {_names}.\n"
+            f"절대 금지: '엄마', '아빠', '언니', '오빠', '형' 등 관계·호칭을 speaker에 쓰는 것 — 반드시 등록된 이름 그대로.\n"
             f"이 목록에 없는 이름을 speaker에 넣지 말 것.\n"
             f"등록된 등장인물 외의 새 인물을 임의로 등장시키지 말 것 — 스쳐가는 인물이 필요하면 "
             f"narration으로만 묘사하고 speaker에는 쓰지 말 것."
@@ -415,8 +519,11 @@ def build_messages(
         CRITICAL_OUTPUT_RULE,
         protagonist_rule,
         speaker_rule,
+        _char_directive_rule,
         OUTPUT_RULES,
         INPUT_RULES,
+        REACTION_PRIORITY_RULE,
+        PROGRESS_RULE,
         WRITER_STYLE_RULE,
         author_rules,
     ]))
@@ -435,9 +542,7 @@ def build_messages(
         mem_lines = "\n".join(f"- {m}" for m in relevant_memories)
         context_parts.append(f"[관련 기억] (과거 대화에서 검색됨, 일관성 유지에 활용)\n{mem_lines}")
     if context["state"]:
-        context_parts.append(f"[현재 상태]\n{context['state']}")
-    if context.get("phase"):
-        context_parts.append(f"[현재 스토리 단계]\n{context['phase']}\n(story_phase는 이 단계 이상만 출력 가능)")
+        context_parts.append(f"[직전 장면 요약 — 이미 일어난 일. 반복하지 말고 다음으로 전진할 것]\n{context['state']}")
     if genre_open:
         # 사용자가 장르 확장을 허용함 → 장르 가드 끔(out_of_genre 항상 false)
         context_parts.append("[장르 확장 허용됨] 사용자가 장르 밖 요소 도입을 승인함 — out_of_genre는 항상 false로 둔다.")
@@ -570,9 +675,8 @@ async def stream_response(
     # history는 lpush로 저장되어 최신순 정렬 → index 0이 가장 최근 메시지
     if context["history"] and context["history"][0].get("role") == "user":
         context["history"] = context["history"][1:]
-    # 세계관 수정 즉시 반영 — 항상 서버 DB에서 재구성(프론트 전송값은 무시).
-    # 화자 추출 정규식(_extract_*)이 서버 포맷에만 매칭되므로 서버 권위가 정확.
-    world_context = await _build_world_context(chat_id, db)
+    # 항상 서버 DB에서 재구성(프론트 전송값 무시) + persona_id로 charoun hidden_facts 주입
+    world_context = await _build_world_context(chat_id, db, persona_id=character_id)
 
     # RAG: 현재 입력과 관련된 '오래된' 과거 대화를 검색해 보강 (요약이 놓친 구체 사건)
     # use_rag=false 면 검색을 건너뛴다(시연/디버깅용 대조).
@@ -594,6 +698,17 @@ async def stream_response(
     _is_protagonist_speaker = bool(speaker and _prot_name and speaker == _prot_name)
     # 장르 가드: 사용자가 이미 장르 확장을 승인했으면 감지 끔
     _genre_open            = bool(await redis_client.get(key_genre_open(chat_id)))
+    # address_rules 후처리용 캐릭터 목록 (세션 world 기준)
+    _all_chars: list = []
+    try:
+        sid = uuid.UUID(chat_id)
+        _sess = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
+        if _sess:
+            _all_chars = list((await db.execute(
+                select(Character).where(Character.world_id == _sess.world_id)
+            )).scalars().all())
+    except Exception:
+        pass
 
     async def generate():
         try:
@@ -651,12 +766,11 @@ async def stream_response(
             parsed = parse_ai_response(raw)
             narration            = _strip_json_artifacts(parsed["narration"])
             # [L1] AI가 정한 화자를 등록 인물로 강제 보정(흔들림 방지). 입력 speaker와 별개 변수.
-            reply_speaker        = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name)
-            dialogue             = _strip_json_artifacts(parsed["dialogue"])
+            reply_speaker        = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name, world_context)
+            dialogue             = apply_address_rules(parsed["dialogue"], reply_speaker, _all_chars)
             protagonist_dialogue = parsed.get("protagonist_dialogue", "")
             state_changes        = parsed["state_changes"]
             internal_note        = parsed["internal_note"]
-            suggested_phase      = parsed.get("story_phase", "")
             # 장르 가드: 이미 확장 승인된 세션이면 플래그 무시
             out_of_genre         = bool(parsed.get("out_of_genre")) and not _genre_open
             genre_note           = parsed.get("genre_note", "") if out_of_genre else ""
@@ -678,16 +792,9 @@ async def stream_response(
                     reply_speaker = ""
                     dialogue = ""
 
-            # story_phase: LLM 제안을 역행 방지 로직으로 적용
-            current_phase = await redis_client.get(key_phase(chat_id)) or "도입부"
-            new_phase = _advance_phase(current_phase, suggested_phase) if suggested_phase else current_phase
-            if new_phase != current_phase:
-                await redis_client.set(key_phase(chat_id), new_phase)
-                logger.info("스토리 단계 전환 - chat_id=%s: %s → %s", chat_id, current_phase, new_phase)
-
             logger.info(
-                "PARSED │ narration=%s │ dialogue=%s │ state=%s │ phase=%s │ note=%s",
-                narration[:60], dialogue[:60], state_changes, new_phase, internal_note,
+                "PARSED │ narration=%s │ dialogue=%s │ state=%s │ note=%s",
+                narration[:60], dialogue[:60], state_changes, internal_note,
             )
 
             # 상태 갱신: internal_note를 현재 서사 상태로 저장
@@ -727,7 +834,6 @@ async def stream_response(
                     "protagonist_dialogue": protagonist_dialogue,
                     "state_changes":        state_changes,
                     "turn":                 turn,
-                    "story_phase":          new_phase,
                     "memories":             relevant_memories,
                     "consistency":          consistency_result,
                     "out_of_genre":         out_of_genre,
