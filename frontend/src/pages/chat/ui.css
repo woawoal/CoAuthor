@@ -100,6 +100,19 @@
   cursor: not-allowed;
 }
 
+.save-btn-group {
+  display: flex;
+  gap: 4px;
+}
+
+.editor-save-btn--complete {
+  border-color: color-mix(in srgb, var(--theme-color) 90%, transparent);
+  background: color-mix(in srgb, var(--theme-color) 15%, transparent);
+}
+.editor-save-btn--complete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--theme-color) 28%, transparent);
+}
+
 /* ── 모드 스위처 (참여형 ↔ 집필형 토글) ── */
 .mode-switcher {
   display: flex;

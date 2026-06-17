@@ -195,6 +195,14 @@
   border-color: color-mix(in srgb, var(--text-main) 30%, transparent);
 }
 
+.storylist-card__btn--complete {
+  border-color: color-mix(in srgb, var(--theme-color) 60%, transparent);
+  color: var(--theme-color);
+}
+.storylist-card__btn--complete:hover {
+  background-color: color-mix(in srgb, var(--theme-color) 18%, transparent);
+}
+
 .storylist-card__btn--delete {
   border-color: rgba(211, 47, 47, 0.4);
   color: #EF9A9A;

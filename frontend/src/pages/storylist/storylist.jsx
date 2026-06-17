@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getSessions, deleteSession } from '../../lib/worldviewApi';
+import { completeSession } from '../../lib/chatApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { toast } from '../../lib/toast';
 import './storylist.css';
@@ -49,6 +50,10 @@ export default function StoryList() {
   }, []);
 
   const handleResume = (session) => {
+    if (session.status === 'completed') {
+      navigate('/editor', { state: { chatId: session.id, authorId: session.author_id } });
+      return;
+    }
     const mode = localStorage.getItem(`session_mode_${session.id}`) ?? 'chat';
     const dest = mode === 'editor' ? '/editor' : '/chat';
     navigate(dest, { state: { chatId: session.id, authorId: session.author_id } });
@@ -63,6 +68,17 @@ export default function StoryList() {
     navigate('/worldedit', {
       state: { worldId: session.world_id, chatId: session.id, authorId: session.author_id },
     });
+  };
+
+  const handleComplete = async (session) => {
+    if (!window.confirm(`"${session.world_title}" 소설을 완결내시겠습니까?\n완결 후에는 이어쓰기가 불가합니다.`)) return;
+    try {
+      await completeSession(session.id);
+      setSessions(prev => prev.map(s => s.id === session.id ? { ...s, status: 'completed' } : s));
+      toast('완결되었습니다! 🎉');
+    } catch (err) {
+      toast(`완결 처리 실패: ${err.message}`, 'error');
+    }
   };
 
   const handleDelete = async (session) => {
@@ -124,8 +140,13 @@ export default function StoryList() {
                   ✎ 세계관
                 </button>
                 <button className="storylist-card__btn" onClick={() => handleResume(s)}>
-                  이어쓰기 →
+                  {s.status === 'completed' ? '수정하기' : '이어쓰기 →'}
                 </button>
+                {s.status !== 'completed' && (
+                  <button className="storylist-card__btn storylist-card__btn--complete" onClick={() => handleComplete(s)}>
+                    완결
+                  </button>
+                )}
                 <button className="storylist-card__btn storylist-card__btn--delete" onClick={() => handleDelete(s)}>
                   삭제
                 </button>
