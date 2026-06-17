@@ -899,6 +899,18 @@
 .mp-relmap-add:hover {
     opacity: 0.9;
 }
+.mp-relmap-cancel {
+    padding: 7px 12px;
+    font-size: 12px;
+    color: var(--text-sub, #aaa);
+    background: transparent;
+    border: 1px solid color-mix(in srgb, var(--text-sub, #aaa) 30%, transparent);
+    border-radius: 8px;
+    cursor: pointer;
+}
+.mp-relmap-cancel:hover {
+    color: var(--text-main, #fff);
+}
 .mp-relmap-rellist {
     display: flex;
     flex-wrap: wrap;
@@ -924,6 +936,7 @@
     color: var(--theme-color, #c9a87c);
     font-weight: 700;
 }
+.mp-relmap-rel__edit,
 .mp-relmap-rel__del {
     display: inline-flex;
     align-items: center;
@@ -937,9 +950,17 @@
     border-radius: 50%;
     cursor: pointer;
 }
+.mp-relmap-rel__edit:hover {
+    background: color-mix(in srgb, var(--theme-color, #c9a87c) 25%, transparent);
+    color: var(--text-main, #fff);
+}
 .mp-relmap-rel__del:hover {
     background: rgba(224, 108, 117, 0.2);
     color: #E06C75;
+}
+.mp-relmap-rel--editing {
+    border-color: var(--theme-color, #c9a87c);
+    box-shadow: 0 0 0 1px var(--theme-color, #c9a87c) inset;
 }
 
 /* 관계도 하단 인물 상세 (옛 관계도/등장인물 정보 계승) */

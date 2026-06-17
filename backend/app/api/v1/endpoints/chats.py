@@ -164,6 +164,23 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
                     addr_lines.append(f"  {c.name} → {target_name}: \"{address}\"")
         if addr_lines:
             parts.append(ADDRESS_RULE_HEADER + "\n".join(addr_lines))
+
+        # 인물 관계도(설정집에서 사용자가 직접 지정) → 각 인물의 시선·태도·대사에 매 턴 반영
+        rels = (getattr(world, 'relations', None) or []) if world else []
+        if rels:
+            id_to_name = {str(c.id): c.name for c in chars}
+            rel_lines = []
+            for r in rels:
+                f = id_to_name.get(str(r.get("from", "")))
+                t = id_to_name.get(str(r.get("to", "")))
+                label = (r.get("label") or "").strip()
+                if f and t and label:
+                    rel_lines.append(f"- {f} → {t}: {label}")
+            if rel_lines:
+                parts.append(
+                    "[인물 관계 — 사용자가 지정. 'A → B: 관계'는 A가 B를 그렇게 여긴다는 뜻이다. "
+                    "각 인물의 대사·행동·내면 묘사에 이 관계를 일관되게 반영하라]\n" + "\n".join(rel_lines)
+                )
     if persona_id == "charoun" and world:
         facts = getattr(world, 'hidden_facts', None) or []
         if facts:

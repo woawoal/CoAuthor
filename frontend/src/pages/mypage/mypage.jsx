@@ -86,6 +86,7 @@ function MyPage() {
     const [relFrom, setRelFrom] = useState('');
     const [relTo, setRelTo] = useState('');
     const [relLabel, setRelLabel] = useState('');
+    const [editIdx, setEditIdx] = useState(null);   // null=새 관계 추가, 숫자=그 관계 수정 중
 
     const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
     const [loading, setLoading] = useState(true);
@@ -190,7 +191,7 @@ function MyPage() {
         setWiki(null);
         setWikiTab('세계관');
         setRelations([]);
-        setRelFrom(''); setRelTo(''); setRelLabel('');
+        setRelFrom(''); setRelTo(''); setRelLabel(''); setEditIdx(null);
         try {
             const w = await getWiki(userId, work.session_id);
             setWiki(w);
@@ -205,17 +206,34 @@ function MyPage() {
         catch (e) { console.error(e); toast('관계도 저장에 실패했어요.', 'error'); }
     };
 
-    const handleAddRelation = () => {
+    const resetRelEditor = () => { setRelFrom(''); setRelTo(''); setRelLabel(''); setEditIdx(null); };
+
+    const handleSaveRelation = () => {
         if (!relFrom || !relTo || relFrom === relTo) {
             toast('서로 다른 두 인물을 선택하세요.', 'error');
             return;
         }
-        persistRelations([...relations, { from: relFrom, to: relTo, label: relLabel.trim() }]);
-        setRelLabel('');
+        if (editIdx !== null) {
+            // 수정 — 기존 라벨 위치(dx/dy)는 유지하고 from/to/label만 갱신
+            persistRelations(relations.map((r, i) => (
+                i === editIdx ? { ...r, from: relFrom, to: relTo, label: relLabel.trim() } : r
+            )));
+        } else {
+            persistRelations([...relations, { from: relFrom, to: relTo, label: relLabel.trim() }]);
+        }
+        resetRelEditor();
+    };
+
+    const handleEditRelation = (idx) => {
+        const r = relations[idx];
+        setRelFrom(r.from); setRelTo(r.to); setRelLabel(r.label || '');
+        setEditIdx(idx);
     };
 
     const handleDeleteRelation = (idx) => {
         persistRelations(relations.filter((_, i) => i !== idx));
+        if (editIdx === idx) resetRelEditor();
+        else if (editIdx !== null && idx < editIdx) setEditIdx(editIdx - 1);
     };
 
     // 관계 라벨 드래그 — 사용자가 끌어 위치 이동(겹침 해소). offset(dx,dy)을 관계에 저장.
@@ -792,18 +810,22 @@ function MyPage() {
                                                                         <option value="">인물 B</option>
                                                                         {all.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                                                     </select>
-                                                                    <button className="mp-relmap-add" onClick={handleAddRelation}>추가</button>
+                                                                    <button className="mp-relmap-add" onClick={handleSaveRelation}>{editIdx !== null ? '저장' : '추가'}</button>
+                                                                    {editIdx !== null && (
+                                                                        <button className="mp-relmap-cancel" onClick={resetRelEditor}>취소</button>
+                                                                    )}
                                                                 </div>
                                                                 {relations.length > 0 && (
                                                                     <div className="mp-relmap-rellist">
                                                                         {relations.map((r, i) => (
-                                                                            <div key={i} className="mp-relmap-rel">
+                                                                            <div key={i} className={`mp-relmap-rel${editIdx === i ? ' mp-relmap-rel--editing' : ''}`}>
                                                                                 <span className="mp-relmap-rel__text">
                                                                                     {nameById[r.from] || '(삭제된 인물)'}
                                                                                     <b className="mp-relmap-rel__label">{r.label || '관계'}</b>
                                                                                     <span className="mp-relmap-rel__arrow">→</span>
                                                                                     {nameById[r.to] || '(삭제된 인물)'}
                                                                                 </span>
+                                                                                <button className="mp-relmap-rel__edit" onClick={() => handleEditRelation(i)} title="수정">✎</button>
                                                                                 <button className="mp-relmap-rel__del" onClick={() => handleDeleteRelation(i)} title="삭제">✕</button>
                                                                             </div>
                                                                         ))}
