@@ -1,4 +1,5 @@
-﻿import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
+﻿// frontend/src/components/AuthorPanel.jsx
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import {
   sendAuthorMessage, getMemos, saveMemos,
   getTasteRecommend, addGlossaryTerm, lyricApply,
@@ -135,7 +136,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
     getTaste(chatId, userId).then(data => {
       if (data.works?.length) setTasteWorks(data.works);
       if (data.taste_profile && Object.keys(data.taste_profile).length) setTasteProfile(data.taste_profile);
-    }).catch(() => {});
+    }).catch(() => { });
   }, [userId, chatId]);
 
   // ── 메모 Redis 로드 ───────────────────────────────────────
@@ -280,7 +281,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
       await runTasteAnalysis(newWorks);
     } else {
       setTasteProfile(null);
-      if (userId && chatId) analyzeTaste(chatId, { user_id: userId, works: [] }).catch(() => {});
+      if (userId && chatId) analyzeTaste(chatId, { user_id: userId, works: [] }).catch(() => { });
     }
   }
 
@@ -371,7 +372,6 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                     }
                     autoPlay
                     loop={mode === 'editor' || !reactionEmotion}
-                    muted={mode === 'editor'}
                     playsInline
                     onEnded={mode === 'chat' ? onReactionEnd : undefined}
                     onError={() => setVideoError(true)}
@@ -394,15 +394,13 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                 {AUTHOR_TAGS.map(tag => (
                   <button
                     key={tag.label}
-                    className={`author-tag${
-                      (tag.label === '#세계관' && showWorldInfo) ||
+                    className={`author-tag${(tag.label === '#세계관' && showWorldInfo) ||
                       (tag.label === '#등장인물' && showCharInfo) ||
                       (tag.label === '#도움말' && showHelpInfo)
-                        ? ' author-tag--active' : ''
-                    }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${
-                      tag.label === '#가사적용ai' ? ' author-tag--accent' : ''
-                    }${tag.label === '#가사적용ai' && panelView === 'lyric' ? ' author-tag--active' : ''
-                    }`}
+                      ? ' author-tag--active' : ''
+                      }${tag.label === '#취향저격ai' ? ' author-tag--accent' : ''}${tag.label === '#가사적용ai' ? ' author-tag--accent' : ''
+                      }${tag.label === '#가사적용ai' && panelView === 'lyric' ? ' author-tag--active' : ''
+                      }`}
                     onClick={() => handleTagClick(tag)}
                     disabled={authorLoading || (tag.label === '#취향저격ai' && tasteRecommending)}
                   >{tag.label === '#취향저격ai' && tasteRecommending ? '추천 중...' : tag.label}</button>
@@ -421,9 +419,9 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                   ✏️ 교정
                   {mode === 'chat'
                     ? corrections.reduce((n, c) => n + c.errors.length, 0) > 0 &&
-                      <span className="memo-count memo-count--proof">{corrections.reduce((n, c) => n + c.errors.length, 0)}</span>
+                    <span className="memo-count memo-count--proof">{corrections.reduce((n, c) => n + c.errors.length, 0)}</span>
                     : corrections.filter(e => !e.applied).length > 0 &&
-                      <span className="memo-count memo-count--proof">{corrections.filter(e => !e.applied).length}</span>
+                    <span className="memo-count memo-count--proof">{corrections.filter(e => !e.applied).length}</span>
                   }
                 </button>
               </div>
@@ -773,7 +771,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                         className="memo-proof__dismiss"
                         title="이 단어들을 맞는 표기로 등록(다음부터 교정 제외)"
                         onClick={() => {
-                          c.errors.forEach(e => { if (chatId) addGlossaryTerm(chatId, e.original).catch(() => {}); });
+                          c.errors.forEach(e => { if (chatId) addGlossaryTerm(chatId, e.original).catch(() => { }); });
                           onSkipCorrection?.(c.id);
                         }}
                       >넘기기</button>
@@ -798,7 +796,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
                             <button
                               className="memo-proof__skip"
                               title="이 단어를 맞는 표기로 등록(다음부터 교정 제외)"
-                              onClick={() => { if (chatId) addGlossaryTerm(chatId, e.original).catch(() => {}); onSkipCorrection?.(e.key); }}
+                              onClick={() => { if (chatId) addGlossaryTerm(chatId, e.original).catch(() => { }); onSkipCorrection?.(e.key); }}
                             >넘기기</button>
                           </>
                         )}
