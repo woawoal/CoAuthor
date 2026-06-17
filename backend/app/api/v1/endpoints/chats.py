@@ -167,7 +167,7 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
         if addr_lines:
             parts.append(ADDRESS_RULE_HEADER + "\n".join(addr_lines))
 
-        # 인물 관계도(설정집에서 사용자가 직접 지정) → 각 인물의 시선·태도·대사에 매 턴 반영
+        # 인물 관계도(설정집에서 사용자가 지정) → 초기 설정 '참고용'. 진행 중 바뀐 관계는 줄거리·현재 흐름이 우선.
         rels = (getattr(world, 'relations', None) or []) if world else []
         if rels:
             id_to_name = {str(c.id): c.name for c in chars}
@@ -180,8 +180,9 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
                     rel_lines.append(f"- {f} → {t}: {label}")
             if rel_lines:
                 parts.append(
-                    "[인물 관계 — 사용자가 지정. 'A → B: 관계'는 A가 B를 그렇게 여긴다는 뜻이다. "
-                    "각 인물의 대사·행동·내면 묘사에 이 관계를 일관되게 반영하라]\n" + "\n".join(rel_lines)
+                    "[인물 관계(초기 설정·참고용) — 'A → B: 관계'는 이야기 시작 시점 기준 A가 B를 그렇게 여긴다는 뜻이다. "
+                    "출발점 정서로만 참고하라. **이야기가 진행되며 관계·감정이 달라졌다면 [지금까지의 줄거리]와 현재 장면 흐름을 우선**한다. "
+                    "억지로 유지하거나 장면마다 끌어들이지 말 것]\n" + "\n".join(rel_lines)
                 )
     if persona_id == "charoun" and world:
         facts = getattr(world, 'hidden_facts', None) or []
@@ -829,7 +830,9 @@ async def stream_response(
             # F-QC-01: 일관성 검수(옵션) — 새 응답이 확립된 설정·기억과 모순되는지
             consistency_result = {"consistent": True, "violations": []}
             if check_consistency:
-                facts = world_context
+                # 인물 관계도는 '초기 설정'일 뿐 진행 중 바뀔 수 있으므로 검수 대상(확립된 설정)에서 제외
+                # → 관계 변화를 모순으로 오탐하지 않게. (생성 프롬프트엔 참고용으로 남김)
+                facts = re.sub(r'\[인물 관계\(초기 설정·참고용\).*?(?=\n\[|\Z)', '', world_context, flags=re.S).strip()
                 if relevant_memories:
                     facts += "\n[관련 기억]\n" + "\n".join(f"- {m}" for m in relevant_memories)
                 consistency_result = await consistency.check(facts, reply_text)
