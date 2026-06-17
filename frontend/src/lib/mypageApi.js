@@ -26,6 +26,17 @@ export async function getWiki(userId, sessionId) {
     return res.json();
 }
 
+// 등장인물 관계도 — 사용자가 직접 입력한 관계 저장. relations=[{from, to, label}]
+export async function saveRelations(userId, sessionId, relations) {
+    const res = await fetch(`${BASE}/works/${sessionId}/relations?user_id=${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(relations),
+    });
+    if (!res.ok) throw new Error('관계도 저장 실패');
+    return res.json();
+}
+
 export async function getRecent(userId) {
     const res = await fetch(`${BASE}/recent?user_id=${userId}`);
     if (!res.ok) throw new Error('최근 작업 조회 실패');

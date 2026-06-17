@@ -852,7 +852,13 @@
     border-radius: 8px;
     white-space: nowrap;
     z-index: 3;
-    pointer-events: none;
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+.mp-relmap-edge-label:active {
+    cursor: grabbing;
 }
 /* 관계 직접 입력 에디터 */
 .mp-relmap-editor {

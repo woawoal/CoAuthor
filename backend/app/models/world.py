@@ -19,6 +19,8 @@ class World(Base):
     tags: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     # 맞춤법 교정 보호 용어집: 자동 추출(LLM) + 사용자 '넘기기' 누적. None=미추출, []=추출했으나 없음
     glossary: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
+    # 인물 간 관계도(설정집 등장인물 탭) — 사용자가 직접 입력. [{from, to, label}] (from/to=character.id 문자열)
+    relations: Mapped[list | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(default=func.now())
     updated_at: Mapped[datetime] = mapped_column(default=func.now(), onupdate=func.now())
 
