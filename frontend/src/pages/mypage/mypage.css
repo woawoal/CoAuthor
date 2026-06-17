@@ -53,7 +53,7 @@
     border-right: 1px solid rgba(255, 255, 255, 0.07);
     display: flex;
     flex-direction: column;
-    padding: 20px 12px 40px;
+    padding: 38px 12px 40px;   /* top: 좌상단 back 버튼 자리 + 프로필 아바타를 메인 제목 라인에 맞춤 */
     gap: 8px;
     position: sticky;
     top: 0;
@@ -62,14 +62,18 @@
 }
 
 .mp-back {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 1;
     background: transparent;
     border: none;
     color: var(--text-sub, #aaa);
     font-size: 13px;
     cursor: pointer;
     text-align: left;
-    padding: 4px 8px;
-    margin-bottom: 4px;
+    padding: 2px 6px;
+    margin: 0;
 }
 
 .mp-back:hover {
@@ -186,7 +190,7 @@
 .mp-main {
     flex: 0 1 1000px;
     /* 760px 고정폭 + 화면 좁으면 줄어듦 */
-    padding: 50px 36px 50px 100px;
+    padding: 59px 36px 50px 100px;   /* top: 사이드바 프로필 아바타와 세로 중심 정렬(밑줄 패딩 보정 포함) */
     max-width: 1000px;
     /* margin: 0 auto;     사이드바 오른쪽 남는 공간에서 중앙 정렬 */
     min-width: 0;
@@ -196,6 +200,11 @@
     font-size: 22px;
     font-weight: 700;
     margin: 0 0 24px;
+    /* 사이드바 프로필 아바타(44px)와 세로 중심을 맞추기 위해 같은 높이 박스에 텍스트를 중앙 정렬 */
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
     padding-bottom: 14px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -743,6 +752,232 @@
 .mp-relation-node__desc {
     font-size: 11px;
     color: var(--text-sub);
+}
+
+/* 등장인물 관계도 — 주인공 중심 방사형 (도형+선) */
+.mp-relmap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 0 4px;
+}
+.mp-relmap-stage {
+    position: relative;
+    margin: 0 auto;
+    max-width: 100%;
+}
+.mp-relmap-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+.mp-relmap-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 56px;
+    padding: 8px 12px;
+    background: var(--card-main, #1a1a1a);
+    border: 1.5px solid #9aa0a6;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    cursor: default;
+    z-index: 1;
+}
+.mp-relmap-node--center {
+    padding: 12px 16px;
+    border-width: 2.5px;
+    background: color-mix(in srgb, var(--theme-color, #c9a87c) 14%, var(--card-main, #1a1a1a));
+    z-index: 2;
+}
+.mp-relmap-node__name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main, #fff);
+    white-space: nowrap;
+}
+.mp-relmap-node--center .mp-relmap-node__name {
+    font-size: 15px;
+}
+.mp-relmap-node__role {
+    font-size: 10px;
+    color: var(--text-sub, #aaa);
+}
+.mp-relmap-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-sub, #aaa);
+}
+.mp-relmap-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.mp-relmap-legend__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.mp-relmap-legend__hint {
+    margin-left: 4px;
+    opacity: 0.7;
+}
+/* 관계 선·화살표 색 — 속성 var() 미지원 브라우저 대비 CSS로 확실히 테마색 적용 */
+.mp-relmap-svg > path {
+    stroke: var(--theme-color, #c9a87c);
+}
+.mp-relmap-svg marker path {
+    fill: var(--theme-color, #c9a87c);
+}
+
+/* 관계 선 라벨 (선 중간) */
+.mp-relmap-edge-label {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    padding: 2px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-main, #fff);
+    background: color-mix(in srgb, var(--theme-color, #c9a87c) 16%, var(--card-main, #18131F));
+    border: 1px solid color-mix(in srgb, var(--theme-color, #c9a87c) 45%, transparent);
+    border-radius: 8px;
+    white-space: nowrap;
+    z-index: 3;
+    pointer-events: none;
+}
+/* 관계 직접 입력 에디터 */
+.mp-relmap-editor {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.mp-relmap-editor__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.mp-relmap-editor select,
+.mp-relmap-editor input {
+    padding: 7px 9px;
+    font-size: 12px;
+    background: var(--card-main, #1a1a1a);
+    color: var(--text-main, #fff);
+    border: 1px solid color-mix(in srgb, var(--theme-color, #c9a87c) 25%, transparent);
+    border-radius: 8px;
+}
+.mp-relmap-editor input {
+    flex: 1;
+    min-width: 110px;
+}
+.mp-relmap-add {
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--bg-main, #0e0e0e);
+    background: var(--theme-color, #c9a87c);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.mp-relmap-add:hover {
+    opacity: 0.9;
+}
+.mp-relmap-rellist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.mp-relmap-rel {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 6px 5px 11px;
+    font-size: 12px;
+    color: var(--text-main, #fff);
+    background: color-mix(in srgb, var(--theme-color, #c9a87c) 8%, var(--card-main, #1a1a1a));
+    border: 1px solid color-mix(in srgb, var(--theme-color, #c9a87c) 20%, transparent);
+    border-radius: 999px;
+}
+.mp-relmap-rel__label {
+    margin: 0 4px;
+    color: var(--theme-color, #c9a87c);
+}
+.mp-relmap-rel__arrow {
+    margin: 0 4px 0 0;
+    color: var(--theme-color, #c9a87c);
+    font-weight: 700;
+}
+.mp-relmap-rel__del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font-size: 11px;
+    color: var(--text-sub, #aaa);
+    background: transparent;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+}
+.mp-relmap-rel__del:hover {
+    background: rgba(224, 108, 117, 0.2);
+    color: #E06C75;
+}
+
+/* 관계도 하단 인물 상세 (옛 관계도/등장인물 정보 계승) */
+.mp-relmap-info {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 4px;
+    padding-top: 14px;
+    border-top: 1px solid color-mix(in srgb, var(--theme-color, #c9a87c) 18%, transparent);
+}
+.mp-relmap-card {
+    background: color-mix(in srgb, var(--theme-color, #c9a87c) 6%, var(--card-main, #1a1a1a));
+    border: 1px solid color-mix(in srgb, var(--theme-color, #c9a87c) 16%, transparent);
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+.mp-relmap-card__head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.mp-relmap-card__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.mp-relmap-card__name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main, #fff);
+}
+.mp-relmap-card__role {
+    font-size: 10px;
+    color: var(--text-sub, #aaa);
+    margin-left: auto;
+}
+.mp-relmap-card__desc {
+    margin: 6px 0 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-sub, #aaa);
 }
 
 /* 타임라인 */
