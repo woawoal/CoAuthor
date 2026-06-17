@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 
 from app.core.config import settings
-from app.core.personas import get_author_prompt, AUTHOR_ID_MAP, reaction_tone
+from app.core.personas import get_author_prompt, AUTHOR_ID_MAP, reaction_tone, reaction_examples
 from app.core.reactions import EMOTIONS, pick_reaction  # F-AS-05 작가 리액션 (머지 때 빠졌던 import 복구)
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
@@ -1266,9 +1266,11 @@ async def classify_emotion(text: str) -> str:
 def _reaction_gen_system(persona_id: str) -> str:
     return (
         f"{reaction_tone(persona_id)}\n\n"
+        f"{reaction_examples(persona_id)}\n\n"
         "지금 인터랙티브 소설을 함께 쓰는 중이다. 아래에 [주인공이 방금 한 말/행동]과 "
         "[네가 방금 이어 쓴 장면]이 주어진다. 이 흐름을 보고 작가인 네가 옆에서 혼잣말처럼 "
         "툭 던지는 짧은 반응 한 마디를 네 말투로 만들어라(소리 내어 말하는 추임새).\n"
+        "위 예시처럼 그 작가 특유의 호흡·시선으로, 장면에 맞는 새 문장을 만들 것.\n"
         "규칙:\n"
         "- 25자 이내, 한 문장. 따옴표·이모지·지문 없이 말만.\n"
         "- 장면을 다시 서술하지 말 것. 새 사건을 만들지 말 것. 반응만.\n"
