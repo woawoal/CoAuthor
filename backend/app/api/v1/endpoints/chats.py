@@ -193,6 +193,57 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
         parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
     return "\n".join(parts)
 
+
+async def _build_consistency_facts(chat_id: str, db: AsyncSession, relevant_memories: list[str] | None = None) -> str:
+    """설정 검수 baseline — world_context 합본이 아니라 '검증 가능한 확정 사실'만 추려
+    **출처별로 구분**해 반환한다(짬뽕 방지).
+
+    - [사용자 확립 설정] = 세계관 폼(배경·규칙)·숨겨진 설정·등장인물 → 사용자가 '의도한' 것.
+      여기와 충돌 = 진짜 '사용자가 의도 안 한 설정이 튀어나옴' → high.
+    - [전개 중 사실] = 누적 줄거리 + 검색된 과거 사건 → 진행하며 굳어진 것 → mid.
+
+    제외: 행동지시문(prompt·지시), 메타 규칙(※ 안내문), 장르(분위기→장르가드 담당), 비유.
+    """
+    try:
+        sid = uuid.UUID(chat_id)
+    except (ValueError, TypeError):
+        return ""
+    session = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
+    if not session:
+        return ""
+    world = (await db.execute(select(World).where(World.id == session.world_id))).scalar_one_or_none()
+    chars = (await db.execute(select(Character).where(Character.world_id == session.world_id))).scalars().all()
+
+    # ── ① 사용자가 확립한 설정(=의도) ──
+    user_facts: list[str] = []
+    if world:
+        for label, val in (("배경", world.setting), ("세계 규칙", world.rules)):
+            if val and str(val).strip():
+                user_facts.append(f"- {label}: {str(val).strip()}")
+        for f in (getattr(world, "hidden_facts", None) or []):
+            if str(f).strip():
+                user_facts.append(f"- (숨겨진 설정) {str(f).strip()}")
+    for c in chars:
+        role = getattr(c.role, "value", c.role)
+        attrs = (c.personality or "").strip()
+        user_facts.append(f"- 인물 {c.name}({role})" + (f": {attrs}" if attrs else ""))
+
+    # ── ② 전개 중 굳어진 사실 ──
+    play_facts: list[str] = []
+    if session.story_summary and session.story_summary.strip():
+        play_facts.append(f"- {session.story_summary.strip()}")
+    for m in (relevant_memories or []):
+        if str(m).strip():
+            play_facts.append(f"- {str(m).strip()}")
+
+    blocks: list[str] = []
+    if user_facts:
+        blocks.append("[사용자 확립 설정 — 어기면 '의도하지 않은 설정' = severity high]\n" + "\n".join(user_facts))
+    if play_facts:
+        blocks.append("[전개 중 사실 — 어기면 severity mid]\n" + "\n".join(play_facts))
+    return "\n\n".join(blocks)
+
+
 def key_turn(chat_id: str) -> str:
     return f"session:{chat_id}:turn"
 
@@ -830,12 +881,10 @@ async def stream_response(
             # F-QC-01: 일관성 검수(옵션) — 새 응답이 확립된 설정·기억과 모순되는지
             consistency_result = {"consistent": True, "violations": []}
             if check_consistency:
-                # 인물 관계도는 '초기 설정'일 뿐 진행 중 바뀔 수 있으므로 검수 대상(확립된 설정)에서 제외
-                # → 관계 변화를 모순으로 오탐하지 않게. (생성 프롬프트엔 참고용으로 남김)
-                facts = re.sub(r'\[인물 관계\(초기 설정·참고용\).*?(?=\n\[|\Z)', '', world_context, flags=re.S).strip()
-                if relevant_memories:
-                    facts += "\n[관련 기억]\n" + "\n".join(f"- {m}" for m in relevant_memories)
-                consistency_result = await consistency.check(facts, reply_text)
+                # baseline = world_context 합본이 아니라 '확정 사실'만 추려 출처별로 구분(짬뽕 방지).
+                # 인물 관계도·행동지시문·장르·메타규칙은 제외(오탐 방지), 관련 기억은 '전개 중 사실'로 포함.
+                consistency_facts = await _build_consistency_facts(chat_id, db, relevant_memories)
+                consistency_result = await consistency.check(consistency_facts, reply_text)
                 if not consistency_result["consistent"]:
                     logger.info("⚠️ 일관성 위반 %d건 - chat_id=%s: %s",
                                 len(consistency_result["violations"]), chat_id,
