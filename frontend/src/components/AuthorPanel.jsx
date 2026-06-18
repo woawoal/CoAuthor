@@ -6,7 +6,7 @@ import {
 } from '../lib/chatApi';
 import { saveSentence } from '../lib/mypageApi';
 import { getTaste, analyzeTaste } from '../lib/tasteApi';
-import { applyGlobalVideoVolume, VIDEO_VOLUME_EVENT } from '../lib/videoVolume';
+import { applyReactionVideoVolume, REACTION_VIDEO_VOLUME_EVENT } from '../lib/videoVolume';
 
 // "=", “=", "=” — LLM이 따옴표를 포함해서 보낼 때 제거
 const stripOuterQuotes = s => s ? s.replace(/^["“”]+|["“”]+$/g, '').trim() : '';
@@ -183,10 +183,10 @@ const AuthorPanel = forwardRef(function AuthorPanel({
     if (mode !== 'chat') return;
     const video = authorVideoRef.current;
     if (!video) return;
-    applyGlobalVideoVolume(video);
-    const handleVolumeChange = () => applyGlobalVideoVolume(authorVideoRef.current);
-    window.addEventListener(VIDEO_VOLUME_EVENT, handleVolumeChange);
-    return () => window.removeEventListener(VIDEO_VOLUME_EVENT, handleVolumeChange);
+    applyReactionVideoVolume(video);
+    const handleVolumeChange = () => applyReactionVideoVolume(authorVideoRef.current);
+    window.addEventListener(REACTION_VIDEO_VOLUME_EVENT, handleVolumeChange);
+    return () => window.removeEventListener(REACTION_VIDEO_VOLUME_EVENT, handleVolumeChange);
   }, [mode, currentAuthorIdx, reactionEmotion]);
 
   // ── 작가 전환 ─────────────────────────────────────────────

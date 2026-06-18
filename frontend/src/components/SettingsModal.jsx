@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getGlobalVideoVolume, setGlobalVideoVolume } from '../lib/videoVolume';
+import { getGlobalVideoVolume, setGlobalVideoVolume, getReactionVideoVolume, setReactionVideoVolume } from '../lib/videoVolume';
 import { bgmPlay, bgmPause } from '../lib/bgmController';
 
 const S = {
@@ -46,6 +46,7 @@ const readSaved = () => ({
   bgmOn: localStorage.getItem('bgm_playing') !== 'false',
   bgmVol: Number(localStorage.getItem('bgm_volume') ?? 0.2),
   videoVol: getGlobalVideoVolume(),
+  reactionVideoVol: getReactionVideoVolume(),
   reactionOn: localStorage.getItem('voice_reaction') !== 'off',
 });
 
@@ -66,6 +67,7 @@ export default function SettingsModal({ open, onClose }) {
     localStorage.setItem('bgm_volume', String(draft.bgmVol));
     localStorage.setItem('voice_reaction', draft.reactionOn ? 'on' : 'off');
     setGlobalVideoVolume(draft.videoVol);
+    setReactionVideoVolume(draft.reactionVideoVol);
     // 사용자 제스처(클릭) 컨텍스트에서 직접 제어 — dispatchEvent는 autoplay 차단됨
     if (draft.bgmOn) {
       bgmPlay().catch(() => {});
@@ -113,6 +115,24 @@ export default function SettingsModal({ open, onClose }) {
             style={S.range} type="range" min="0" max="1" step="0.01"
             value={draft.videoVol}
             onChange={(e) => set('videoVol')(Number(e.target.value))}
+          />
+        </div>
+
+        {/* 리액션 영상 소리 */}
+        <div style={S.block}>
+          <div style={S.head}>
+            <span style={S.label}>리액션 영상 소리</span>
+            <button
+              style={S.toggle(draft.reactionVideoVol > 0)}
+              onClick={() => set('reactionVideoVol')(draft.reactionVideoVol > 0 ? 0 : 0.3)}
+            >
+              {draft.reactionVideoVol > 0 ? 'ON' : '음소거'}
+            </button>
+          </div>
+          <input
+            style={S.range} type="range" min="0" max="1" step="0.01"
+            value={draft.reactionVideoVol}
+            onChange={(e) => set('reactionVideoVol')(Number(e.target.value))}
           />
         </div>
 
