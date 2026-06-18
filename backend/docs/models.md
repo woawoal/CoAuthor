@@ -54,6 +54,8 @@ ApiLog ─ User · Session       (호출·토큰·비용 로그)
 | rules | TEXT, null | 세계관 규칙 |
 | **tags** | JSON, null | 자동 분류 태그(F-WD-06) |
 | **glossary** | JSON, null | 맞춤법 보호 용어집(LLM 추출 + '넘기기' 누적). null=미추출 |
+| **hidden_facts** | JSON, null | 숨겨진 설정·복선(차로운 추리 모드에서 주입) |
+| **relations** | JSON, null | 인물 관계도(설정집 등장인물 탭) — 사용자 직접 입력 `[{from, to, label, dx?, dy?}]` |
 | created_at / updated_at | TIMESTAMP | 생성·수정일 |
 
 ### `characters` (등장인물)
