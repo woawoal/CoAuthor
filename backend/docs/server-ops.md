@@ -240,3 +240,61 @@ conda 환경 비활성 또는 패키지 미설치. `conda activate nodevelture` 
 ### 채팅 응답 없음 (Gemini)
 - `GEMINI_API_KEY` 형식 확인 (`AIzaSy...` 형태)
 - Redis 미실행 시 컨텍스트 조립 실패 → 도커 redis 또는 Upstash 확인
+
+---
+
+## CI/CD — 백엔드 자동 배포 (GitHub Actions)
+
+> 수동 `gcloud run deploy`를 자동화. **`dev`에 `backend/**` 변경이 머지되면** `.github/workflows/deploy-backend.yml`이 Cloud Run에 배포한다. 배포는 `--set-*` 없이 돌려 **기존 시크릿·env를 보존**(누락 사고 차단) + 배포 후 `/health` 확인.
+
+### 동작
+- 트리거: `push → dev` 중 `backend/**` 변경(문서만 바뀌면 배포 안 함) · 수동(`workflow_dispatch`)도 가능.
+- 명령: `gcloud run deploy nodevelture-api --source . --region us-central1 --min-instances=1 --quiet` (워크플로 내부).
+- 직렬화(`concurrency`)로 배포 겹침 방지.
+
+### 1회 셋업 — GCP 인증 (둘 중 하나)
+GitHub Actions가 GCP에 배포하려면 **배포용 서비스계정(SA) + 권한**이 필요. 아래는 `gcloud`로 1회만(레포 관리자 + GCP 권한 보유자가 실행).
+
+**공통: 배포 SA 생성 + 권한 부여**
+```bash
+PROJECT=nodevelture-499003
+PROJNUM=$(gcloud projects describe $PROJECT --format='value(projectNumber)')
+SA=gh-deployer@$PROJECT.iam.gserviceaccount.com
+
+gcloud iam service-accounts create gh-deployer --project $PROJECT --display-name "GitHub Actions deployer"
+# Cloud Run 배포 + 소스 빌드(Cloud Build) + 런타임 SA 위임 + 이미지/스테이징
+for R in roles/run.admin roles/cloudbuild.builds.editor roles/iam.serviceAccountUser \
+         roles/artifactregistry.writer roles/storage.admin roles/serviceusage.serviceUsageConsumer; do
+  gcloud projects add-iam-policy-binding $PROJECT --member="serviceAccount:$SA" --role="$R"
+done
+# 런타임 SA(컴퓨트 기본)에 대해 'act as' 권한
+gcloud iam service-accounts add-iam-policy-binding ${PROJNUM}-compute@developer.gserviceaccount.com \
+  --member="serviceAccount:$SA" --role="roles/iam.serviceAccountUser" --project $PROJECT
+```
+
+**옵션 A — Workload Identity Federation (키리스, 권장)**
+```bash
+gcloud iam workload-identity-pools create gh-pool --project $PROJECT --location global --display-name "GitHub"
+gcloud iam workload-identity-pools providers create-oidc gh-provider \
+  --project $PROJECT --location global --workload-identity-pool gh-pool \
+  --display-name "GitHub OIDC" --issuer-uri "https://token.actions.githubusercontent.com" \
+  --attribute-mapping "google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --attribute-condition "assertion.repository=='woawoal/NodeVelture'"
+# SA에 이 레포가 가장(impersonate) 가능하도록 바인딩
+gcloud iam service-accounts add-iam-policy-binding $SA --project $PROJECT \
+  --role roles/iam.workloadIdentityUser \
+  --member "principalSet://iam.googleapis.com/projects/${PROJNUM}/locations/global/workloadIdentityPools/gh-pool/attribute.repository/woawoal/NodeVelture"
+```
+→ GitHub 레포 **Settings▸Secrets and variables▸Actions** 에 두 개 등록:
+- `GCP_WIF_PROVIDER` = `projects/<PROJNUM>/locations/global/workloadIdentityPools/gh-pool/providers/gh-provider`
+- `GCP_DEPLOY_SA` = `gh-deployer@nodevelture-499003.iam.gserviceaccount.com`
+
+**옵션 B — SA 키 (간편, 장기키)**
+```bash
+gcloud iam service-accounts keys create key.json --iam-account $SA --project $PROJECT
+```
+→ GitHub Secret `GCP_SA_KEY` 에 `key.json` 전체 내용 붙여넣기. 그리고 워크플로의 인증 스텝을 주석대로 `credentials_json: ${{ secrets.GCP_SA_KEY }}` 로 교체. (보안상 옵션 A 권장 — 키 유출/로테이션 부담 없음.)
+
+### 주의
+- 워크플로는 `--set-*`를 **일부러 안 씀** → 시크릿/env 보존. 새 시크릿을 추가했다면 **그 1회만** 수동 배포(③의 풀 명령)로 등록하고, 이후는 자동 배포가 보존.
+- DB 마이그레이션은 자동 적용 안 함(설계) → 스키마 변경 시 `alembic upgrade head` 별도(자동화하려면 워크플로에 단계 추가 가능하나, 프로덕션 DB 변경이라 신중히).
