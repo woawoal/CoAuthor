@@ -287,9 +287,10 @@ export default function ReadNovel() {
   }
 
   const savedOpening = localStorage.getItem('opening_' + storyId) || '';
-  const content = savedOpening
-    ? savedOpening + '\n\n' + (novel?.content ?? '')
-    : (novel?.content ?? '');
+  const novelBody = novel?.content ?? '';
+  const content = (savedOpening && novelBody.trim())
+    ? savedOpening + '\n\n' + novelBody
+    : novelBody;
   if (!loading && novel && !content.trim()) {
     return (
       <div className="read-page">
