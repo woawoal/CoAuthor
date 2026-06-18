@@ -56,13 +56,13 @@
 - **`personalize.py`** (개인화 RAG) — `saved_sentences` 의미검색 → 취향저격 추천 톤 근거 주입(저장 톤→추천 톤 인과)
 - **`proofread.py`** (F-QC-02) — 네이버 맞춤법기 + 단어단위 diff, 고유명사 보호·자모/늘임 무시, error_profile
 - **`tts.py`** (F-AV-02) — ElevenLabs 작가별 음성, 첫 문장 낭독
-- `evaluate.py`(LLM-judge 4축) · `world_tag_classifier.py`(F-WD-06) · `llm_router.py`·`gemini.py`·`cache.py`
+- `evaluate.py`(LLM-judge 4축) · `world_tag_classifier.py`(F-WD-06) · `llm_router.py`·`llm.py`(엔진·폴백 체인)·`cache.py`
 
 ### `app/core/` · `app/prompts/`
 - `personas.py`(작가 4인 리치 프롬프트·문체) · `reactions.py`(작가×감정 리액션 풀) · `prompts/`(출력/입력 규칙·멀티NPC·suggest/stuck 시스템)
 
 ### `migrations/`
-- Alembic. `env.py`가 `.env`의 `DATABASE_URL` 단일 소스. head = `l2m3n4o5p6q7`(dialogues.speaker). 배포는 자동 마이그레이션 안 함 → `alembic upgrade head` 별도
+- Alembic. `env.py`가 `.env`의 `DATABASE_URL` 단일 소스. head = `o5p6q7r8s9t0`(worlds.relations). 배포는 자동 마이그레이션 안 함 → `alembic upgrade head` 별도
 
 ---
 

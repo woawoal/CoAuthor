@@ -52,6 +52,42 @@ const NAV = {
 };
 
 
+// 내 서재 탭 데이터 캐시(stale-while-revalidate) — 재방문 시 인증 대기 없이 즉시 표시 후 백그라운드 갱신
+function mpCacheGet(uid, key) {
+    try {
+        const v = localStorage.getItem(`${key}_${uid}`);
+        return v ? JSON.parse(v) : null;
+    } catch { return null; }
+}
+function mpCacheSet(uid, key, val) {
+    try { localStorage.setItem(`${key}_${uid}`, JSON.stringify(val)); } catch { /* 무시 */ }
+}
+
+// 마운트 즉시(인증 대기 없이) 마지막 유저의 캐시를 읽어 스피너 플래시 제거 (재방문 0초 체감)
+function readMpCache() {
+    try {
+        const uid = localStorage.getItem('mp_last_uid');
+        if (!uid) return { hadCache: false };
+        const cp = mpCacheGet(uid, 'profile');
+        const cd = mpCacheGet(uid, 'dashboard');
+        const cs = mpCacheGet(uid, 'stats');
+        return {
+            profile: cp,
+            dashboard: cd,
+            stats: cs,
+            works: mpCacheGet(uid, 'works'),
+            recent: mpCacheGet(uid, 'recent'),
+            sentences: mpCacheGet(uid, 'sentences'),
+            authorRecords: mpCacheGet(uid, 'authorRecords'),
+            achievements: mpCacheGet(uid, 'achievements'),
+            errorNotebook: mpCacheGet(uid, 'errorNotebook'),
+            hadCache: !!(cp && cd && cs),
+        };
+    } catch {
+        return { hadCache: false };
+    }
+}
+
 function MyPage() {
     const navigate = useNavigate();
     const [userId, setUserId] = useState(null);
@@ -59,18 +95,18 @@ function MyPage() {
     const [active, setActive] = useState('대시보드');
 
     // 각 탭 데이터 (lazy)
-    const [dashboard, setDashboard] = useState(null);
-    const [profile, setProfile] = useState(null);
-    const [works, setWorks] = useState(null);
-    const [recent, setRecent] = useState(null);
-    const [sentences, setSentences] = useState(null);
-    const [authorRecords, setAuthorRecords] = useState(null);
+    const [dashboard, setDashboard] = useState(() => readMpCache().dashboard ?? null);
+    const [profile, setProfile] = useState(() => readMpCache().profile ?? null);
+    const [works, setWorks] = useState(() => readMpCache().works ?? null);
+    const [recent, setRecent] = useState(() => readMpCache().recent ?? null);
+    const [sentences, setSentences] = useState(() => readMpCache().sentences ?? null);
+    const [authorRecords, setAuthorRecords] = useState(() => readMpCache().authorRecords ?? null);
     const [selectedVideoAuthor, setSelectedVideoAuthor] = useState(1);
     const [previewVideo, setPreviewVideo] = useState(null);
-    const [achievements, setAchievements] = useState(null);
-    const [errorNotebook, setErrorNotebook] = useState(null);   // 오답노트(자주 틀린 맞춤법)
+    const [achievements, setAchievements] = useState(() => readMpCache().achievements ?? null);
+    const [errorNotebook, setErrorNotebook] = useState(() => readMpCache().errorNotebook ?? null);   // 오답노트(자주 틀린 맞춤법)
     const [errSort, setErrSort] = useState('count');            // 'count'=많이 틀린 순 | 'recent'=최신순
-    const [stats, setStats] = useState(null);
+    const [stats, setStats] = useState(() => readMpCache().stats ?? null);
 
     // 취향 프로필
     const [tasteProfile, setTasteProfile] = useState(null);
@@ -89,7 +125,7 @@ function MyPage() {
     const [editIdx, setEditIdx] = useState(null);   // null=새 관계 추가, 숫자=그 관계 수정 중
 
     const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => !readMpCache().hadCache);
 
     const VIDEO_AUTHORS = [
         { id: 1, name: '백야', path: '/assets/author1' },
@@ -115,6 +151,7 @@ function MyPage() {
             if (!uid) { navigate('/login'); return; }
             setUserId(uid);
             setUserInfo(session.data?.user);
+            try { localStorage.setItem('mp_last_uid', uid); } catch { /* 무시 */ }
 
             // 0) 캐시 즉시 표시(stale-while-revalidate) — dashboard 엔드포인트가 ~6s라
             //    재방문 시 캐시로 0초 표시 후 백그라운드 갱신(내 서재 들락날락 체감 단축)
@@ -152,7 +189,7 @@ function MyPage() {
 
             // 2) 다른 탭 전용 + 느린 voice-profile(~1.6s)은 백그라운드 — 대기하지 않음
             getVoiceProfile().then(vp => setVoiceProfile(vp ?? null)).catch(() => setVoiceProfile(null));
-            getWorks(uid).then(setWorks).catch(() => { });
+            getWorks(uid).then(w => { setWorks(w); mpCacheSet(uid, 'works', w); }).catch(() => { });
             getTasteProfile(uid).then(t => {
                 setTasteProfile(t.taste_profile ?? {});
                 setTasteWorks(t.selected_works ?? []);
@@ -166,16 +203,17 @@ function MyPage() {
         if (tab === '말투 설정') { navigate('/voice-profile'); return; }
         setActive(tab);
         if (!userId) return;
+        // 캐시가 있으면 화면은 이미 떠 있음 → 열 때 조용히 재검증(stale-while-revalidate)하고 캐시 갱신
         try {
-            if (tab === '최근 작업' && !recent) setRecent(await getRecent(userId));
-            if (tab === '문장 보관함' && !sentences) setSentences(await getSentences(userId));
-            if (tab === 'AI 작가 기록' && !authorRecords) setAuthorRecords(await getAuthorRecords(userId));
-            if (tab === '업적' && !achievements) setAchievements(await getAchievements(userId));
-            if (tab === '오답노트' && !errorNotebook) setErrorNotebook(await getErrorNotebook(userId));
+            if (tab === '최근 작업') { const d = await getRecent(userId); setRecent(d); mpCacheSet(userId, 'recent', d); }
+            if (tab === '문장 보관함') { const d = await getSentences(userId); setSentences(d); mpCacheSet(userId, 'sentences', d); }
+            if (tab === 'AI 작가 기록') { const d = await getAuthorRecords(userId); setAuthorRecords(d); mpCacheSet(userId, 'authorRecords', d); }
+            if (tab === '업적') { const d = await getAchievements(userId); setAchievements(d); mpCacheSet(userId, 'achievements', d); }
+            if (tab === '오답노트') { const d = await getErrorNotebook(userId); setErrorNotebook(d); mpCacheSet(userId, 'errorNotebook', d); }
         } catch (e) {
             console.error(e);
         }
-    }, [userId, recent, sentences, authorRecords, achievements, errorNotebook]);
+    }, [userId]);
 
     async function handleTasteComplete(selectedWorks) {
         try {
