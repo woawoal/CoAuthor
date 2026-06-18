@@ -117,7 +117,6 @@ const AuthorPanel = forwardRef(function AuthorPanel({
       setMemoInput(existing ? existing.text : '');
       onSelectedMsgIdChange?.(msgId);
       setBookmarkMode(true);
-      setPanelOpen(true);
       setPanelView('memo');
       setTimeout(() => memoInputRef.current?.focus(), 80);
     },
