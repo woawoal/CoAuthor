@@ -207,11 +207,13 @@ const AuthorPanel = forwardRef(function AuthorPanel({
     try {
       if (isRecRequest) {
         // 3번 병렬 호출 → 각각 독립 추천 버블
+        const opening_narration = localStorage.getItem('opening_' + chatId) || '';
         const results = await Promise.allSettled(
           [0, 1, 2].map(() => sendAuthorMessage(chatId, {
             content: text,
             author_id: currentAuthor.characterId,
             mode: msgMode,
+            opening_narration,
           }))
         );
         const recMsgs = results
@@ -226,6 +228,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
           content: text,
           author_id: currentAuthor.characterId,
           mode: msgMode,
+          opening_narration: localStorage.getItem('opening_' + chatId) || '',
         });
         setAuthorMessages(prev => [...prev, {
           id: data.messageId, role: 'ai', type: 'feedback', content: data.content,
