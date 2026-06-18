@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 
 from app.core.config import settings
-from app.core.personas import get_author_prompt, AUTHOR_ID_MAP, reaction_tone
+from app.core.personas import get_author_prompt, AUTHOR_ID_MAP, reaction_tone, reaction_examples
 from app.core.reactions import EMOTIONS, pick_reaction  # F-AS-05 작가 리액션 (머지 때 빠졌던 import 복구)
 from app.database import get_db, AsyncSessionLocal
 from app.models.api_log import ApiLog
@@ -176,6 +176,24 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
         logger.info("[ADDRESS] addr_lines=%s", addr_lines)
         if addr_lines:
             parts.append(ADDRESS_RULE_HEADER + "\n".join(addr_lines))
+
+        # 인물 관계도(설정집에서 사용자가 지정) → 초기 설정 '참고용'. 진행 중 바뀐 관계는 줄거리·현재 흐름이 우선.
+        rels = (getattr(world, 'relations', None) or []) if world else []
+        if rels:
+            id_to_name = {str(c.id): c.name for c in chars}
+            rel_lines = []
+            for r in rels:
+                f = id_to_name.get(str(r.get("from", "")))
+                t = id_to_name.get(str(r.get("to", "")))
+                label = (r.get("label") or "").strip()
+                if f and t and label:
+                    rel_lines.append(f"- {f} → {t}: {label}")
+            if rel_lines:
+                parts.append(
+                    "[인물 관계(초기 설정·참고용) — 'A → B: 관계'는 이야기 시작 시점 기준 A가 B를 그렇게 여긴다는 뜻이다. "
+                    "출발점 정서로만 참고하라. **이야기가 진행되며 관계·감정이 달라졌다면 [지금까지의 줄거리]와 현재 장면 흐름을 우선**한다. "
+                    "억지로 유지하거나 장면마다 끌어들이지 말 것]\n" + "\n".join(rel_lines)
+                )
     if persona_id == "charoun" and world:
         facts = getattr(world, 'hidden_facts', None) or []
         if facts:
@@ -184,6 +202,57 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
     if session.story_summary:
         parts.append(f"[지금까지의 줄거리]\n{session.story_summary}")
     return "\n".join(parts)
+
+
+async def _build_consistency_facts(chat_id: str, db: AsyncSession, relevant_memories: list[str] | None = None) -> str:
+    """설정 검수 baseline — world_context 합본이 아니라 '검증 가능한 확정 사실'만 추려
+    **출처별로 구분**해 반환한다(짬뽕 방지).
+
+    - [사용자 확립 설정] = 세계관 폼(배경·규칙)·숨겨진 설정·등장인물 → 사용자가 '의도한' 것.
+      여기와 충돌 = 진짜 '사용자가 의도 안 한 설정이 튀어나옴' → high.
+    - [전개 중 사실] = 누적 줄거리 + 검색된 과거 사건 → 진행하며 굳어진 것 → mid.
+
+    제외: 행동지시문(prompt·지시), 메타 규칙(※ 안내문), 장르(분위기→장르가드 담당), 비유.
+    """
+    try:
+        sid = uuid.UUID(chat_id)
+    except (ValueError, TypeError):
+        return ""
+    session = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
+    if not session:
+        return ""
+    world = (await db.execute(select(World).where(World.id == session.world_id))).scalar_one_or_none()
+    chars = (await db.execute(select(Character).where(Character.world_id == session.world_id))).scalars().all()
+
+    # ── ① 사용자가 확립한 설정(=의도) ──
+    user_facts: list[str] = []
+    if world:
+        for label, val in (("배경", world.setting), ("세계 규칙", world.rules)):
+            if val and str(val).strip():
+                user_facts.append(f"- {label}: {str(val).strip()}")
+        for f in (getattr(world, "hidden_facts", None) or []):
+            if str(f).strip():
+                user_facts.append(f"- (숨겨진 설정) {str(f).strip()}")
+    for c in chars:
+        role = getattr(c.role, "value", c.role)
+        attrs = (c.personality or "").strip()
+        user_facts.append(f"- 인물 {c.name}({role})" + (f": {attrs}" if attrs else ""))
+
+    # ── ② 전개 중 굳어진 사실 ──
+    play_facts: list[str] = []
+    if session.story_summary and session.story_summary.strip():
+        play_facts.append(f"- {session.story_summary.strip()}")
+    for m in (relevant_memories or []):
+        if str(m).strip():
+            play_facts.append(f"- {str(m).strip()}")
+
+    blocks: list[str] = []
+    if user_facts:
+        blocks.append("[사용자 확립 설정 — 어기면 '의도하지 않은 설정' = severity high]\n" + "\n".join(user_facts))
+    if play_facts:
+        blocks.append("[전개 중 사실 — 어기면 severity mid]\n" + "\n".join(play_facts))
+    return "\n\n".join(blocks)
+
 
 def key_turn(chat_id: str) -> str:
     return f"session:{chat_id}:turn"
@@ -930,10 +999,10 @@ async def stream_response(
             # F-QC-01: 일관성 검수(옵션) — 새 응답이 확립된 설정·기억과 모순되는지
             consistency_result = {"consistent": True, "violations": []}
             if check_consistency:
-                facts = world_context
-                if relevant_memories:
-                    facts += "\n[관련 기억]\n" + "\n".join(f"- {m}" for m in relevant_memories)
-                consistency_result = await consistency.check(facts, reply_text)
+                # baseline = world_context 합본이 아니라 '확정 사실'만 추려 출처별로 구분(짬뽕 방지).
+                # 인물 관계도·행동지시문·장르·메타규칙은 제외(오탐 방지), 관련 기억은 '전개 중 사실'로 포함.
+                consistency_facts = await _build_consistency_facts(chat_id, db, relevant_memories)
+                consistency_result = await consistency.check(consistency_facts, reply_text)
                 if not consistency_result["consistent"]:
                     logger.info("⚠️ 일관성 위반 %d건 - chat_id=%s: %s",
                                 len(consistency_result["violations"]), chat_id,
@@ -1385,9 +1454,11 @@ async def classify_emotion(text: str) -> str:
 def _reaction_gen_system(persona_id: str) -> str:
     return (
         f"{reaction_tone(persona_id)}\n\n"
+        f"{reaction_examples(persona_id)}\n\n"
         "지금 인터랙티브 소설을 함께 쓰는 중이다. 아래에 [주인공이 방금 한 말/행동]과 "
         "[네가 방금 이어 쓴 장면]이 주어진다. 이 흐름을 보고 작가인 네가 옆에서 혼잣말처럼 "
         "툭 던지는 짧은 반응 한 마디를 네 말투로 만들어라(소리 내어 말하는 추임새).\n"
+        "위 예시처럼 그 작가 특유의 호흡·시선으로, 장면에 맞는 새 문장을 만들 것.\n"
         "규칙:\n"
         "- 25자 이내, 한 문장. 따옴표·이모지·지문 없이 말만.\n"
         "- 장면을 다시 서술하지 말 것. 새 사건을 만들지 말 것. 반응만.\n"

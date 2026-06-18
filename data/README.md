@@ -6,12 +6,10 @@
 data/
 ├── raw/          # 수집 원본 (공유 마당, Project Gutenberg)
 ├── processed/    # 전처리 완료 (장르별 분류, 정제)
-└── few_shot/     # 페르소나 few-shot 예시 (수작업 큐레이션)
-    ├── baegil.json
-    ├── charoi.json
-    ├── haseorim.json
-    └── kimdaha.json
+└── few_shot/     # (구) 페르소나 few-shot 원본
 ```
+
+> ※ 현행: 작가 문체 few-shot은 **`backend/app/data/style_samples.json`**(작가별 통합 단일 파일)로 운영. 작가 id = `baekya`·`charoun`·`hanyeoreum`·`kimdohyeon`.
 
 ## 데이터 출처
 

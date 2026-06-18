@@ -67,8 +67,14 @@ build_messages() → LLM 호출
 #### AI 응답 수신 후 처리
 
 ```
-SSE "reply" 이벤트
-  ├─ narration, speaker, dialogue, protagonist_dialogue, memories, consistency
+SSE "delta" 이벤트 (토큰 스트리밍, 배포 완료)
+  └─ narration 토큰을 생성 즉시 흘림(_partial_narration) → 첫 토큰 체감 ↓ (프론트는 타자기로 렌더)
+
+SSE "reply" 이벤트 (최종 구조화)
+  ├─ narration, speaker, dialogue, protagonist_dialogue, memories, consistency, out_of_genre/genre_note
+  ※ 검수 facts에서 인물 관계도(참고용)는 제외 → 관계 변화는 모순으로 안 잡음
+
+SSE "audio"(나레이션 첫 문장 TTS, 선택) · "done"
 
 후처리:
   ├─ _resolve_speaker(): speaker를 등록된 AI 인물로 강제 보정

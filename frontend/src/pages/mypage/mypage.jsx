@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getTemplates, deleteTemplate } from '../../lib/worldTemplates';
 import { authClient } from '../../lib/auth';
 import {
-    getProfile, getWorks, getRecent, getSentences, getWiki,
+    getProfile, getWorks, getRecent, getSentences, getWiki, saveRelations,
     deleteSentence, getAuthorRecords, getAchievements, getStats, getDashboard,
     getTasteProfile, setupTasteProfile, getErrorNotebook, deleteErrorNotebookEntry,
 } from '../../lib/mypageApi';
@@ -54,6 +54,42 @@ const NAV = {
 };
 
 
+// 내 서재 탭 데이터 캐시(stale-while-revalidate) — 재방문 시 인증 대기 없이 즉시 표시 후 백그라운드 갱신
+function mpCacheGet(uid, key) {
+    try {
+        const v = localStorage.getItem(`${key}_${uid}`);
+        return v ? JSON.parse(v) : null;
+    } catch { return null; }
+}
+function mpCacheSet(uid, key, val) {
+    try { localStorage.setItem(`${key}_${uid}`, JSON.stringify(val)); } catch { /* 무시 */ }
+}
+
+// 마운트 즉시(인증 대기 없이) 마지막 유저의 캐시를 읽어 스피너 플래시 제거 (재방문 0초 체감)
+function readMpCache() {
+    try {
+        const uid = localStorage.getItem('mp_last_uid');
+        if (!uid) return { hadCache: false };
+        const cp = mpCacheGet(uid, 'profile');
+        const cd = mpCacheGet(uid, 'dashboard');
+        const cs = mpCacheGet(uid, 'stats');
+        return {
+            profile: cp,
+            dashboard: cd,
+            stats: cs,
+            works: mpCacheGet(uid, 'works'),
+            recent: mpCacheGet(uid, 'recent'),
+            sentences: mpCacheGet(uid, 'sentences'),
+            authorRecords: mpCacheGet(uid, 'authorRecords'),
+            achievements: mpCacheGet(uid, 'achievements'),
+            errorNotebook: mpCacheGet(uid, 'errorNotebook'),
+            hadCache: !!(cp && cd && cs),
+        };
+    } catch {
+        return { hadCache: false };
+    }
+}
+
 function MyPage() {
     const navigate = useNavigate();
     const [userId, setUserId] = useState(null);
@@ -61,18 +97,18 @@ function MyPage() {
     const [active, setActive] = useState('대시보드');
 
     // 각 탭 데이터 (lazy)
-    const [dashboard, setDashboard] = useState(null);
-    const [profile, setProfile] = useState(null);
-    const [works, setWorks] = useState(null);
-    const [recent, setRecent] = useState(null);
-    const [sentences, setSentences] = useState(null);
-    const [authorRecords, setAuthorRecords] = useState(null);
+    const [dashboard, setDashboard] = useState(() => readMpCache().dashboard ?? null);
+    const [profile, setProfile] = useState(() => readMpCache().profile ?? null);
+    const [works, setWorks] = useState(() => readMpCache().works ?? null);
+    const [recent, setRecent] = useState(() => readMpCache().recent ?? null);
+    const [sentences, setSentences] = useState(() => readMpCache().sentences ?? null);
+    const [authorRecords, setAuthorRecords] = useState(() => readMpCache().authorRecords ?? null);
     const [selectedVideoAuthor, setSelectedVideoAuthor] = useState(1);
     const [previewVideo, setPreviewVideo] = useState(null);
-    const [achievements, setAchievements] = useState(null);
-    const [errorNotebook, setErrorNotebook] = useState(null);   // 오답노트(자주 틀린 맞춤법)
+    const [achievements, setAchievements] = useState(() => readMpCache().achievements ?? null);
+    const [errorNotebook, setErrorNotebook] = useState(() => readMpCache().errorNotebook ?? null);   // 오답노트(자주 틀린 맞춤법)
     const [errSort, setErrSort] = useState('count');            // 'count'=많이 틀린 순 | 'recent'=최신순
-    const [stats, setStats] = useState(null);
+    const [stats, setStats] = useState(() => readMpCache().stats ?? null);
 
     // 취향 프로필
     const [tasteProfile, setTasteProfile] = useState(null);
@@ -86,9 +122,15 @@ function MyPage() {
     const [wikiWork, setWikiWork] = useState(null);
     const [wiki, setWiki] = useState(null);
     const [wikiTab, setWikiTab] = useState('세계관');
+    // 등장인물 관계도(사용자 직접 입력) — relations=[{from, to, label}], 편집 입력값
+    const [relations, setRelations] = useState([]);
+    const [relFrom, setRelFrom] = useState('');
+    const [relTo, setRelTo] = useState('');
+    const [relLabel, setRelLabel] = useState('');
+    const [editIdx, setEditIdx] = useState(null);   // null=새 관계 추가, 숫자=그 관계 수정 중
 
     const [voiceProfile, setVoiceProfile] = useState(undefined); // undefined=미로드, null=없음, obj=있음
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(() => !readMpCache().hadCache);
 
     const VIDEO_AUTHORS = [
         { id: 1, name: '백야', path: '/assets/author1' },
@@ -114,6 +156,7 @@ function MyPage() {
             if (!uid) { navigate('/login'); return; }
             setUserId(uid);
             setUserInfo(session.data?.user);
+            try { localStorage.setItem('mp_last_uid', uid); } catch { /* 무시 */ }
 
             // 0) 캐시 즉시 표시(stale-while-revalidate) — dashboard 엔드포인트가 ~6s라
             //    재방문 시 캐시로 0초 표시 후 백그라운드 갱신(내 서재 들락날락 체감 단축)
@@ -151,7 +194,7 @@ function MyPage() {
 
             // 2) 다른 탭 전용 + 느린 voice-profile(~1.6s)은 백그라운드 — 대기하지 않음
             getVoiceProfile().then(vp => setVoiceProfile(vp ?? null)).catch(() => setVoiceProfile(null));
-            getWorks(uid).then(setWorks).catch(() => { });
+            getWorks(uid).then(w => { setWorks(w); mpCacheSet(uid, 'works', w); }).catch(() => { });
             getTasteProfile(uid).then(t => {
                 setTasteProfile(t.taste_profile ?? {});
                 setTasteWorks(t.selected_works ?? []);
@@ -165,16 +208,17 @@ function MyPage() {
         if (tab === '말투 설정') { navigate('/voice-profile'); return; }
         setActive(tab);
         if (!userId) return;
+        // 캐시가 있으면 화면은 이미 떠 있음 → 열 때 조용히 재검증(stale-while-revalidate)하고 캐시 갱신
         try {
-            if (tab === '최근 작업' && !recent) setRecent(await getRecent(userId));
-            if (tab === '문장 보관함' && !sentences) setSentences(await getSentences(userId));
-            if (tab === 'AI 작가 기록' && !authorRecords) setAuthorRecords(await getAuthorRecords(userId));
-            if (tab === '업적' && !achievements) setAchievements(await getAchievements(userId));
-            if (tab === '오답노트' && !errorNotebook) setErrorNotebook(await getErrorNotebook(userId));
+            if (tab === '최근 작업') { const d = await getRecent(userId); setRecent(d); mpCacheSet(userId, 'recent', d); }
+            if (tab === '문장 보관함') { const d = await getSentences(userId); setSentences(d); mpCacheSet(userId, 'sentences', d); }
+            if (tab === 'AI 작가 기록') { const d = await getAuthorRecords(userId); setAuthorRecords(d); mpCacheSet(userId, 'authorRecords', d); }
+            if (tab === '업적') { const d = await getAchievements(userId); setAchievements(d); mpCacheSet(userId, 'achievements', d); }
+            if (tab === '오답노트') { const d = await getErrorNotebook(userId); setErrorNotebook(d); mpCacheSet(userId, 'errorNotebook', d); }
         } catch (e) {
             console.error(e);
         }
-    }, [userId, recent, sentences, authorRecords, achievements, errorNotebook]);
+    }, [userId]);
 
     async function handleTasteComplete(selectedWorks) {
         try {
@@ -189,7 +233,78 @@ function MyPage() {
         setWikiWork(work);
         setWiki(null);
         setWikiTab('세계관');
-        try { setWiki(await getWiki(userId, work.session_id)); } catch (e) { console.error(e); }
+        setRelations([]);
+        setRelFrom(''); setRelTo(''); setRelLabel(''); setEditIdx(null);
+        try {
+            const w = await getWiki(userId, work.session_id);
+            setWiki(w);
+            setRelations(w.relations || []);
+        } catch (e) { console.error(e); }
+    };
+
+    const persistRelations = async (next) => {
+        setRelations(next);
+        if (!wikiWork) return;
+        try { await saveRelations(userId, wikiWork.session_id, next); }
+        catch (e) { console.error(e); toast('관계도 저장에 실패했어요.', 'error'); }
+    };
+
+    const resetRelEditor = () => { setRelFrom(''); setRelTo(''); setRelLabel(''); setEditIdx(null); };
+
+    const handleSaveRelation = () => {
+        if (!relFrom || !relTo || relFrom === relTo) {
+            toast('서로 다른 두 인물을 선택하세요.', 'error');
+            return;
+        }
+        if (editIdx !== null) {
+            // 수정 — 기존 라벨 위치(dx/dy)는 유지하고 from/to/label만 갱신
+            persistRelations(relations.map((r, i) => (
+                i === editIdx ? { ...r, from: relFrom, to: relTo, label: relLabel.trim() } : r
+            )));
+        } else {
+            persistRelations([...relations, { from: relFrom, to: relTo, label: relLabel.trim() }]);
+        }
+        resetRelEditor();
+    };
+
+    const handleEditRelation = (idx) => {
+        const r = relations[idx];
+        setRelFrom(r.from); setRelTo(r.to); setRelLabel(r.label || '');
+        setEditIdx(idx);
+    };
+
+    const handleDeleteRelation = (idx) => {
+        persistRelations(relations.filter((_, i) => i !== idx));
+        if (editIdx === idx) resetRelEditor();
+        else if (editIdx !== null && idx < editIdx) setEditIdx(editIdx - 1);
+    };
+
+    // 관계 라벨 드래그 — 사용자가 끌어 위치 이동(겹침 해소). offset(dx,dy)을 관계에 저장.
+    const relationsRef = useRef(relations);
+    useEffect(() => { relationsRef.current = relations; }, [relations]);
+    const labelDragRef = useRef(null);
+
+    const onLabelDragMove = (e) => {
+        const d = labelDragRef.current;
+        if (!d) return;
+        const ndx = Math.round(d.baseDx + (e.clientX - d.startX));
+        const ndy = Math.round(d.baseDy + (e.clientY - d.startY));
+        setRelations(prev => prev.map((r, i) => (i === d.idx ? { ...r, dx: ndx, dy: ndy } : r)));
+    };
+    const onLabelDragEnd = () => {
+        window.removeEventListener('mousemove', onLabelDragMove);
+        window.removeEventListener('mouseup', onLabelDragEnd);
+        if (labelDragRef.current) {
+            labelDragRef.current = null;
+            if (wikiWork) saveRelations(userId, wikiWork.session_id, relationsRef.current).catch(err => console.error(err));
+        }
+    };
+    const onLabelDragStart = (e, idx) => {
+        e.preventDefault();
+        const r = relations[idx];
+        labelDragRef.current = { idx, startX: e.clientX, startY: e.clientY, baseDx: r.dx || 0, baseDy: r.dy || 0 };
+        window.addEventListener('mousemove', onLabelDragMove);
+        window.addEventListener('mouseup', onLabelDragEnd);
     };
 
     const handleDeleteSentence = async (id) => {
@@ -635,7 +750,7 @@ function MyPage() {
                     );
                 })()}
 
-                {/* ── 설정집 (Phase 3 포함: 관계도, 타임라인) ── */}
+                {/* ── 설정집 (세계관 · 등장인물 관계도 · 타임라인) ── */}
                 {active === '설정집' && (
                     <div className="mp-wiki-layout">
                         {/* 작품 목록 */}
@@ -663,7 +778,7 @@ function MyPage() {
                             {wiki && (
                                 <>
                                     <div className="mp-wiki-tabs">
-                                        {['세계관', '등장인물', '관계도', '타임라인'].map(t => (
+                                        {['세계관', '등장인물', '타임라인'].map(t => (
                                             <button
                                                 key={t}
                                                 className={`mp-wiki-tab ${wikiTab === t ? 'mp-wiki-tab--active' : ''}`}
@@ -684,44 +799,137 @@ function MyPage() {
                                     )}
 
                                     {wikiTab === '등장인물' && (
-                                        <div className="mp-char-grid">
+                                        <div className="mp-relmap">
                                             {wiki.characters.length === 0
                                                 ? <p className="mp-empty">등록된 인물이 없어요.</p>
-                                                : wiki.characters.map(c => (
-                                                    <div key={c.id} className="mp-char-card">
-                                                        <div className="mp-char-card__name">{c.name}</div>
-                                                        <div className="mp-char-card__role">{c.role}</div>
-                                                        {c.personality && <p className="mp-char-card__desc">{c.personality}</p>}
-                                                    </div>
-                                                ))
-                                            }
-                                        </div>
-                                    )}
-
-                                    {wikiTab === '관계도' && (
-                                        <div className="mp-relation">
-                                            {wiki.characters.length === 0
-                                                ? <p className="mp-empty">등록된 인물이 없어요.</p>
-                                                : (
-                                                    <div className="mp-relation-grid">
-                                                        {['protagonist', 'supporting', 'villain', 'narrator'].map(role => {
-                                                            const chars = wiki.characters.filter(c => c.role === role);
-                                                            if (!chars.length) return null;
-                                                            const roleLabel = { protagonist: '주인공', supporting: '조연', villain: '빌런', narrator: '화자' }[role];
-                                                            return (
-                                                                <div key={role} className="mp-relation-group">
-                                                                    <div className="mp-relation-group__label">{roleLabel}</div>
-                                                                    {chars.map(c => (
-                                                                        <div key={c.id} className="mp-relation-node">
-                                                                            <span className="mp-relation-node__name">{c.name}</span>
-                                                                            {c.personality && <span className="mp-relation-node__desc">{c.personality.slice(0, 30)}{c.personality.length > 30 ? '…' : ''}</span>}
-                                                                        </div>
+                                                : (() => {
+                                                    const ROLE_COLOR = { protagonist: 'var(--theme-color, #c9a87c)', supporting: '#7E9AD6', villain: '#E06C75', narrator: '#9aa0a6' };
+                                                    const ROLE_LABEL = { protagonist: '주인공', supporting: '조연', villain: '빌런', narrator: '화자' };
+                                                    const all = wiki.characters;
+                                                    const SIZE = 380, C = SIZE / 2, R = all.length > 6 ? 150 : 128;
+                                                    const single = all.length === 1;
+                                                    const posById = {};
+                                                    const nameById = {};
+                                                    const nodes = all.map((c, i) => {
+                                                        const ang = (-90 + (360 / all.length) * i) * Math.PI / 180;
+                                                        const x = single ? C : C + R * Math.cos(ang);
+                                                        const y = single ? C : C + R * Math.sin(ang);
+                                                        posById[c.id] = { x, y };
+                                                        nameById[c.id] = c.name;
+                                                        return { c, x, y };
+                                                    });
+                                                    const rolesPresent = [...new Set(all.map(c => c.role))];
+                                                    // 곡선 엣지 — 양방향(A→B, B→A) 입력 시 서로 반대쪽으로 휘어 겹치지 않게.
+                                                    const NODE_R = 34, CURVE = 26;
+                                                    const edgeGeo = relations
+                                                        .map((r, idx) => ({ r, idx }))
+                                                        .filter(x => posById[x.r.from] && posById[x.r.to])
+                                                        .map(({ r, idx }) => {
+                                                            const a = posById[r.from], b = posById[r.to];
+                                                            const dx = b.x - a.x, dy = b.y - a.y;
+                                                            const len = Math.hypot(dx, dy) || 1;
+                                                            const ux = dx / len, uy = dy / len;          // 진행 방향 단위벡터
+                                                            const nx = -uy, ny = ux;                     // 왼쪽 법선(방향마다 반대쪽 → 양방향 분리)
+                                                            const ax = a.x + ux * NODE_R, ay = a.y + uy * NODE_R;   // 노드 밖에서 시작
+                                                            const bx = b.x - ux * NODE_R, by = b.y - uy * NODE_R;   // 화살표가 노드 앞에서 멈춤
+                                                            const mx = (ax + bx) / 2, my = (ay + by) / 2;
+                                                            // 라벨 = 곡선 정점(apex). 드래그 offset(dx,dy)을 apex에 적용하고
+                                                            // 제어점은 Q(0.5)=apex 가 되도록 역산 → 선이 라벨을 따라 휘어 한 세트로 움직임.
+                                                            const apexX = mx + nx * (CURVE / 2) + (r.dx || 0);
+                                                            const apexY = my + ny * (CURVE / 2) + (r.dy || 0);
+                                                            const cx = 2 * apexX - mx, cy = 2 * apexY - my;
+                                                            return { r, idx, d: `M${ax},${ay} Q${cx},${cy} ${bx},${by}`, lx: apexX, ly: apexY };
+                                                        });
+                                                    return (
+                                                        <>
+                                                            <div className="mp-relmap-stage" style={{ width: SIZE, height: SIZE }}>
+                                                                <svg className="mp-relmap-svg" width={SIZE} height={SIZE}>
+                                                                    <defs>
+                                                                        <marker id="mp-rel-arrow" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+                                                                            <path d="M0,0 L7.5,3 L0,6 Z" fill="var(--theme-color, #c9a87c)" />
+                                                                        </marker>
+                                                                    </defs>
+                                                                    {edgeGeo.map((g) => (
+                                                                        <path key={g.idx} d={g.d} fill="none" stroke="var(--theme-color, #c9a87c)"
+                                                                            strokeWidth="1.6" strokeOpacity="0.6" markerEnd="url(#mp-rel-arrow)" />
                                                                     ))}
+                                                                </svg>
+                                                                {edgeGeo.map((g) => g.r.label ? (
+                                                                    <span key={`l${g.idx}`} className="mp-relmap-edge-label"
+                                                                        style={{ left: g.lx, top: g.ly }}
+                                                                        onMouseDown={(ev) => onLabelDragStart(ev, g.idx)}
+                                                                        title="드래그해서 선과 함께 이동">{g.r.label}</span>
+                                                                ) : null)}
+                                                                {nodes.map((n, i) => (
+                                                                    <div key={i} className={`mp-relmap-node${n.c.role === 'protagonist' ? ' mp-relmap-node--center' : ''}`}
+                                                                        style={{ left: n.x, top: n.y, borderColor: ROLE_COLOR[n.c.role] || '#9aa0a6' }}
+                                                                        title={n.c.personality || ''}>
+                                                                        <span className="mp-relmap-node__name">{n.c.name}</span>
+                                                                        <span className="mp-relmap-node__role">{ROLE_LABEL[n.c.role] || n.c.role}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            <div className="mp-relmap-legend">
+                                                                {rolesPresent.map(r => (
+                                                                    <span key={r} className="mp-relmap-legend__item">
+                                                                        <span className="mp-relmap-legend__dot" style={{ background: ROLE_COLOR[r] || '#9aa0a6' }} />
+                                                                        {ROLE_LABEL[r] || r}
+                                                                    </span>
+                                                                ))}
+                                                                <span className="mp-relmap-legend__hint">선 = 직접 입력한 관계</span>
+                                                            </div>
+
+                                                            {/* 관계 직접 입력 */}
+                                                            <div className="mp-relmap-editor">
+                                                                <div className="mp-relmap-editor__row">
+                                                                    <select value={relFrom} onChange={e => setRelFrom(e.target.value)}>
+                                                                        <option value="">인물 A</option>
+                                                                        {all.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                                    </select>
+                                                                    <input value={relLabel} onChange={e => setRelLabel(e.target.value)}
+                                                                        placeholder="관계 (예: 첫사랑)" maxLength={40} />
+                                                                    <select value={relTo} onChange={e => setRelTo(e.target.value)}>
+                                                                        <option value="">인물 B</option>
+                                                                        {all.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                                    </select>
+                                                                    <button className="mp-relmap-add" onClick={handleSaveRelation}>{editIdx !== null ? '저장' : '추가'}</button>
+                                                                    {editIdx !== null && (
+                                                                        <button className="mp-relmap-cancel" onClick={resetRelEditor}>취소</button>
+                                                                    )}
                                                                 </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )
+                                                                {relations.length > 0 && (
+                                                                    <div className="mp-relmap-rellist">
+                                                                        {relations.map((r, i) => (
+                                                                            <div key={i} className={`mp-relmap-rel${editIdx === i ? ' mp-relmap-rel--editing' : ''}`}>
+                                                                                <span className="mp-relmap-rel__text">
+                                                                                    {nameById[r.from] || '(삭제된 인물)'}
+                                                                                    <b className="mp-relmap-rel__label">{r.label || '관계'}</b>
+                                                                                    <span className="mp-relmap-rel__arrow">→</span>
+                                                                                    {nameById[r.to] || '(삭제된 인물)'}
+                                                                                </span>
+                                                                                <button className="mp-relmap-rel__edit" onClick={() => handleEditRelation(i)} title="수정">✎</button>
+                                                                                <button className="mp-relmap-rel__del" onClick={() => handleDeleteRelation(i)} title="삭제">✕</button>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="mp-relmap-info">
+                                                                {all.map(c => (
+                                                                    <div key={c.id} className="mp-relmap-card">
+                                                                        <div className="mp-relmap-card__head">
+                                                                            <span className="mp-relmap-card__dot" style={{ background: ROLE_COLOR[c.role] || '#9aa0a6' }} />
+                                                                            <span className="mp-relmap-card__name">{c.name}</span>
+                                                                            <span className="mp-relmap-card__role">{ROLE_LABEL[c.role] || c.role}</span>
+                                                                        </div>
+                                                                        {c.personality && <p className="mp-relmap-card__desc">{c.personality}</p>}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()
                                             }
                                         </div>
                                     )}

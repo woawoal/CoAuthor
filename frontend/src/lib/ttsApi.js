@@ -9,6 +9,8 @@ let currentAudio = null; // 직전 리액션 음성 — 새 음성 오면 취소
  * @param {string} characterId  작가 페르소나 id (baekya|charoun|hanyeoreum|kimdohyeon)
  */
 export async function speakReaction(text, characterId) {
+  const bgmVolume = Number(localStorage.getItem('bgm_volume') ?? 0.2);
+
   const clean = (text || '').trim();
   if (!clean || !characterId) return;
 
@@ -27,10 +29,11 @@ export async function speakReaction(text, characterId) {
     stopReaction(); // 직전 음성 끊고 새 것 재생
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
+    audio.volume = Math.min(1, bgmVolume);
     audio.onended = audio.onerror = () => URL.revokeObjectURL(url);
     currentAudio = audio;
     // 사용자 제스처(전송 직후) 컨텍스트라 자동재생 허용됨. 막히면 조용히 무시.
-    await audio.play().catch(() => {});
+    await audio.play().catch(() => { });
   } catch {
     /* 네트워크/함수 오류 → 음성 생략 */
   }
@@ -42,4 +45,27 @@ export function stopReaction() {
     try { currentAudio.pause(); } catch { /* noop */ }
     currentAudio = null;
   }
+}
+
+/** narration에서 50자 내외로 자연스럽게 추출. */
+export function extractFirstSentence(narration, maxChars = 50) {
+  const clean = (narration || '').trim();
+  if (!clean) return '';
+
+  // 한국어 문장부호 기준으로 문장 분리
+  const sentences = clean
+    .split(/(?<=[.!?。！？…]|[다요죠까네군요]\.)\s*/g)
+    .filter(Boolean);
+
+  let result = '';
+
+  for (const sentence of sentences) {
+    if ((result + sentence).length <= maxChars) {
+      result += sentence + ' ';
+    } else {
+      break;
+    }
+  }
+
+  return result.trim() || sentences[0] || clean.slice(0, maxChars);
 }
