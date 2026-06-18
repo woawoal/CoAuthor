@@ -386,6 +386,11 @@ export default function Chat() {
         setDbCharacters(chars);
         const protagonistName = chars.find(c => c.role === 'protagonist')?.name ?? '나';
 
+        const savedOpening = localStorage.getItem('opening_' + chatId);
+        if (savedOpening && dialogues.length === 0) {
+          setMessages([{ id: 'opening_scene', role: 'opening', narration: savedOpening, isRestored: true }]);
+        }
+
         if (dialogues.length > 0) {
           const restored = dialogues.map(d => {
             const isUser = d.speaker_type === 'user';
@@ -429,7 +434,14 @@ export default function Chat() {
               isRestored: true,
             };
           });
-          setMessages(restored);
+          if (savedOpening) {
+            setMessages([
+              { id: 'opening_scene', role: 'opening', narration: savedOpening, isRestored: true },
+              ...restored,
+            ]);
+          } else {
+            setMessages(restored);
+          }
         }
       })
       .catch(console.error)
@@ -442,6 +454,7 @@ export default function Chat() {
     const runOpening = async () => {
       const narration = await generateOpeningScene(chatIdFromState).catch(() => '');
       if (!narration) return;
+      localStorage.setItem('opening_' + chatIdFromState, narration);
       setMessages(prev =>
         prev.length === 0
           ? [{ id: 'opening_scene', role: 'opening', narration, isRestored: true }]
@@ -821,6 +834,7 @@ export default function Chat() {
     try {
       const newSession = await restartSession(chatId);
       localStorage.removeItem(`manuscript_${chatId}`);
+      localStorage.removeItem('opening_' + chatId);
       navigate('/chat', { state: { worldId: newSession.world_id, chatId: newSession.id, authorId } });
     } catch (err) {
       toast(`새로하기 실패: ${err.message}`, 'error');

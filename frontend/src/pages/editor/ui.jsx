@@ -201,6 +201,7 @@ export default function Editor() {
     try {
       const newSession = await restartSession(chatId);
       localStorage.removeItem(`manuscript_${chatId}`);
+      localStorage.removeItem('opening_' + chatId);
       navigate('/chat', { state: { worldId: newSession.world_id, chatId: newSession.id, authorId } });
     } catch (err) {
       alert(`새로하기 실패: ${err.message}`);
