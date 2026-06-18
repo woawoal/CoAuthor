@@ -675,32 +675,6 @@
   align-items: stretch;
 }
 
-/* ── 토글 버튼 ── */
-.panel-toggle-btn {
-  align-self: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 36px;
-  background: var(--card-main);
-  border: 1px solid color-mix(in srgb, var(--text-main) 20%, transparent);
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 4px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.panel-toggle-btn:hover {
-  background: color-mix(in srgb, var(--theme-color) 33%, transparent);
-  border-color: var(--theme-color);
-  color: var(--theme-color);
-}
-
 /* ── 패널 너비 드래그 핸들 ── */
 .author-panel-resizer {
   flex-shrink: 0;
@@ -716,16 +690,10 @@
   background: color-mix(in srgb, var(--theme-color) 45%, transparent);
 }
 
-/* ── 슬라이드 컨테이너 (.chat-layout 스코프 + flex:none 으로 main.css의 flex:0 0 400px 무력화) ── */
+/* ── 슬라이드 컨테이너 ── */
 .chat-layout .author-panel-slide {
   flex: none;
-  width: 0;
   overflow: hidden;
-  transition: width 0.3s ease;
-}
-
-.chat-layout .author-panel-slide--open {
-  width: 100%;
 }
 
 /* ── 작가 패널 ── */
@@ -1668,6 +1636,24 @@
   letter-spacing: 0.3px;
   user-select: none;
 }
+
+/* ── 첫 장면(오프닝) 나레이션 ── */
+.opening-scene {
+  padding: 32px 28px 24px;
+  margin: 8px 16px 16px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--theme-color) 6%, transparent);
+  border-left: 3px solid color-mix(in srgb, var(--theme-color) 40%, transparent);
+}
+
+.opening-scene__line {
+  margin: 0 0 10px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: var(--text-main);
+  letter-spacing: 0.2px;
+}
+.opening-scene__line:last-child { margin-bottom: 0; }
 
 
 /* ── 취향 입력 패널 ── */

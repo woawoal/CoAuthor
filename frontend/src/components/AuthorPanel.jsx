@@ -77,11 +77,10 @@ const AuthorPanel = forwardRef(function AuthorPanel({
 }, ref) {
   const currentAuthor = AUTHOR_MAP[AUTHOR_IDS[currentAuthorIdx]];
 
-  const [authorLoading, setAuthorLoading] = useState(false);
-  const [videoError, setVideoError] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
   const [panelRatio, setPanelRatio] = useState(0.45);
   const [isResizing, setIsResizing] = useState(false);
+  const [authorLoading, setAuthorLoading] = useState(false);
+  const [videoError, setVideoError] = useState(false);
   const [panelView, setPanelView] = useState('author');
   const [authorMessages, setAuthorMessages] = useState([]);
   const [authorInput, setAuthorInput] = useState('');
@@ -159,7 +158,7 @@ const AuthorPanel = forwardRef(function AuthorPanel({
     authorBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [authorMessages, authorLoading]);
 
-  // ── 패널 리사이즈 ─────────────────────────────────────────
+  // ── 패널 리사이즈
   useEffect(() => {
     if (!isResizing) return;
     function onMove(e) {
@@ -334,27 +333,16 @@ const AuthorPanel = forwardRef(function AuthorPanel({
   // ── 렌더 ─────────────────────────────────────────────────
   return (
     <div className="author-panel-wrapper">
-      <button
-        className="panel-toggle-btn"
-        onClick={() => setPanelOpen(prev => !prev)}
-        aria-label={panelOpen ? '패널 닫기' : '패널 열기'}
-      >
-        {panelOpen ? '>' : '<'}
-      </button>
-
-      {panelOpen && (
-        <div
-          className={`author-panel-resizer${isResizing ? ' author-panel-resizer--active' : ''}`}
-          onMouseDown={e => { e.preventDefault(); setIsResizing(true); }}
-          title="드래그하여 패널 너비 조절"
-        />
-      )}
-
+      <div
+        className={`author-panel-resizer${isResizing ? ' author-panel-resizer--active' : ''}`}
+        onMouseDown={e => { e.preventDefault(); setIsResizing(true); }}
+        title="드래그하여 패널 너비 조절"
+      />
       <div
         className="author-panel-slide"
-        style={{ width: panelOpen ? `${panelRatio * 100}vw` : 0, transition: isResizing ? 'none' : 'width 0.3s ease' }}
+        style={{ width: `${panelRatio * 100}vw`, transition: isResizing ? 'none' : undefined }}
       >
-        <div className="author-panel" style={{ width: `${panelRatio * 100}vw` }}>
+        <div className="author-panel">
 
           {panelView === 'author' ? (
             <>

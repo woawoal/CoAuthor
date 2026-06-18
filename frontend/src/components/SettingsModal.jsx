@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getGlobalVideoVolume, setGlobalVideoVolume } from '../lib/videoVolume';
+import { bgmPlay, bgmPause } from '../lib/bgmController';
 
 const S = {
   overlay: {
@@ -65,7 +66,12 @@ export default function SettingsModal({ open, onClose }) {
     localStorage.setItem('bgm_volume', String(draft.bgmVol));
     localStorage.setItem('voice_reaction', draft.reactionOn ? 'on' : 'off');
     setGlobalVideoVolume(draft.videoVol);
-    window.dispatchEvent(new Event('bgm-playing-changed'));
+    // 사용자 제스처(클릭) 컨텍스트에서 직접 제어 — dispatchEvent는 autoplay 차단됨
+    if (draft.bgmOn) {
+      bgmPlay().catch(() => {});
+    } else {
+      bgmPause();
+    }
     window.dispatchEvent(new Event('bgm-volume-changed'));
     onClose();
   };

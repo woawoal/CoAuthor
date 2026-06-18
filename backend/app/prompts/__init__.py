@@ -9,9 +9,13 @@ from app.prompts.story import (  # noqa: F401
     INPUT_RULES,
     OUTPUT_RULES,
     PROGRESS_RULE,
+    PROGRESS_RULE_ROMANCE,
     REACTION_PRIORITY_RULE,
     WRITER_STYLE_RULE,
     CONSISTENCY_SYSTEM,
+    PACING_RULE,
+    SCENE_CONTEXT_RULE,
+    STORY_PROGRESS_RULE,
 )
 
 
@@ -60,7 +64,6 @@ def parse_ai_response(raw: str) -> dict:
             "narration":             data.get("narration") or "",
             "speaker":               data.get("speaker") or "",
             "dialogue":              data.get("dialogue") or "",
-            "protagonist_dialogue":  data.get("protagonist_dialogue") or "",
             "state_changes":         data.get("state_changes") or _default_state,
             "internal_note":         data.get("internal_note") or "",
             "out_of_genre":          bool(data.get("out_of_genre")),

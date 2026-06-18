@@ -1510,3 +1510,92 @@
     gap: 12px;
     padding: 8px;
 }
+
+/* ── 세계관 보관함 ─────────────────────────────────────── */
+.mp-world-vault {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 4px 0;
+}
+
+.mp-vault-card {
+    background: var(--card-main, #1a1a1a);
+    border: 1px solid color-mix(in srgb, var(--theme-color, #6b5bd2) 20%, transparent);
+    border-radius: 14px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.mp-vault-card__top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 2px;
+}
+
+.mp-vault-card__title {
+    font-size: 15px;
+    font-weight: 700;
+    flex: 1;
+}
+
+.mp-vault-card__del {
+    background: none;
+    border: none;
+    color: var(--text-muted, #888);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+.mp-vault-card__del:hover { background: rgba(255,0,0,0.1); color: #e53935; }
+
+.mp-vault-card__row {
+    display: flex;
+    gap: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-muted, #aaa);
+}
+
+.mp-vault-card__lbl {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--theme-color, #6b5bd2);
+    flex-shrink: 0;
+    padding-top: 2px;
+    width: 28px;
+}
+
+.mp-vault-card__chars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+}
+
+.mp-vault-card__char {
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--theme-color, #6b5bd2) 12%, transparent);
+    color: var(--text-main, #f0f0f0);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mp-vault-card__char-role {
+    font-size: 10px;
+    color: var(--text-muted, #888);
+}
+
+.mp-vault-card__date {
+    font-size: 11px;
+    color: var(--text-muted, #888);
+    margin-top: 4px;
+}

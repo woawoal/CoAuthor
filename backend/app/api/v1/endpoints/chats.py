@@ -29,6 +29,7 @@ import base64
 from app.prompts import (
     parse_ai_response, CRITICAL_OUTPUT_RULE, INPUT_RULES, OUTPUT_RULES,
     WRITER_STYLE_RULE, PROGRESS_RULE, REACTION_PRIORITY_RULE,
+    PACING_RULE, SCENE_CONTEXT_RULE, STORY_PROGRESS_RULE, PROGRESS_RULE_ROMANCE,
     ASSISTANT_SUGGEST_SYSTEM, STUCK_HELP_SYSTEM,
     build_multi_npc_prompt,
 )
@@ -119,10 +120,19 @@ async def _build_world_context(chat_id: str, db: AsyncSession, persona_id: str =
     chars = (await db.execute(select(Character).where(Character.world_id == session.world_id))).scalars().all()
     parts = []
     if world:
-        for label, val in (("제목", world.title), ("장르", world.genre),
-                           ("배경", world.setting), ("요약", world.description), ("규칙", world.rules)):
+        for label, val in (("제목", world.title), ("장르", world.genre), ("요약", world.description)):
             if val:
                 parts.append(f"{label}: {val}")
+        # [2026-06-18 START] 배경 필드 — 참고용 배경 정보로 약화 (장소 강제 아님)
+        if world.setting:
+            parts.append(
+                f"[주요 배경 장소 — 참고]\n{world.setting}\n"
+                f"위 장소들은 이야기에서 등장 가능성이 높은 배경이다. "
+                f"현재 장면의 흐름에 따라 자연스럽게 활용하되, 반드시 이 장소일 필요는 없다."
+            )
+        # [2026-06-18 END] 배경 필드
+        if world.rules:
+            parts.append(f"[세계관 규칙 — 반드시 준수]\n{world.rules}")
     if chars:
         protagonist = next((c for c in chars if c.id == session.protagonist_id), None)
         ai_chars = [c for c in chars if c.is_ai_controlled and c.id != session.protagonist_id]
@@ -329,47 +339,98 @@ def _extract_ai_char_names(world_context: str) -> list[str]:
     return []
 
 
+# [2026-06-18 START] 캐릭터 지시문 파서 개선 — 호칭 외 행동 규칙도 시스템 프롬프트 강제 주입 + 헤더 감지 regex 수정
 def _parse_char_directive_rule(directive_text: str) -> str:
-    """'- 캐릭터: X는 Y라고 부른다' 형식을 캐릭터별 호칭 허용 목록으로 변환.
-    하드코딩 없이 지정된 것만 허용·나머지 전부 금지 방식으로 생성."""
-    char_rules: dict[str, list[tuple[str, str]]] = {}
+    """캐릭터 지시문 블록을 호칭 규칙 + 행동 규칙 두 블록으로 변환해 시스템 프롬프트에 주입.
+
+    포맷 (world_context 생성 기준):
+      2-space indent → 캐릭터 이름 헤더 (예: "  최민지:")
+      4-space indent → 지시문 내용 (예: "    주인공을 '야'라고 부른다")
+    구버전 "- 이름: 내용" 인라인 포맷도 지원.
+    """
+    char_addr: dict[str, list[tuple[str, str]]] = {}
+    char_other: dict[str, list[str]] = {}
     current_char: str | None = None
 
     for raw_line in directive_text.split('\n'):
-        line = raw_line.strip().rstrip('.')
-        if not line:
+        content = raw_line.strip().rstrip('.')
+        if not content:
             continue
-        m_char = re.match(r'^-\s+(.+?):\s*(.*)', line)
-        if m_char:
-            current_char = m_char.group(1).strip()
-            char_rules.setdefault(current_char, [])
-            rest = m_char.group(2).strip().rstrip('.')
-            if rest:
-                parsed = _parse_addr(rest)
-                if parsed:
-                    char_rules[current_char].append(parsed)
-        elif current_char and line:
-            parsed = _parse_addr(line)
-            if parsed:
-                char_rules[current_char].append(parsed)
 
-    if not any(char_rules.values()):
+        # 캐릭터 헤더: 2-space indent(not 4) 또는 "-" 시작
+        is_header = (
+            (raw_line.startswith('  ') and not raw_line.startswith('    '))
+            or re.match(r'^-\s+', raw_line)
+        )
+        if is_header:
+            # "최민지:" 형식 (이름만)
+            m = re.match(r'^-?\s*(.+?):\s*$', content)
+            if m:
+                current_char = m.group(1).strip()
+                char_addr.setdefault(current_char, [])
+                char_other.setdefault(current_char, [])
+                continue
+            # "- 최민지: 주인공을 야라고 부른다" 인라인 형식
+            m2 = re.match(r'^-?\s*(.+?):\s+(.+)', content)
+            if m2:
+                current_char = m2.group(1).strip()
+                char_addr.setdefault(current_char, [])
+                char_other.setdefault(current_char, [])
+                rest = m2.group(2).strip().rstrip('.')
+                if rest:
+                    parsed = _parse_addr(rest)
+                    if parsed:
+                        char_addr[current_char].append(parsed)
+                    else:
+                        char_other[current_char].append(rest)
+                continue
+
+        # 지시문 내용
+        if current_char and content:
+            parsed = _parse_addr(content)
+            if parsed:
+                char_addr[current_char].append(parsed)
+            else:
+                char_other[current_char].append(content)
+
+    has_addr = any(v for v in char_addr.values())
+    has_other = any(v for v in char_other.values())
+    if not has_addr and not has_other:
         return ""
 
-    lines = [
-        "[캐릭터 호칭 규칙 — 절대 준수]",
-        "각 캐릭터는 dialogue에서 아래 지정된 호칭만 사용한다. 지정 호칭 외의 어떤 관계·일반 호칭도 금지다.\n",
-    ]
-    for char, rules in char_rules.items():
-        if not rules:
-            continue
-        lines.append(f"▶ {char}가 다른 인물을 부를 때:")
-        for target, term in rules:
-            if target in ('나', '자신'):
-                lines.append(f"  - 주인공(사용자 캐릭터) → 반드시 '{term}' (다른 호칭 전부 금지)")
-            else:
-                lines.append(f"  - '{target}' → 반드시 '{term}' ('{target}' 포함 다른 모든 호칭 금지)")
-    return "\n".join(lines)
+    result: list[str] = []
+
+    if has_addr:
+        result += [
+            "[캐릭터 호칭 규칙 — 절대 준수]",
+            "각 캐릭터는 dialogue에서 아래 지정된 호칭만 사용한다. 지정 호칭 외의 어떤 관계·일반 호칭도 금지다.\n",
+        ]
+        for char, rules in char_addr.items():
+            if not rules:
+                continue
+            result.append(f"▶ {char}가 다른 인물을 부를 때:")
+            for target, term in rules:
+                if target in ('나', '자신'):
+                    result.append(f"  - 주인공(사용자 캐릭터) → 반드시 '{term}' (다른 호칭 전부 금지)")
+                else:
+                    result.append(f"  - '{target}' → 반드시 '{term}' ('{target}' 포함 다른 모든 호칭 금지)")
+
+    if has_other:
+        if result:
+            result.append("")
+        result += [
+            "[캐릭터 행동 규칙 — 반드시 준수]",
+            "아래 각 캐릭터의 규칙을 dialogue·narration 생성 시 반드시 적용한다.\n",
+        ]
+        for char, rules in char_other.items():
+            if not rules:
+                continue
+            result.append(f"▶ {char}:")
+            for rule in rules:
+                result.append(f"  - {rule}")
+
+    return "\n".join(result)
+# [2026-06-18 END] 캐릭터 지시문 파서 개선
 
 
 def _parse_addr(rule: str) -> tuple[str, str] | None:
@@ -441,6 +502,7 @@ def build_messages(
     relevant_memories: list[str] | None = None,
     speaker: str = "",
     genre_open: bool = False,
+    voice_profile: dict | None = None,
 ) -> list[dict]:
     author_rules = get_author_prompt(
         persona_id=persona_id,
@@ -456,43 +518,38 @@ def build_messages(
         _char_directive_rule = _parse_char_directive_rule(_dm.group(1))
         logger.info("[DIRECTIVE] 생성된 규칙:\n%s", _char_directive_rule or "(비어있음)")
 
+    # 세계관 규칙을 world_context에서 추출해 시스템 프롬프트에 별도 강조 주입
+    _world_rule_block = ""
+    _wr = re.search(r'\[세계관 규칙 — 반드시 준수\]\n(.*?)(?=\n\[|\Z)', world_context, re.DOTALL)
+    if _wr:
+        _world_rule_block = f"[세계관 규칙 — 절대 준수]\n{_wr.group(1).strip()}"
+
     # 주인공(사용자 캐릭터)을 world_context에서 추출해 최상단 규칙으로 주입
-    protagonist_name        = _extract_protagonist_name(world_context)
-    ai_char_names           = _extract_ai_char_names(world_context)
-    ai_names_str            = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
-    is_protagonist_speaker  = bool(speaker and protagonist_name and speaker == protagonist_name)
-    _SOLO_SIGNALS = ("혼자", "홀로", "텅 빈", "텅빈", "아무도 없", "혼잣말", "독백", "적막")
-    _is_solo = (not speaker) and any(s in (user_input or "") for s in _SOLO_SIGNALS)
-    if _is_solo:
-        _prot = f"({protagonist_name})" if protagonist_name else ""
+    protagonist_name = _extract_protagonist_name(world_context)
+    ai_char_names    = _extract_ai_char_names(world_context)
+    ai_names_str     = "·".join(ai_char_names) if ai_char_names else "등록된 AI 인물"
+    _SOLO_SIGNALS    = ("혼자", "홀로", "텅 빈", "텅빈", "아무도 없", "혼잣말", "독백", "적막")
+    _is_solo         = (not speaker) and any(s in (user_input or "") for s in _SOLO_SIGNALS)
+
+    # [2026-06-18 START] 역할 규칙 통합 — 단일 블록으로 정리, is_protagonist_speaker 제거
+    if protagonist_name:
+        _npc_lines = "\n".join(f"- {n}: NPC" for n in ai_char_names) if ai_char_names else ""
         protagonist_rule = (
-            f"[최우선 규칙 — 혼자 있는 장면]\n"
-            f"이번 턴은 주인공{_prot}이 **혼자 있는 장면**이다.\n"
-            f"AI는 **어떤 등장인물도 등장시키거나 말하게 하지 않는다.** speaker와 dialogue를 반드시 빈 문자열(\"\")로 둔다.\n"
-            f"주인공의 고독·내면·공간(빛·소리·냄새)을 narration으로만 작성한다.\n"
-            f"절대 금지: 등록 인물({ai_names_str})을 장면에 끌어들이거나 대사를 만드는 것."
-        )
-    elif is_protagonist_speaker:
-        protagonist_rule = (
-            f"[최우선 규칙 — 역할 구분]\n"
-            f"이 채팅에서 사용자는 {protagonist_name} 역할을 연기합니다.\n"
-            f"이번 턴: {protagonist_name}의 대사 방향만 지시됨. 아직 실제 대사는 결정되지 않음.\n"
-            f"[지시] {protagonist_name}이 자연스럽게 할 법한 대사를 `protagonist_dialogue` 필드에 생성하세요.\n"
-            f"그 대사에 반응하는 {ai_names_str}의 나레이션·대사를 narration/speaker/dialogue 필드에 생성하세요.\n"
-            f"절대 금지: speaker 필드에 {protagonist_name}을 넣는 것 — speaker는 {ai_names_str} 중 하나여야 합니다.\n"
-            f"절대 금지: dialogue 필드에 {protagonist_name}의 대사를 넣는 것."
-        )
-    elif protagonist_name:
-        protagonist_rule = (
-            f"[최우선 규칙 — 역할 구분]\n"
-            f"이 채팅에서 사용자는 {protagonist_name} 역할을 직접 연기합니다.\n"
-            f"조연({ai_names_str})이 있는 장면: AI는 조연의 반응·대사만 생성합니다. speaker는 조연 이름.\n"
-            f"★ {protagonist_name}이 혼자인 장면: speaker={protagonist_name}, dialogue=독백·내면 한 문장 허용.\n"
-            f"절대 금지: {protagonist_name}의 내면·감정·생각을 narration에 서술하는 것.\n"
-            f"절대 금지: 조연이 있는 장면에서 speaker에 {protagonist_name}을 넣는 것."
+            f"[역할 규칙]\n"
+            f"사용자는 {protagonist_name}(주인공)을 직접 조종한다.\n"
+            f"AI는 {protagonist_name}의 새 대사·행동을 절대 생성하지 않는다.\n"
+            f"AI는 현재 장면에 존재하는 NPC의 반응만 생성한다.\n"
+            f"NPC가 현재 장면에 있으면 speaker와 dialogue를 반드시 채운다.\n"
+            f"단, NPC가 말하지 않는 장면(혼자·침묵)일 때만 speaker/dialogue를 빈 문자열로 둔다.\n\n"
+            f"[현재 장면 인물]\n"
+            f"- {protagonist_name}: 사용자 주인공 (AI 생성 금지)\n"
+            f"{_npc_lines}\n"
+            f"→ 각 NPC가 현재 장면에 있는지는 직전 맥락(narration·대화 흐름·state)을 보고 판단한다.\n"
+            f"→ 현재 장면에 있는 NPC는 반드시 대사를 생성한다."
         )
     else:
         protagonist_rule = ""
+    # [2026-06-18 END] 역할 규칙 통합
 
     # [L2] 화자 고정 — speaker는 등록 인물 enum 안에서만, 새 인물 임의 등장 금지
     if ai_char_names:
@@ -517,15 +574,32 @@ def build_messages(
     else:
         speaker_rule = ""
 
+    # 사용자 말투 프로파일 → 주인공 대사에 반영
+    _voice_rule = ""
+    if voice_profile and protagonist_name:
+        import json as _json
+        _voice_rule = (
+            f"[주인공 말투 규칙 — 반드시 적용]\n"
+            f"{protagonist_name}(사용자 캐릭터)의 대사는 아래 말투 프로파일을 따른다.\n"
+            f"{_json.dumps(voice_profile, ensure_ascii=False)}\n"
+            f"@태그로 주인공 대사 생성 시 이 말투·어미·어휘 스타일을 그대로 살린다."
+        )
+
+    _progress_rule = PROGRESS_RULE_ROMANCE if persona_id == "hanyeoreum" else PROGRESS_RULE
     system = "\n\n".join(filter(None, [
         CRITICAL_OUTPUT_RULE,
         protagonist_rule,
         speaker_rule,
+        _world_rule_block,
         _char_directive_rule,
+        _voice_rule,
         OUTPUT_RULES,
         INPUT_RULES,
         REACTION_PRIORITY_RULE,
-        PROGRESS_RULE,
+        _progress_rule,
+        STORY_PROGRESS_RULE,
+        PACING_RULE,
+        SCENE_CONTEXT_RULE,
         WRITER_STYLE_RULE,
         author_rules,
     ]))
@@ -549,11 +623,11 @@ def build_messages(
         # 사용자가 장르 확장을 허용함 → 장르 가드 끔(out_of_genre 항상 false)
         context_parts.append("[장르 확장 허용됨] 사용자가 장르 밖 요소 도입을 승인함 — out_of_genre는 항상 false로 둔다.")
 
-    # @등장인물: 조연 시점 서사 지시 (주인공/solo 발화 턴은 protagonist_rule에서 처리하므로 스킵)
-    if speaker and not is_protagonist_speaker:
+    # @등장인물: NPC 시점 서사 지시
+    if speaker:
         context_parts.append(
             f"[화자 지정] 이번 사용자 입력은 등장인물 '{speaker}'의 대사/행동이다. "
-            f"주인공이 아니라 '{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
+            f"'{speaker}'의 시점에서 그 인물의 서사를 전개하고, "
             f"'{speaker}'의 감정·동기·말투를 살려 장면을 풀어라."
         )
 
@@ -564,35 +638,54 @@ def build_messages(
         messages.append({"role": role, "content": h["content"]})
 
     prefix = "\n\n".join(context_parts)
-    ai_label = "·".join(ai_char_names) if ai_char_names else "AI 캐릭터"
     prot_label = protagonist_name or "사용자 캐릭터"
     speaker_prefix = f"{speaker}: " if speaker else ""
+    # [2026-06-18 START] reaction_instruction 단순화 — is_protagonist_speaker 분기 제거
     if _is_solo:
         reaction_instruction = (
             f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. dialogue에 복사 금지]\n"
             f"{user_input}\n\n"
-            f"[★최우선 지시 — 혼자 장면] 지금은 **주인공이 혼자 있는 장면**이다. "
-            f"{ai_label} 등 **어떤 등장인물도 장면에 등장시키거나 말하게 하지 마라.** "
-            f"speaker와 dialogue를 **반드시 빈 문자열(\"\")** 로 두고, 주인공의 고독·내면·공간(빛·소리·냄새)만 "
-            f"narration으로 이어가라. 인물을 새로 끌어들이면 규칙 위반이다."
-        )
-    elif is_protagonist_speaker:
-        reaction_instruction = (
-            f"[{prot_label}의 행동 방향 — 아직 대사는 결정되지 않음]\n"
-            f"{user_input}\n\n"
-            f"[지시]\n"
-            f"1. 위 상황에서 {speaker}가 자연스럽게 할 법한 대사를 `protagonist_dialogue` 필드에 한 문장으로 생성하세요.\n"
-            f"2. 그 대사에 반응하는 {ai_label}의 새로운 대사·행동을 narration/speaker/dialogue 필드에 출력하세요.\n"
-            f"`protagonist_dialogue`는 따옴표 없이, {speaker}의 말투로 자연스럽게."
+            f"[지시 — 혼자인 장면] NPC를 등장시키지 마라. "
+            f"speaker·dialogue는 반드시 빈 문자열. {protagonist_name or prot_label}의 고독·내면·공간만 narration으로."
         )
     else:
+        # [2026-06-18 START] reaction_instruction 상세화 — 장르별 진행 규칙
+        if persona_id == "hanyeoreum":
+            _progress_rule = (
+                "- 인물 사이의 시선·거리·말끝·침묵에 미묘한 변화가 있어야 합니다.\n"
+                "- 감정을 직접 이름으로 쓰지 말고 행동·감각·거리로 드러내세요.\n"
+                "- 같은 감정 상태를 다른 표현으로 반복하지 마세요.\n"
+                "- NPC가 현재 장면에 있으면 dialogue를 반드시 채우세요. 완전한 침묵 장면에서만 빈 문자열을 허용합니다.\n"
+                "- event는 반드시 채우세요."
+            )
+            _forbidden = (
+                "- \"설렜다\", \"두근거렸다\" 같은 감정 이름 narration에 직접 사용 (dialogue는 자연스러운 대사를 쓸 것)\n"
+                "- 같은 감정·분위기를 3회 이상 반복\n"
+                "- 주인공의 새 대사/행동 생성"
+            )
+        else:
+            _progress_rule = (
+                "- 매 응답은 반드시 장면을 앞으로 진행시켜야 합니다.\n"
+                "- 인물의 행동·대사·상황에 구체적인 변화가 있어야 합니다.\n"
+                "- 같은 긴장·분위기 묘사만 반복하지 마세요.\n"
+                "- dialogue는 비어도 됩니다. event는 반드시 채우세요."
+            )
+            _forbidden = (
+                "- 같은 상황·분위기를 다른 말로 반복\n"
+                "- 주인공의 새 대사/행동 생성"
+            )
         reaction_instruction = (
-            f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. 여기 있는 대사를 dialogue 필드에 절대 복사하지 말 것]\n"
+            f"[{prot_label}의 행동·대사 — 이미 화면에 표시됨. dialogue에 절대 복사 금지]\n"
             f"{speaker_prefix}{user_input}\n\n"
-            f"[지시] 위 내용에 이어지는 장면을 JSON으로 출력하세요. "
-            f"{ai_label}이 지금 장면에 함께 있으면 그 인물의 새 대사·행동을 생성하고, "
-            f"떠났거나·자리에 없거나·주인공이 혼자인 장면이면 speaker·dialogue를 빈 문자열로 두고 나레이션만 출력하세요."
+            f"[지시]\n"
+            f"위 내용에 이어지는 장면을 JSON으로 출력하세요.\n\n"
+            f"[진행 규칙]\n"
+            f"{_progress_rule}\n\n"
+            f"[금지]\n"
+            f"{_forbidden}"
         )
+        # [2026-06-18 END] reaction_instruction 상세화
+    # [2026-06-18 END] reaction_instruction 단순화
     if prefix:
         user_content = f"{prefix}\n\n{reaction_instruction}"
     else:
@@ -700,8 +793,9 @@ async def stream_response(
     _is_protagonist_speaker = bool(speaker and _prot_name and speaker == _prot_name)
     # 장르 가드: 사용자가 이미 장르 확장을 승인했으면 감지 끔
     _genre_open            = bool(await redis_client.get(key_genre_open(chat_id)))
-    # address_rules 후처리용 캐릭터 목록 (세션 world 기준)
+    # address_rules 후처리용 캐릭터 목록 + 사용자 voice_profile 로드
     _all_chars: list = []
+    _voice_profile: dict | None = None
     try:
         sid = uuid.UUID(chat_id)
         _sess = (await db.execute(select(Session).where(Session.id == sid))).scalar_one_or_none()
@@ -709,6 +803,8 @@ async def stream_response(
             _all_chars = list((await db.execute(
                 select(Character).where(Character.world_id == _sess.world_id)
             )).scalars().all())
+            _user = (await db.execute(select(User).where(User.id == _sess.user_id))).scalar_one_or_none()
+            _voice_profile = getattr(_user, 'voice_profile', None)
     except Exception:
         pass
 
@@ -723,6 +819,7 @@ async def stream_response(
                 relevant_memories=relevant_memories,
                 speaker=speaker,
                 genre_open=_genre_open,
+                voice_profile=_voice_profile,
             )
 
             # ── 전송 프롬프트 로그 ──────────────────────────────────
@@ -766,21 +863,42 @@ async def stream_response(
             logger.info("└───────────────────────────────────────────────────")
 
             parsed = parse_ai_response(raw)
+
+            # [2026-06-18 START] event null 시 재생성 — 장면 진행 보장
+            if not parsed["state_changes"].get("event"):
+                logger.info("EVENT NULL → 재생성 요청")
+                _retry_contents = contents + [
+                    {"role": "model", "parts": [{"text": raw}]},
+                    {"role": "user", "parts": [{"text": (
+                        "방금 응답은 장면이 전진하지 않았습니다.\n"
+                        "같은 분위기·감정·상태의 반복이 아니라,\n"
+                        "인물의 행동·대사·관계·상황에 구체적인 변화가 있어야 합니다.\n"
+                        "장르에 맞는 방식으로 장면을 앞으로 진행시켜 다시 JSON으로 출력하세요.\n\n"
+                        "dialogue는 비어도 된다.\n"
+                        "event는 비우지 않는다."
+                    )}]},
+                ]
+                try:
+                    _retry_raw = await llm.generate(system_prompt, _retry_contents, json_mode=True)
+                    _retry_parsed = parse_ai_response(_retry_raw)
+                    if _retry_parsed["state_changes"].get("event"):
+                        parsed = _retry_parsed
+                        logger.info("RETRY SUCCESS │ event=%s", parsed["state_changes"].get("event"))
+                    else:
+                        logger.info("RETRY ALSO NULL — keeping original")
+                except Exception as _re:
+                    logger.warning("RETRY FAILED: %s", _re)
+            # [2026-06-18 END] event null 재생성
+
             narration            = _strip_json_artifacts(parsed["narration"])
             # [L1] AI가 정한 화자를 등록 인물로 강제 보정(흔들림 방지). 입력 speaker와 별개 변수.
             reply_speaker        = _resolve_speaker(parsed.get("speaker", ""), _valid_ai_names, _prot_name, world_context)
             dialogue             = apply_address_rules(parsed["dialogue"], reply_speaker, _all_chars)
-            protagonist_dialogue = parsed.get("protagonist_dialogue", "")
             state_changes        = parsed["state_changes"]
             internal_note        = parsed["internal_note"]
             # 장르 가드: 이미 확장 승인된 세션이면 플래그 무시
             out_of_genre         = bool(parsed.get("out_of_genre")) and not _genre_open
             genre_note           = parsed.get("genre_note", "") if out_of_genre else ""
-
-            # [폴백] 주인공 발화 턴인데 AI가 protagonist_dialogue 대신 speaker=주인공+dialogue에 넣은 경우 보정
-            if _is_protagonist_speaker and not protagonist_dialogue and dialogue and not reply_speaker:
-                protagonist_dialogue = dialogue
-                dialogue = ""
 
             # [나레이션 일관성 강제] AI가 나레이션에 "혼자/아무도 없" 등을 쓰고도
             # 조연을 speaker로 내보내는 모순을 코드 레벨에서 차단
@@ -833,7 +951,6 @@ async def stream_response(
                     "narration":            narration,
                     "speaker":              reply_speaker,
                     "dialogue":             dialogue,
-                    "protagonist_dialogue": protagonist_dialogue,
                     "state_changes":        state_changes,
                     "turn":                 turn,
                     "memories":             relevant_memories,
