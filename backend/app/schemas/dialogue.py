@@ -15,6 +15,7 @@ class DialogueResponse(BaseModel):
     id: uuid.UUID
     session_id: uuid.UUID
     speaker_type: SpeakerType
+    speaker: str | None
     character_id: uuid.UUID | None
     content: str
     turn_order: int

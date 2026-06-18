@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     users, worlds, characters, sessions, dialogues,
     novels, chats, authors, api_logs, world_examples, author_chat, mypage, taste,
-    proofread, illustrations,
+    proofread, illustrations, opening_scene,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -22,3 +22,4 @@ router.include_router(mypage.router,         prefix="/mypage",                  
 router.include_router(taste.router,          prefix="/chats",                              tags=["taste"])
 router.include_router(proofread.router,                                                    tags=["proofread"])  # 풀경로(/chats·/users) 자체 정의
 router.include_router(illustrations.router,  prefix="/sessions",                           tags=["illustrations"])
+router.include_router(opening_scene.router,  prefix="/chats",                               tags=["opening-scene"])

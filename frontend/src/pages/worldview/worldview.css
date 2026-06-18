@@ -494,6 +494,18 @@
     margin-bottom: 16px;
 }
 
+.example-modal-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    line-height: 1;
+}
+.example-modal-close:hover { color: var(--text-main); }
+
 .example-modal-overlay {
     position: fixed;
     inset: 0;

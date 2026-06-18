@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { getTemplates, deleteTemplate } from '../../lib/worldTemplates';
 import { authClient } from '../../lib/auth';
 import {
     getProfile, getWorks, getRecent, getSentences, getWiki, saveRelations,
@@ -36,6 +37,7 @@ const NAV = {
         { id: '대시보드', icon: '🏠' },
         { id: '최근 작업', icon: '🕐' },
         { id: '취향 프로필', icon: '✨' },
+        { id: '세계관 보관함', icon: '📁' },
         { id: '설정집', icon: '🗂️' },
         { id: '문장 보관함', icon: '💾' },
         { id: '오답노트', icon: '✏️' },
@@ -112,6 +114,9 @@ function MyPage() {
     const [tasteProfile, setTasteProfile] = useState(null);
     const [tasteWorks, setTasteWorks] = useState([]);
     const [showTasteOnboarding, setShowTasteOnboarding] = useState(false);
+
+    // 세계관 보관함
+    const [myTemplates, setMyTemplates] = useState(null); // null=미로드
 
     // 설정집 선택 상태
     const [wikiWork, setWikiWork] = useState(null);
@@ -705,6 +710,45 @@ function MyPage() {
                         )}
                     </div>
                 )}
+
+                {/* ── 세계관 보관함 ── */}
+                {active === '세계관 보관함' && (() => {
+                    const tmpls = myTemplates ?? getTemplates();
+                    if (myTemplates === null) setMyTemplates(getTemplates());
+                    return (
+                        <div className="mp-world-vault">
+                            {tmpls.length === 0 ? (
+                                <p className="mp-empty">저장된 세계관이 없어요.<br />세계관 수정 화면에서 내서재 저장을 눌러보세요.</p>
+                            ) : tmpls.map(t => (
+                                <div key={t.id} className="mp-vault-card">
+                                    <div className="mp-vault-card__top">
+                                        <span className="mp-vault-card__title">{t.title}</span>
+                                        {t.genre && <span className="mp-badge mp-badge--active mp-badge--sm">{t.genre}</span>}
+                                        <button
+                                            className="mp-vault-card__del"
+                                            onClick={() => { deleteTemplate(t.id); setMyTemplates(getTemplates()); }}
+                                            title="삭제"
+                                        >✕</button>
+                                    </div>
+                                    {t.setting && <div className="mp-vault-card__row"><span className="mp-vault-card__lbl">배경</span>{t.setting}</div>}
+                                    {t.description && <div className="mp-vault-card__row"><span className="mp-vault-card__lbl">요약</span>{t.description}</div>}
+                                    {t.rules && <div className="mp-vault-card__row"><span className="mp-vault-card__lbl">규칙</span>{t.rules}</div>}
+                                    {t.characters?.length > 0 && (
+                                        <div className="mp-vault-card__chars">
+                                            {t.characters.map((c, i) => (
+                                                <span key={i} className="mp-vault-card__char">
+                                                    {c.name}
+                                                    <span className="mp-vault-card__char-role">{c.role === 'protagonist' ? '주인공' : '조연'}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div className="mp-vault-card__date">{new Date(t.saved_at).toLocaleDateString('ko-KR')} 저장</div>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })()}
 
                 {/* ── 설정집 (세계관 · 등장인물 관계도 · 타임라인) ── */}
                 {active === '설정집' && (

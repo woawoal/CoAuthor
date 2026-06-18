@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { registerBgmAudio } from '../lib/bgmController';
 
 const AUTHORS = {
     author1: '백야',
@@ -69,7 +70,7 @@ function getCurrentAuthor() {
     if (AUTHORS[attr]) return attr;
     if (AUTHORS[saved]) return saved;
 
-    return 'author1';
+    return 'author4'; // 기본 BGM: 김도현
 }
 
 export default function BgmPlayer() {
@@ -88,6 +89,32 @@ export default function BgmPlayer() {
     });
 
     const bgmSrc = `/assets/${author}/bgm.mp3`;
+
+    // 페이지 로드 직후엔 브라우저 autoplay 정책으로 재생 불가 →
+    // 첫 사용자 제스처(클릭·터치·키) 시점에 한 번만 재생 시도
+    useEffect(() => {
+        const tryPlay = () => {
+            const audio = audioRef.current;
+            if (!audio) return;
+            const shouldPlay = localStorage.getItem(PLAYING_KEY);
+            if (shouldPlay === null || shouldPlay === 'true') {
+                audio.play()
+                    .then(() => setPlaying(true))
+                    .catch(() => {});
+            }
+            document.removeEventListener('click', tryPlay);
+            document.removeEventListener('keydown', tryPlay);
+            document.removeEventListener('touchstart', tryPlay);
+        };
+        document.addEventListener('click', tryPlay);
+        document.addEventListener('keydown', tryPlay);
+        document.addEventListener('touchstart', tryPlay);
+        return () => {
+            document.removeEventListener('click', tryPlay);
+            document.removeEventListener('keydown', tryPlay);
+            document.removeEventListener('touchstart', tryPlay);
+        };
+    }, []);
 
     useEffect(() => {
         const observer = new MutationObserver(() => {
@@ -114,9 +141,8 @@ export default function BgmPlayer() {
         return () => observer.disconnect();
     }, []);
 
-    useEffect(() => {
-        localStorage.setItem(PLAYING_KEY, String(playing));
-    }, [playing]);
+    // localStorage 쓰기는 SettingsModal이 전담 — 여기서 playing 상태 변화로 덮어쓰면
+    // autoplay 실패 시 사용자 preference가 소실되는 버그 발생하므로 제거
 
     useEffect(() => {
         const audio = audioRef.current;
@@ -147,7 +173,8 @@ export default function BgmPlayer() {
 
             localStorage.setItem(LAST_AUTHOR_KEY, author);
 
-            if (localStorage.getItem(PLAYING_KEY) === 'true') {
+            const _saved = localStorage.getItem(PLAYING_KEY);
+            if (_saved === null || _saved === 'true') { // null = 첫 방문, 기본 ON
                 audio.play()
                     .then(() => setPlaying(true))
                     .catch(() => {
@@ -205,13 +232,15 @@ export default function BgmPlayer() {
             const audio = audioRef.current;
             if (!audio) return;
 
-            const playing =
-                localStorage.getItem(PLAYING_KEY) === 'true';
+            const shouldPlay = localStorage.getItem(PLAYING_KEY) === 'true';
 
-            if (playing) {
+            if (shouldPlay) {
                 audio.play()
                     .then(() => setPlaying(true))
-                    .catch(() => setPlaying(false));
+                    .catch(() => {
+                        // 재생 실패해도 localStorage preference는 건드리지 않음
+                        setPlaying(false);
+                    });
             } else {
                 audio.pause();
                 setPlaying(false);
@@ -252,7 +281,7 @@ export default function BgmPlayer() {
 
     return (
         <div style={playerStyle}>
-            <audio ref={audioRef} />
+            <audio ref={(el) => { audioRef.current = el; registerBgmAudio(el); }} />
             {/*
             <button
                 type="button"

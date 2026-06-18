@@ -2,6 +2,89 @@
 
 ---
 
+## 2026-06-18
+
+### 오늘 한 일
+
+**protagonist_dialogue 제거 — dialogue 단일화**
+- `protagonist_dialogue` 필드 전면 제거 (story.py OUTPUT_RULES, chats.py, chatApi.js, chat/ui.jsx)
+- 기존 protagonist_dialogue에 들어가던 내용을 dialogue로 통합
+- `speakerIsProtagonist` 조건에서 `protagonist_dialogue` 참조 제거
+
+**protagonist_rule 리팩터링 — [역할 규칙] + [현재 장면 인물] 통합**
+- 기존 3분기(solo / is_protagonist_speaker / protagonist_name) → 단일 블록으로 통합
+- `[현재 장면 인물]` 섹션: 주인공(AI 생성 금지) + NPC 목록 명시 → LLM이 맥락으로 등장 여부 판단
+
+**스토리 진행 규칙 3종 추가 (story.py)**
+- `PACING_RULE` — 미래 사건 앞당김 방지, 정보 점진적 공개
+- `SCENE_CONTEXT_RULE` — 현재 장면 맥락 우선, 세계관은 배경 참고용
+- `STORY_PROGRESS_RULE` — 매 응답 장면 진행 강제 (장르 중립)
+
+**reaction_instruction 장르별 분기**
+- [지시] / [진행 규칙] / [금지] 형태로 구조화
+- `hanyeoreum` 분기: 시선·거리·말끝·침묵 변화 중심, 감정 이름 금지, 분위기 묘사 허용
+- 기타 분기: 행동·상황·구체적 변화 중심
+- "위협", "단서" 등 추리 장르 한정 어휘 전역 프롬프트에서 제거
+
+**event null retry**
+- LLM 응답에서 `state_changes.event`가 null이면 자동 재생성 요청 (llm.generate)
+- 재생성 프롬프트: 분위기 반복 지적 + 장르에 맞는 변화 요구
+
+**PROGRESS_RULE 장르별 분기 (story.py)**
+- `PROGRESS_RULE` (기존): "감정 반복·분위기 묘사 불인정, 구체적 사건 강제" → 로맨스를 죽이는 규칙
+- `PROGRESS_RULE_ROMANCE` 신설: 시선·거리·말끝 변화도 유효한 장면 진행으로 인정
+- `build_messages()`에서 `persona_id == "hanyeoreum"` 분기
+
+**internal_note 예시 교체 (story.py)**
+- 전역 OUTPUT_RULES의 internal_note 예시가 추리 장르("단서 발견 → 대치")였음
+- 장르 중립 예시("비밀 털어놓음", "거리가 가까워짐")로 교체
+
+**오프닝 장면 생성 (신규 기능)**
+- 신규 파일 3개: `backend/app/prompts/opening.py`, `backend/app/api/v1/endpoints/opening_scene.py`, `frontend/src/lib/openingSceneApi.js`
+- `GET /chats/{chat_id}/opening` — 세계관 기반 나레이션 생성, 작가별 시스템 프롬프트 분기
+- 세계관 저장 완료 후 "오프닝을 자동으로 생성하시겠습니까?" 팝업 (아니오/예)
+- worldview navigate state에 `generateOpening: true/false` 전달 → chat/ui.jsx에서 조건 분기
+- storylist 이어쓰기 진입 시 오프닝 미실행 (generateOpening 없음)
+- `opening.py`: 작가 4인 전용 시스템 프롬프트 분리 (`build_opening_system(persona_key)`)
+
+**버그 수정 — 채팅 복원 시 화자 오인**
+- 증상: A가 말한 대화가 B의 대화로 복원됨
+- 원인: `DialogueResponse` 스키마에 `speaker` 필드 누락 → API 미반환 → 프론트 fallback이 첫 AI 캐릭터 이름으로 고정
+- 수정: `backend/app/schemas/dialogue.py`에 `speaker: str | None` 추가
+
+**버그 수정 — worldview 불러오기 모달 X 박스**
+- 증상: 불러오기 클릭 시 검은 X 버튼이 크게 표시됨
+- 원인: 닫기 버튼에 `className="btn-cancel"` 사용 → `flex:1, padding:14px, background:#222` 스타일 적용됨
+- 수정: `className="example-modal-close"` (소형 아이콘 버튼 전용 클래스)로 교체
+
+**AuthorPanel 토글 버튼 제거 / 리사이저 유지**
+- `>` 토글 버튼 및 관련 state(`panelOpen`) 제거
+- drag 리사이저(`panelRatio`, `isResizing`)는 유지 — 너비 조절 가능
+
+**BGM 설정 저장 버그 수정**
+- 원인: `BgmPlayer`의 `useEffect([playing])` → `localStorage.setItem('bgm_playing', String(playing))` 가 autoplay 실패 시 사용자 preference를 'false'로 덮어씀
+- 수정: BgmPlayer의 localStorage 쓰기 effect 제거, localStorage 관리는 SettingsModal 전담
+
+**BGM autoplay 차단 문제 해결**
+- 원인: `window.dispatchEvent(new Event('bgm-playing-changed'))` 는 브라우저가 사용자 제스처로 인정하지 않아 `audio.play()` 차단
+- `bgmController.js` 신설 — BgmPlayer의 audio 엘리먼트를 모듈 레벨로 노출 (`registerBgmAudio`, `bgmPlay`, `bgmPause`)
+- SettingsModal 저장 버튼 onClick에서 직접 `bgmPlay()` / `bgmPause()` 호출 (사용자 제스처 컨텍스트)
+- 페이지 최초 진입 시 첫 클릭/터치/키 이벤트에 BGM 자동 재생 시도 (autoplay 정책 우회)
+
+**BGM 기본값 변경**
+- 기본 BGM 트랙: `author1`(백야) → `author4`(김도현)
+- `bgm_playing` 미설정(첫 방문) 시 ON 기본값 유지
+
+**dev 백업 및 머지 준비**
+- `backup/dev-20260618` 브랜치 생성 후 origin push (dev 스냅샷 보존)
+
+### 이슈 / 막힌 점
+- 오프닝 URL 이중 슬래시(`//chats/...`): `openingSceneApi.js`가 `localhost:8000`을 하드코딩 → `apiBase.js`의 `API_BASE_URL` import로 교체
+- 로맨스 서술이 차로운 스타일로 나오는 문제: `PROGRESS_RULE` "분위기 묘사 불인정 + 구체적 사건 강제", `reaction_instruction`의 "위협/단서/시선처리 금지"가 전역 적용되고 있었음. `PROGRESS_RULE_ROMANCE` 분기 + reaction_instruction persona 분기로 해결
+- BGM ON 저장 후 상태 초기화: BgmPlayer가 autoplay 실패 시 localStorage를 'false'로 덮어쓰는 구조 → localStorage 쓰기 제거 + bgmController 직접 제어로 해결
+
+---
+
 ## 2026-06-17
 
 ### 오늘 한 일
@@ -35,9 +118,46 @@
 - `backup/dev-20260617` 브랜치 생성 후 리모트 push (작업 전 dev 스냅샷 보존)
 - `origin/dev` → `feature/pge` 머지, 5개 파일 충돌 수동 해결
 
+**소설 목록 버튼 순서 / 읽기 조건 개선**
+- storylist 카드 버튼 순서: 이어쓰기 → 수정하기 → 읽기 → 완결 → 삭제 → `수정하기` 앞으로 재배치
+- `has_novel` 필드 백엔드 추가 — 세션 목록 API에서 novels 테이블 조인, 소설 내용 있을 때만 `has_novel: true`
+- 프론트 "읽기" 버튼: `s.status === 'completed' && s.has_novel` 조건으로만 표시 (기존 완결이면 무조건 표시 → 소설 없으면 오류 나던 문제 해결)
+- 완결 흐름: `getDialogues` → 대화 없으면 toast + 차단, 있으면 `completeSession` → `generateNovel` → `has_novel: true` 반영
+- 소설 읽기 404: `generateNovel` 자동 실행 후 재조회 (기존 완결 세션 호환)
+
+**작가 패널 — #에피소드 탭 비활성화 / 이런 문장 추천해요 복원**
+- `AUTHOR_TAGS_CHAT`, `AUTHOR_TAGS_EDITOR` 에서 `#에피소드` 항목 제거
+- `shouldRecommend` 플래그 복원 — `handleSendAuthorMessage`에서 `isRecommend: !!data.shouldRecommend` 저장
+- `isRecommend` 버블: 버블 전체 클릭 시 왼쪽 입력창에 삽입 (`author-msg--rec` 클래스, 왼쪽 테마색 테두리 + hover 강조)
+
+**#등장인물 카드 — "AI지시문" → "특성" 레이블 변경**
+- `world-info-card__char-role` 클래스에 주연/조연 뱃지와 동일한 스타일 적용
+
+**작가 패널 문장 추천 버블 3개 (API 3회 병렬 호출)**
+- "추천해줘" 등 키워드 감지 시 `sendAuthorMessage` 3번 병렬 호출 (`Promise.allSettled`)
+- 각 응답이 독립 작가 버블로 추가됨 — 분리/쪼개기 없이 자연스러운 별개 추천
+- `author_chat.py` 프롬프트: 모드 A(문장 추천) / 모드 B(일반 조언) 분리, `response_mode_section` 변수로 추출 후 `# [2026-06-17 START/END]` 주석 마킹
+- `REC_KEYWORDS` 정규식으로 추천 요청 감지: `/추천해줘|문장 추천|다음 문장|이어서 써줘|추천 해줘/`
+
+**💡 입력 추천 버튼 토글화**
+- `suggestOn` state 추가 — 클릭 시 `suggest-btn--on` 클래스(테마색 배경) 적용
+- 켜짐: 추천 fetch + 버튼 활성화 / 꺼짐: 추천 목록 초기화 + 버튼 비활성화
+- 추천 칩 선택 시 자동 OFF
+
+**환경설정 팝업 — 취소/저장 분리**
+- 기존: 설정 변경 즉시 localStorage 반영 (취소 불가)
+- 변경: 모든 값을 `draft` state로 관리 → 저장 버튼 클릭 시 일괄 반영 + 이벤트 발생
+- `닫기` 단일 버튼 → `취소` (변경 버리고 닫기) / `저장` (반영 후 닫기) 분리
+- 오버레이 클릭도 취소 처리
+
+**호칭규칙 디버그 로그 추가**
+- `_build_world_context`에서 캐릭터별 `address_rules` 값과 `addr_lines` 구성 결과를 `[ADDRESS]` 태그로 INFO 로그 출력 — 규칙 미적용 원인 추적용
+
 ### 이슈 / 막힌 점
 - `useState` lazy initializer는 같은 라우트 재진입 시 재실행 안 됨 → setter를 state tuple에서 꺼내 effect에서 직접 `null` 세팅해야 함
 - `var(--surface)` 미정의 → 투명한 모달 배경 문제 → `var(--card-main)` 교체
+- 문장 추천 버블 구현 시행착오: 처음엔 AI 응답 1개를 `\n` split → 3버블로 분리하는 방식 시도했으나, AI가 줄바꿈 없이 한 줄로 반환하거나 프롬프트 "여러 줄 금지" 규칙과 충돌 → API 3회 병렬 호출로 방향 전환
+- 호칭규칙 미적용 원인 미확인 → 디버그 로그 추가 후 추적 필요 (migration 미실행 또는 AI 미준수 가능성)
 
 ---
 

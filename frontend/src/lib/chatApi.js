@@ -87,13 +87,12 @@ export function connectChatStream(
 
   es.addEventListener("reply", (event) => {
     // 백엔드는 narration·dialogue 외에 memories(기억 검색)·consistency(검수)·장르가드도 함께 보낸다.
-    const { narration, speaker, dialogue, protagonist_dialogue, memories, consistency, out_of_genre, genre_note } = JSON.parse(event.data);
+    const { narration, speaker, dialogue, memories, consistency, out_of_genre, genre_note } = JSON.parse(event.data);
     onToken({
-      narration:            narration || "",
-      speaker:              speaker || "",
-      dialogue:             dialogue || "",
-      protagonist_dialogue: protagonist_dialogue || "",
-      memories:             memories || [],
+      narration:   narration || "",
+      speaker:     speaker || "",
+      dialogue:    dialogue || "",
+      memories:    memories || [],
       consistency:          consistency || { consistent: true, violations: [] },
       out_of_genre:         !!out_of_genre,
       genre_note:           genre_note || "",

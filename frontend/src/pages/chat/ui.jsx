@@ -10,6 +10,7 @@ import {
 import { getVoiceProfile } from '../../lib/voiceApi';
 import { speakReaction, stopReaction, extractFirstSentence } from '../../lib/ttsApi';
 import { getSession, getWorld, getCharacters, getDialogues } from '../../lib/worldviewApi';
+import { generateOpeningScene } from '../../lib/openingSceneApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { authClient } from '../../lib/auth';
 import { toast } from '../../lib/toast';
@@ -141,6 +142,16 @@ function Bubble({ msg, persona, characterName, protagonistName, streaming, hasBo
     return <div className="world-info-header">{msg.text}</div>;
   }
 
+  if (msg.role === 'opening') {
+    return (
+      <div className="opening-scene">
+        {(msg.narration || '').split('\n').filter(Boolean).map((line, i) => (
+          <p key={i} className="opening-scene__line">{line}</p>
+        ))}
+      </div>
+    );
+  }
+
   const isUser = msg.role === 'user' && !msg.isSideChar;
 
   if (!isUser) {
@@ -168,9 +179,8 @@ function Bubble({ msg, persona, characterName, protagonistName, streaming, hasBo
       );
     }
 
-    // AI가 주인공 대사를 추천한 경우 → 주인공 오른쪽 버블 + AI 캐릭터 왼쪽 버블
-    // fallback: AI가 protagonist_dialogue 대신 speaker=주인공으로 응답한 경우도 오른쪽 버블
-    const speakerIsProtagonist = !msg.protagonist_dialogue && protagonistName && msg.speaker && msg.speaker === protagonistName;
+    // speaker가 주인공 이름이면 오른쪽 버블 + narration만 표시
+    const speakerIsProtagonist = protagonistName && msg.speaker && msg.speaker === protagonistName;
     if (speakerIsProtagonist) {
       return (
         <>
@@ -201,32 +211,6 @@ function Bubble({ msg, persona, characterName, protagonistName, streaming, hasBo
               </div>
             </div>
           )}
-        </>
-      );
-    }
-
-    if (msg.protagonist_dialogue) {
-      return (
-        <>
-          <div className="bubble-row bubble-row--user">
-            <div className="bubble-content bubble-content--user">
-              <div className="dialogue-block" style={{ alignItems: 'flex-end' }}>
-                <span className="badge badge--user">{protagonistName}</span>
-                <div className="bubble bubble--user">&ldquo;{msg.protagonist_dialogue}&rdquo;</div>
-              </div>
-            </div>
-          </div>
-          <div
-            id={`bubble-${msg.id}`}
-            className={`bubble-row bubble-row--char${isSelected ? ' bubble-row--selected' : ''}`}
-            onContextMenu={onContextMenu}
-          >
-            {isLoading ? (
-              <div className="bubble-content"><div className="typing-dots"><span /><span /><span /></div></div>
-            ) : (
-              <CharMessage msg={msg} characterName={characterName} hasBookmark={hasBookmark} onType={onType} onDone={onDone} />
-            )}
-          </div>
         </>
       );
     }
@@ -268,7 +252,7 @@ function Bubble({ msg, persona, characterName, protagonistName, streaming, hasBo
 export default function Chat() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { worldId, chatId: chatIdFromState, authorId: authorIdRaw, opening, manuscriptContent } = location.state ?? {};
+  const { worldId, chatId: chatIdFromState, authorId: authorIdRaw, opening, manuscriptContent, generateOpening } = location.state ?? {};
   const chatId = chatIdFromState ?? worldId ?? 'room_001';
   const [authorId, setAuthorId] = useState(() => resolveAuthorId(authorIdRaw));
   useAuthorTheme(authorId);
@@ -451,6 +435,22 @@ export default function Chat() {
       .catch(console.error)
       .finally(() => setLoadingHistory(false));
   }, [chatId]);
+
+  // ── 첫 장면 생성 — worldview에서 generateOpening: true 로 진입한 경우만 실행
+  useEffect(() => {
+    if (!generateOpening || !chatIdFromState) return;
+    const runOpening = async () => {
+      const narration = await generateOpeningScene(chatIdFromState).catch(() => '');
+      if (!narration) return;
+      setMessages(prev =>
+        prev.length === 0
+          ? [{ id: 'opening_scene', role: 'opening', narration, isRestored: true }]
+          : prev
+      );
+    };
+    const timer = setTimeout(runOpening, 300);
+    return () => clearTimeout(timer);
+  }, [generateOpening, chatIdFromState]);
 
   // ── 자동 스크롤 ──────────────────────────────────────────
   useEffect(() => {
@@ -733,7 +733,7 @@ export default function Chat() {
     esRef.current = connectChatStream(
       chatId,
       { content: cleanUserText, character_id: storyAuthor.characterId, mode: 'author', world_context: '', speaker: activeSpeaker?.name ?? '', check_consistency: consistencyOn },
-      ({ narration, speaker, dialogue, protagonist_dialogue, out_of_genre, genre_note, consistency }) => {
+      ({ narration, speaker, dialogue, out_of_genre, genre_note, consistency }) => {
 
         if (narration) {
           const ttsText = extractFirstSentence(narration, 50);
@@ -741,10 +741,11 @@ export default function Chat() {
           speakReaction(ttsText, currentAuthor.characterId);
         }
 
+
         lastReply = { narration: narration ?? '', dialogue: dialogue ?? '' };
         setMessages(prev =>
           prev.map(m => m.id === streamMsgId
-            ? { ...m, narration, speaker, dialogue, protagonist_dialogue, isStreaming: false, isStreamDone: streamed }
+            ? { ...m, narration, speaker, dialogue, isStreaming: false, isStreamDone: streamed }
             : m)
         );
         // 장르 밖 감지 → 비차단 칩(이미 도입 승인했으면 무시)

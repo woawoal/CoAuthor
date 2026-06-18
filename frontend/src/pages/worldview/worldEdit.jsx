@@ -6,6 +6,7 @@ import {
 } from '../../lib/worldviewApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import { toast } from '../../lib/toast';
+import { getTemplates, saveTemplate, deleteTemplate } from '../../lib/worldTemplates';
 import './worldview.css';
 import './worldEdit.css';
 
@@ -29,6 +30,8 @@ export default function WorldEdit() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [templates, setTemplates] = useState([]);
   const [worldId, setWorldId] = useState(worldIdFromState ?? null);
   const [hasDialogues, setHasDialogues] = useState(false);
 
@@ -109,6 +112,50 @@ export default function WorldEdit() {
 
   const changeChar = (key, field, value) =>
     setCharacters((prev) => prev.map((c) => (c.key === key ? { ...c, [field]: value } : c)));
+
+  const handleSaveToLibrary = () => {
+    if (!title.trim()) { toast('제목을 입력한 후 저장해주세요.', 'error'); return; }
+    saveTemplate({
+      title: title.trim(), genre: genre.trim(), setting: setting.trim(),
+      description: description.trim(), rules: rules.trim(), characters,
+    });
+    toast('내서재에 저장했어요.', 'success');
+  };
+
+  const handleOpenLoadModal = () => {
+    setTemplates(getTemplates());
+    setShowLoadModal(true);
+  };
+
+  const handleApplyTemplate = (tmpl) => {
+    setTitle(tmpl.title ?? '');
+    setGenre(tmpl.genre ?? '');
+    setSetting(tmpl.setting ?? '');
+    setDescription(tmpl.description ?? '');
+    setRules(tmpl.rules ?? '');
+    if (tmpl.characters?.length) {
+      setCharacters(
+        tmpl.characters.map((c, i) => ({
+          key: `tmpl_${Date.now()}_${i}`,
+          id: null,
+          name: c.name ?? '',
+          role: c.role ?? 'supporting',
+          personality: c.personality ?? '',
+          prompt: c.prompt ?? '',
+          address_rules: c.address_rules ?? [],
+          isNew: true,
+        })),
+      );
+    }
+    setShowLoadModal(false);
+    toast('템플릿을 불러왔어요.', 'success');
+  };
+
+  const handleDeleteTemplate = (id, e) => {
+    e.stopPropagation();
+    deleteTemplate(id);
+    setTemplates(getTemplates());
+  };
 
   const handleSave = async () => {
     if (!title.trim()) { toast('제목은 비울 수 없어요.', 'error'); return; }
@@ -231,7 +278,7 @@ export default function WorldEdit() {
             <button className="btn-add" onClick={addCharacter}>+ 인물 추가</button>
           </div>
           <p className="worldedit-char-note">
-            기존 인물은 <strong>이름·역할 고정</strong>(진행된 이야기 보호) — 성격·행동지시문만 보강할 수 있어요. 새 인물은 자유롭게 추가하세요.
+            기존 인물은 <strong>이름·역할 고정</strong>(진행된 이야기 보호) — 성격·특성만 보강할 수 있어요. 새 인물은 자유롭게 추가하세요.
           </p>
 
           <div className="character-card-list">
@@ -274,7 +321,7 @@ export default function WorldEdit() {
                   <textarea className="form-textarea height-xs" value={c.personality} onChange={(e) => changeChar(c.key, 'personality', e.target.value)} placeholder="성격·말투·특징" />
                 </div>
                 <div className="form-group">
-                  <label className="form-label">행동지시문(선택)</label>
+                  <label className="form-label">특성(선택)</label>
                   <textarea className="form-textarea height-xs" value={c.prompt} onChange={(e) => changeChar(c.key, 'prompt', e.target.value)} placeholder="AI가 이 인물을 연기할 때 반드시 따를 지시" />
                 </div>
                 <div className="form-group">
@@ -334,12 +381,54 @@ export default function WorldEdit() {
         </section>
 
         <div className="worldedit-actions">
-          <button className="worldedit-cancel" onClick={() => navigate(-1)} disabled={saving}>취소</button>
-          <button className="worldedit-save" onClick={handleSave} disabled={saving}>
-            {saving ? '저장 중…' : '저장'}
-          </button>
+          <div className="worldedit-actions__library">
+            <button className="worldedit-lib-btn" onClick={handleSaveToLibrary} disabled={saving}>내서재 저장</button>
+            <button className="worldedit-lib-btn" onClick={handleOpenLoadModal} disabled={saving}>불러오기</button>
+          </div>
+          <div className="worldedit-actions__right">
+            <button className="worldedit-cancel" onClick={() => navigate(-1)} disabled={saving}>취소</button>
+            <button className="worldedit-save" onClick={handleSave} disabled={saving}>
+              {saving ? '저장 중…' : '저장'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* 내서재 불러오기 모달 */}
+      {showLoadModal && (
+        <div className="we-modal-overlay" onClick={() => setShowLoadModal(false)}>
+          <div className="we-modal" onClick={e => e.stopPropagation()}>
+            <div className="we-modal__header">
+              <span className="we-modal__title">세계관 보관함</span>
+              <button className="we-modal__close" onClick={() => setShowLoadModal(false)}>✕</button>
+            </div>
+            {templates.length === 0 ? (
+              <p className="we-modal__empty">저장된 세계관이 없어요.<br />내서재 저장 버튼으로 저장해보세요.</p>
+            ) : (
+              <div className="we-modal__list">
+                {templates.map(t => (
+                  <div key={t.id} className="we-modal__item" onClick={() => handleApplyTemplate(t)}>
+                    <div className="we-modal__item-top">
+                      <span className="we-modal__item-title">{t.title}</span>
+                      {t.genre && <span className="we-modal__item-badge">{t.genre}</span>}
+                      <button
+                        className="we-modal__item-del"
+                        onClick={e => handleDeleteTemplate(t.id, e)}
+                        title="삭제"
+                      >✕</button>
+                    </div>
+                    {t.description && <p className="we-modal__item-desc">{t.description}</p>}
+                    <div className="we-modal__item-meta">
+                      {t.characters?.length > 0 && <span>인물 {t.characters.length}명</span>}
+                      <span>{new Date(t.saved_at).toLocaleDateString('ko-KR')}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

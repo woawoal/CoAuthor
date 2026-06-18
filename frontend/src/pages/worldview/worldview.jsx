@@ -10,6 +10,7 @@ import { getRandomWorldExamples } from '../../lib/worldExampleApi';
 import { useAuthorTheme, resolveAuthorId } from '../../hooks/useAuthorTheme';
 import IntroVideo from '../../components/IntroVideo';
 import { toast } from '../../lib/toast';
+import { getTemplates, deleteTemplate } from '../../lib/worldTemplates';
 
 function Worldview() {
     const location = useLocation();
@@ -32,6 +33,10 @@ function Worldview() {
     const [exampleModalOpen, setExampleModalOpen] = useState(false);
     const [randomExamples, setRandomExamples] = useState([]);
     const [selectedExample, setSelectedExample] = useState(null);
+    const [loadModalOpen, setLoadModalOpen] = useState(false);
+    const [myTemplates, setMyTemplates] = useState([]);
+    const [openingConfirm, setOpeningConfirm] = useState(false);
+    const [pendingNav, setPendingNav] = useState(null);
 
     // 2. 등장인물(characters) 테이블 스키마에 맞춘 초기 구조 정의    
     const createNewCharacter = (index = 0) => ({
@@ -208,7 +213,8 @@ function Worldview() {
                 }
             }
 
-            navigate('/chat', { state: { worldId, chatId: sessionId, authorId } });
+            setPendingNav({ worldId, sessionId, authorId });
+            setOpeningConfirm(true);
         } catch (err) {
             toast(`저장 실패: ${err.message}`, "error");
         } finally {
@@ -232,6 +238,39 @@ function Worldview() {
         } catch (error) {
             toast("랜덤 예시를 불러오지 못했습니다.", "error");
         }
+    };
+
+    const handleOpenLoadModal = () => {
+        setMyTemplates(getTemplates());
+        setLoadModalOpen(true);
+    };
+
+    const handleApplyMyTemplate = (tmpl) => {
+        setTitle(tmpl.title ?? '');
+        setDescription(tmpl.description ?? '');
+        setSetting(tmpl.setting ?? '');
+        setGenre(tmpl.genre ?? '');
+        setRules(Array.isArray(tmpl.rules) ? tmpl.rules.join('\n') : (tmpl.rules ?? ''));
+        if (tmpl.characters?.length) {
+            setCharacters(
+                tmpl.characters.map((c, i) => ({
+                    id: Date.now() + Math.random() + i,
+                    name: c.name ?? '',
+                    role: c.role ?? (i === 0 ? 'protagonist' : 'supporting'),
+                    personality: c.personality ?? '',
+                    system_prompt: c.prompt ?? '',
+                    address_rules: c.address_rules ?? [],
+                })),
+            );
+        }
+        setLoadModalOpen(false);
+        toast('세계관을 불러왔어요.', 'success');
+    };
+
+    const handleDeleteMyTemplate = (id, e) => {
+        e.stopPropagation();
+        deleteTemplate(id);
+        setMyTemplates(getTemplates());
     };
 
     const handleApplyExample = () => {
@@ -301,9 +340,14 @@ function Worldview() {
                     <div className="form-group">
                         <div className="label-header">
                             <label className="form-label">안내</label>
-                            <button type="button" className="btn-add" onClick={handleOpenExampleModal}>
-                                랜덤예시
-                            </button>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                                <button type="button" className="btn-add" onClick={handleOpenExampleModal}>
+                                    랜덤예시
+                                </button>
+                                <button type="button" className="btn-add" onClick={handleOpenLoadModal}>
+                                    불러오기
+                                </button>
+                            </div>
                         </div>
                         <div className="intro-guide-box">
                             <p>작가와 대화하듯이 세계관을 하나씩 설정합니다.</p>
@@ -461,7 +505,7 @@ function Worldview() {
                                     </div>
 
                                     <div className="flex-2">
-                                        <label className="char-sub-label">AI 캐릭터 지시문</label>
+                                        <label className="char-sub-label">특성</label>
                                         <textarea
                                             className="form-textarea"
                                             placeholder={
@@ -564,6 +608,7 @@ function Worldview() {
     }
 
     return (
+        <>
         <div className="app-container">
             {showIntro && (
                 <IntroVideo
@@ -725,7 +770,7 @@ function Worldview() {
                                             <div key={index} className="example-character-box">
                                                 - {char.name} ( {char.personality} )
                                                 <div className="example-character-prompt">
-                                                    지시문 : {char.system_prompt}
+                                                    특성 : {char.system_prompt}
                                                 </div>
                                             </div>
                                         ))}
@@ -746,6 +791,85 @@ function Worldview() {
                 </div>
             )}
         </div>
+
+        {/* 오프닝 자동 생성 확인 팝업 */}
+        {openingConfirm && pendingNav && (
+            <div className="example-modal-overlay">
+                <div className="example-modal" style={{ maxWidth: 360, padding: '28px 24px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>첫 장면을 자동으로 생성할까요?</p>
+                    <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 24 }}>
+                        세계관 정보를 바탕으로 오프닝 나레이션을 자동 생성합니다.<br />
+                        나중에 직접 입력하려면 아니오를 선택하세요.
+                    </p>
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                        <button
+                            type="button"
+                            className="example-modal-close"
+                            style={{ padding: '10px 24px', border: '1px solid var(--text-muted)', borderRadius: 10, fontSize: 14, cursor: 'pointer' }}
+                            onClick={() => {
+                                setOpeningConfirm(false);
+                                navigate('/chat', { state: { worldId: pendingNav.worldId, chatId: pendingNav.sessionId, authorId: pendingNav.authorId, generateOpening: false } });
+                            }}
+                        >아니오</button>
+                        <button
+                            type="button"
+                            className="btn-save"
+                            style={{ padding: '10px 28px', borderRadius: 10, fontSize: 14, flex: 'none' }}
+                            onClick={() => {
+                                setOpeningConfirm(false);
+                                navigate('/chat', { state: { worldId: pendingNav.worldId, chatId: pendingNav.sessionId, authorId: pendingNav.authorId, generateOpening: true } });
+                            }}
+                        >예</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* 내서재 불러오기 모달 */}
+        {loadModalOpen && (
+            <div className="example-modal-overlay" onClick={() => setLoadModalOpen(false)}>
+                <div className="example-modal" onClick={e => e.stopPropagation()}>
+                    <div className="example-modal-header">
+                        <div>내서재 세계관 보관함</div>
+                        <button type="button" className="example-modal-close" onClick={() => setLoadModalOpen(false)}>✕</button>
+                    </div>
+                    {myTemplates.length === 0 ? (
+                        <p style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14, lineHeight: 1.7 }}>
+                            저장된 세계관이 없어요.<br />세계관 수정 화면에서 내서재 저장을 해보세요.
+                        </p>
+                    ) : (
+                        <div className="example-title-list">
+                            {myTemplates.map(t => (
+                                <div
+                                    key={t.id}
+                                    style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                                >
+                                    <button
+                                        type="button"
+                                        className="example-title-item"
+                                        style={{ flex: 1, textAlign: 'left' }}
+                                        onClick={() => handleApplyMyTemplate(t)}
+                                    >
+                                        <span style={{ fontWeight: 700 }}>{t.title}</span>
+                                        {t.genre && <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.7 }}>{t.genre}</span>}
+                                        <span style={{ display: 'block', fontSize: 12, opacity: 0.6, marginTop: 2 }}>
+                                            {t.characters?.length > 0 && `인물 ${t.characters.length}명 · `}
+                                            {new Date(t.saved_at).toLocaleDateString('ko-KR')}
+                                        </span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 13, padding: '4px 8px' }}
+                                        onClick={e => handleDeleteMyTemplate(t.id, e)}
+                                    >✕</button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        )}
+        </>
     );
 }
 
