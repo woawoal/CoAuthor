@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import './DeveloperCredit.css';
 
 // 개발자 이름 (요청 순서)
@@ -34,6 +34,25 @@ const LYRICS = [
 export default function DeveloperCredit({ onClose }) {
     const audioRef = useRef(null);
     const scrollRef = useRef(null);
+    const [playing, setPlaying] = useState(false);
+    const [cur, setCur] = useState(0);
+    const [dur, setDur] = useState(0);
+
+    const togglePlay = () => {
+        const a = audioRef.current;
+        if (!a) return;
+        if (a.paused) a.play().catch(() => { /* noop */ }); else a.pause();
+    };
+    const onSeek = (e) => {
+        const a = audioRef.current;
+        if (a) a.currentTime = Number(e.target.value);
+    };
+    const fmt = (s) => {
+        if (!s || Number.isNaN(s)) return '0:00';
+        const m = Math.floor(s / 60);
+        const sec = String(Math.floor(s % 60)).padStart(2, '0');
+        return `${m}:${sec}`;
+    };
 
     useEffect(() => {
         // 노래 BGM 재생 (버튼 클릭 제스처 컨텍스트라 자동재생 허용)
@@ -87,6 +106,7 @@ export default function DeveloperCredit({ onClose }) {
 
                     {/* 사진 아래 개발자 이름 */}
                     <div className="credit-title">NodeVelture · 1팀</div>
+                    <div className="credit-date">2026.06.02 ~ 2026.06.19</div>
                     <div className="credit-names">
                         {DEVS.map((n, i) => (
                             <span key={n}>
@@ -95,6 +115,7 @@ export default function DeveloperCredit({ onClose }) {
                             </span>
                         ))}
                     </div>
+                    <div className="credit-role">작사 • 유건혁</div>
 
                     {/* 2) 가사 */}
                     <div className="credit-lyrics">
@@ -107,7 +128,35 @@ export default function DeveloperCredit({ onClose }) {
                 </div>
             </div>
 
-            <audio ref={audioRef} src="/developer_credit/credit.mp3" preload="auto" />
+            {/* 재생 바 (하단 고정) */}
+            <div className="credit-player">
+                <button className="credit-play" onClick={togglePlay} title={playing ? '일시정지' : '재생'}>
+                    {playing ? '❚❚' : '▶'}
+                </button>
+                <span className="credit-time">{fmt(cur)}</span>
+                <input
+                    className="credit-seek"
+                    type="range"
+                    min={0}
+                    max={dur || 0}
+                    step="0.1"
+                    value={cur}
+                    onChange={onSeek}
+                    style={{ '--pct': `${dur ? (cur / dur) * 100 : 0}%` }}
+                />
+                <span className="credit-time">{fmt(dur)}</span>
+            </div>
+
+            <audio
+                ref={audioRef}
+                src="/developer_credit/credit.mp3"
+                preload="auto"
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onTimeUpdate={() => setCur(audioRef.current?.currentTime || 0)}
+                onLoadedMetadata={() => setDur(audioRef.current?.duration || 0)}
+                onEnded={() => setPlaying(false)}
+            />
         </div>
     );
 }

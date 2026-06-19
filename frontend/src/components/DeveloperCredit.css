@@ -68,6 +68,13 @@
     text-transform: uppercase;
 }
 
+.credit-date {
+    margin-top: 6px;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: #8e83b8;
+}
+
 .credit-names {
     margin-top: 10px;
     font-size: 19px;
@@ -84,8 +91,16 @@
     color: rgba(183, 167, 230, 0.5);
 }
 
+.credit-role {
+    margin-top: 12px;
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    color: #b7a7e6;
+}
+
 .credit-lyrics {
     margin-top: 64px;
+    text-align: left;
 }
 .credit-lyrics p {
     margin: 0 0 12px;
@@ -105,8 +120,83 @@
     color: #9a8fc4;
 }
 
+/* 재생 바 (하단 고정) */
+.credit-player {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 620px;
+    width: calc(100% - 48px);
+    margin: 0 auto 18px;
+    padding: 10px 16px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(183, 167, 230, 0.25);
+    border-radius: 999px;
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+}
+
+.credit-play {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: #b7a7e6;
+    color: #1a1430;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s;
+}
+.credit-play:hover {
+    background: #cabbf2;
+}
+
+.credit-time {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: #b7a7e6;
+    font-variant-numeric: tabular-nums;
+    min-width: 34px;
+    text-align: center;
+}
+
+.credit-seek {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #b7a7e6 var(--pct, 0%), rgba(255, 255, 255, 0.18) var(--pct, 0%));
+    cursor: pointer;
+    outline: none;
+}
+.credit-seek::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+.credit-seek::-moz-range-thumb {
+    width: 13px;
+    height: 13px;
+    border: none;
+    border-radius: 50%;
+    background: #fff;
+    cursor: pointer;
+}
+
 @media (max-width: 600px) {
     .credit-inner { padding: 10vh 18px 16vh; }
     .credit-names { font-size: 16px; }
     .credit-lyrics p { font-size: 14px; }
+    .credit-player { width: calc(100% - 28px); }
 }
