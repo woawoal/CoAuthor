@@ -77,7 +77,12 @@ export default function Editor() {
     if (!chatId) return;
     fetch(`${API_BASE_URL}/sessions/${chatId}/novel`)
       .then(r => r.ok ? r.json() : null)
-      .then(novel => { if (novel?.content) setContent(novel.content); })
+      .then(novel => {
+        if (novel?.content) {
+          const opening = localStorage.getItem('opening_' + chatId) || '';
+          setContent(opening ? opening + '\n\n' + novel.content : novel.content);
+        }
+      })
       .catch(() => { });
   }, [chatId]);
 
@@ -201,6 +206,7 @@ export default function Editor() {
     try {
       const newSession = await restartSession(chatId);
       localStorage.removeItem(`manuscript_${chatId}`);
+      localStorage.removeItem('opening_' + chatId);
       navigate('/chat', { state: { worldId: newSession.world_id, chatId: newSession.id, authorId } });
     } catch (err) {
       alert(`새로하기 실패: ${err.message}`);

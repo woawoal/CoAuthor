@@ -102,12 +102,14 @@ class AuthorMessageRequest(BaseModel):
     content: str
     author_id: str = "baekya"
     mode: str = "chat"  # 'chat' | 'feedback'
+    opening_narration: str = ""
 
 
 class AuthorRewriteRequest(BaseModel):
     original: str
     feedback: str
     author_id: str = "baekya"
+    opening_narration: str = ""
 
 
 def _parse_suggest_marker(raw: str) -> tuple[str, bool]:
@@ -142,6 +144,8 @@ async def send_author_message(
     - 일반 텍스트 응답 (JSON 아님)
     """
     world_context, story_summary = await _get_story_context(chat_id, db)
+    if body.opening_narration:
+        world_context += f"\n\n[오프닝 장면]\n{body.opening_narration}"
 
     logger.info("작가채팅 요청 - chat_id=%s author=%s mode=%s", chat_id, body.author_id, body.mode)
 
@@ -218,6 +222,8 @@ async def generate_rewrite(
     - feedback: 방금 받은 피드백 텍스트
     """
     world_context, story_summary = await _get_story_context(chat_id, db)
+    if body.opening_narration:
+        world_context += f"\n\n[오프닝 장면]\n{body.opening_narration}"
     memos = await _get_memos(chat_id)
     author_history = await get_author_history(chat_id, body.author_id)
 
