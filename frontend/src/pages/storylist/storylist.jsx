@@ -43,7 +43,7 @@ export default function StoryList() {
   const [loaded, setLoaded] = useState(false);   // 성공적으로 불러왔는지 — 에러/미인증과 '작품 없음'을 구분
   const [error, setError] = useState(false);
   const retriedRef = useRef(false);
-  useAuthorTheme(resolveAuthorId(null));
+  useAuthorTheme(null); // 목록 페이지는 작가 테마 변경 없음 — BGM 유지
 
   // 인증 미준비(null userId→422)·DB 콜드스타트(에러/지연)를 '작품 없음'으로 오인하지 않도록:
   // 실패하면 1회 자동 재시도(로딩 유지), 그래도 실패면 에러 안내(다시 시도) — 빈 상태는 '성공+0건'일 때만.

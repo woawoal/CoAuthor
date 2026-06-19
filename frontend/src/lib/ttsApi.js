@@ -9,7 +9,7 @@ let currentAudio = null; // 직전 리액션 음성 — 새 음성 오면 취소
  * @param {string} characterId  작가 페르소나 id (baekya|charoun|hanyeoreum|kimdohyeon)
  */
 export async function speakReaction(text, characterId) {
-  const bgmVolume = Number(localStorage.getItem('bgm_volume') ?? 0.2);
+  const bgmVolume = Number(localStorage.getItem('reaction_video_volume') ?? 0.3);
 
   const clean = (text || '').trim();
   if (!clean || !characterId) return;
