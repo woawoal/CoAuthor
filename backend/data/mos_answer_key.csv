@@ -1,0 +1,11 @@
+sample_no,condition,scenario,persona,genre
+01,ours,S3,charoun,본격 추리
+02,base,S4,kimdohyeon,일상·에세이
+03,ours,S5,hanyeoreum,로맨스
+04,base,S1,hanyeoreum,로맨스
+05,ours,S1,hanyeoreum,로맨스
+06,ours,S4,kimdohyeon,일상·에세이
+07,base,S3,charoun,본격 추리
+08,ours,S2,baekya,호러·미스터리
+09,base,S5,hanyeoreum,로맨스
+10,base,S2,baekya,호러·미스터리

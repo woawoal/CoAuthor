@@ -9,6 +9,7 @@ import { getProfile } from '../../lib/mypageApi';
 import { authClient, syncCurrentUser } from '../../lib/auth';
 import { toast } from '../../lib/toast';
 import SettingsModal from '../../components/SettingsModal';
+import DeveloperCredit from '../../components/DeveloperCredit';
 
 const FALLBACK_AUTHORS = [
     { id: 1, name: "백야 (白夜)", genre: "호러 / 미스터리", quote: "공포는 보여주는 게 아니라 안 보여주는 것이다", image: "/assets/author1/author1.png", video: "/assets/author1/author1.mp4" },
@@ -47,6 +48,7 @@ function Main() {
     const [isAdmin, setIsAdmin] = useState(false);
     const [showPanel, setShowPanel] = useState(false);      // ygy: 사이드바 토글
     const [settingsOpen, setSettingsOpen] = useState(false); // dev(#109): 환경설정 모달
+    const [showCredit, setShowCredit] = useState(false);     // 개발자 크레딧 오버레이
 
     useEffect(() => {
         const checkLogin = async () => {
@@ -156,6 +158,7 @@ function Main() {
             {showVoicePopup && (
                 <VoicePopup onClose={handleClosePopup} onGo={handleGoVoice} />
             )}
+            {showCredit && <DeveloperCredit onClose={() => setShowCredit(false)} />}
             <div className="app-wrapper">
                 {/* 상단 헤더 */}
                 <header className="header">
@@ -265,6 +268,9 @@ function Main() {
                             토큰 대시보드
                         </button>
                     )}
+                    <button className="btn" onClick={() => setShowCredit(true)}>
+                        개발자 크레딧
+                    </button>
                     {userId ? (
                         <button className="btn main-logout-btn" onClick={handleLogout}>
                             로그아웃
